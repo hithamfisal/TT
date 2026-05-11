@@ -62,3 +62,11 @@
 - [ ] Apply the selected Opening Month before all KPI, chart, export, and register calculations.
 - [ ] Validate the workbook formulas and web dashboard build.
 - [ ] Deliver corrected Home.tsx and Excel workbook files.
+
+# Distinct Report Update Todo
+
+- [ ] Inspect the current distinct report export and workbook report outputs.
+- [ ] Update the distinct report columns to match the requested structure: #, Site ID, Site Name, Managed Resource, Severity, Issues, Observation Date, Observation Time, Recovery Date, Recovery Time, Escalated for L3 Support Date, Escalated for L3 Support Time, Total Duration Days/Hours, TT, Status, Escalated to, Comments-Feedback.
+- [ ] Ensure the site output uses all affected sites from the affected sites column instead of only the primary site.
+- [ ] Validate the modified dashboard source and generated Excel report artifact.
+- [ ] Deliver the corrected modified files to the user.

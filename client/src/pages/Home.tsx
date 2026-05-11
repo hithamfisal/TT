@@ -70,17 +70,22 @@ type TicketRecord = {
   tt: string;
   siteId: string;
   siteName: string;
+  managedResource: string;
   issue: string;
   severity: string;
   region: string;
   observationDate: string;
+  observationTime: string;
   openingMonthKey: string;
   openingMonthLabel: string;
   recoveryDate: string;
+  recoveryTime: string;
   duration: string;
   impact: string;
   escalatedTo: string;
   escalationLevel: string;
+  escalatedForL3SupportDate: string;
+  escalatedForL3SupportTime: string;
   status: string;
   comments: string;
   actionTaken: string;
@@ -245,19 +250,24 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
         tt: getField(row, ["TT", "Ticket", "Ticket Number"]),
         siteId: getField(row, ["Site ID", "SiteID"]),
         siteName: getField(row, ["Site Name", "SiteName"]),
+        managedResource: getField(row, ["Managed Resource", "ManagedResource", "Managed Resources", "Resource", "NE Name", "Network Element"]),
         issue: getField(row, ["Issues", "Issue"]),
         severity: getField(row, ["Severity"]),
         region: getField(row, ["Region"]),
         observationDate,
+        observationTime: getField(row, ["Observation Time", "Observed Time", "ObservationTime"]),
         openingMonthKey: monthKey,
         openingMonthLabel: openingMonthLabel(monthKey),
         recoveryDate: getField(row, ["Recovery Date"]),
-        duration: getField(row, ["Total Durration Days/Hours", "Total Duration Days/Hours", "Duration"]),
+        recoveryTime: getField(row, ["Recovery Time", "RecoveryTime"]),
+        duration: getField(row, ["Total Duration Days/Hours", "Total Durration Days/Hours", "Duration"]),
         impact: getField(row, ["Service Impaction Status", "Service Impact Status"]),
-        escalatedTo: getField(row, ["Escalated to", "Escalated to "]),
+        escalatedTo: getField(row, ["Escalated to", "Escalated To", "Escalated to "]),
         escalationLevel: getField(row, ["Escalation Level", "Esclation Level"]),
+        escalatedForL3SupportDate: getField(row, ["Escalated for L3 Support Date", "Escalated For L3 Support Date", "L3 Support Date", "L3 Escalation Date", "Escalation L3 Date", "Escalated L3 Date"]),
+        escalatedForL3SupportTime: getField(row, ["Escalated for L3 Support Time", "Escalated For L3 Support Time", "L3 Support Time", "L3 Escalation Time", "Escalation L3 Time", "Escalated L3 Time"]),
         status: getField(row, ["Status"]),
-        comments: getField(row, ["Comments-Feedback", "Comments"]),
+        comments: getField(row, ["Comments-Feedback", "Comments Feedback", "Comments"]),
         actionTaken: getField(row, ["Action Taken/RCA", "Action Taken", "RCA"]),
       };
     })
@@ -331,33 +341,94 @@ function renderPieLabel(props: { name?: string; value?: number; percent?: number
   return `${name}: ${value} (${(percent * 100).toFixed(0)}%)`;
 }
 
+const DISTINCT_REPORT_HEADERS = [
+  "#",
+  "Site ID",
+  "Site Name",
+  "Managed Resource",
+  "Severity",
+  "Issues",
+  "Observation Date",
+  "Observation Time",
+  "Recovery Date",
+  "Recovery Time",
+  "Escalated for L3 Support Date",
+  "Escalated for L3 Support Time",
+  "Total Duration Days/Hours",
+  "TT",
+  "Status",
+  "Escalated to",
+  "Comments-Feedback",
+];
+
+function uniqueTicketValues(ticket: TicketAggregate, field: keyof TicketRecord): string {
+  return Array.from(new Set(ticket.rows.map((row) => clean(row[field])).filter(Boolean))).join(", ");
+}
+
+function distinctReportRow(ticket: TicketAggregate, index: number): string[] {
+  const row = ticket.primary;
+  return [
+    String(index + 1),
+    Array.from(ticket.siteIds).join(", "),
+    Array.from(ticket.siteNames).join(", "),
+    uniqueTicketValues(ticket, "managedResource") || row.managedResource || "",
+    row.severity || "",
+    row.issue || "",
+    row.observationDate || "",
+    row.observationTime || "",
+    row.recoveryDate || "",
+    row.recoveryTime || "",
+    row.escalatedForL3SupportDate || "",
+    row.escalatedForL3SupportTime || "",
+    row.duration || "",
+    ticket.tt || "",
+    row.status || "",
+    row.escalatedTo || "",
+    row.comments || "",
+  ];
+}
+
+function distinctReportRows(rows: TicketAggregate[]): string[][] {
+  return rows.map((ticket, index) => distinctReportRow(ticket, index));
+}
+
 function exportCsv(rows: TicketAggregate[]) {
-  const header = ["TT", "Primary Site ID", "Primary Site Name", "All Site IDs", "Severity", "Region", "Status", "Impact", "Escalation Level", "Issue"];
-  const body = rows.map((ticket) => {
-    const row = ticket.primary;
-    return [
-      ticket.tt,
-      row.siteId,
-      row.siteName,
-      Array.from(ticket.siteIds).join(" | "),
-      row.severity,
-      row.region,
-      row.status,
-      row.impact,
-      row.escalationLevel,
-      row.issue,
-    ];
-  });
-  const csv = [header, ...body]
+  const csv = [DISTINCT_REPORT_HEADERS, ...distinctReportRows(rows)]
     .map((line) => line.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
     .join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "follow-up-unique-tt-register.csv";
+  link.download = "follow-up-distinct-tt-report.csv";
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function exportExcel(rows: TicketAggregate[]) {
+  const worksheet = XLSX.utils.aoa_to_sheet([DISTINCT_REPORT_HEADERS, ...distinctReportRows(rows)]);
+  worksheet["!cols"] = [
+    { wch: 6 },
+    { wch: 24 },
+    { wch: 28 },
+    { wch: 30 },
+    { wch: 12 },
+    { wch: 32 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 26 },
+    { wch: 26 },
+    { wch: 24 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 20 },
+    { wch: 34 },
+  ];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Distinct TT Report");
+  XLSX.writeFile(workbook, "follow-up-distinct-tt-report.xlsx");
 }
 
 function StatCard({ label, value, note, icon: Icon, tone }: { label: string; value: string | number; note: string; icon: typeof Activity; tone: string }) {
@@ -464,7 +535,24 @@ export default function Home() {
     return uniqueRows.filter((ticket) => {
       const row = ticket.primary;
       const allSites = Array.from(ticket.siteIds).join(" ");
-      const haystack = [ticket.tt, row.siteId, row.siteName, allSites, row.issue, row.status, row.severity, row.region, row.impact, row.escalationLevel]
+      const allSiteNames = Array.from(ticket.siteNames).join(" ");
+      const haystack = [
+        ticket.tt,
+        row.siteId,
+        row.siteName,
+        allSites,
+        allSiteNames,
+        row.managedResource,
+        row.issue,
+        row.status,
+        row.severity,
+        row.region,
+        row.impact,
+        row.escalationLevel,
+        row.escalatedTo,
+        row.escalatedForL3SupportDate,
+        row.escalatedForL3SupportTime,
+      ]
         .join(" ")
         .toLowerCase();
       return (
@@ -560,6 +648,7 @@ export default function Home() {
             {data && <button className="ghost-button" onClick={() => inputRef.current?.click()}><RefreshCw size={16} /> New workbook</button>}
             {data && savedAt && <button className="ghost-button" onClick={clearSavedSession}><Trash2 size={16} /> Clear saved session</button>}
             {data && <button className="ghost-button" onClick={() => exportCsv(filteredTickets)}><Download size={16} /> CSV</button>}
+            {data && <button className="ghost-button" onClick={() => exportExcel(filteredTickets)}><FileSpreadsheet size={16} /> Excel</button>}
             {data && <button className="primary-button" onClick={() => window.print()}><Printer size={16} /> Print / PDF</button>}
           </div>
         </nav>
@@ -753,27 +842,27 @@ export default function Home() {
           <section className="table-card">
             <div className="table-heading">
               <div><span className="section-kicker">Unique register</span><h2>{filteredTickets.length.toLocaleString()} distinct TT records</h2></div>
-              <p>Showing first 150 filtered tickets. The Opening Month slicer is applied before this register, every KPI card, and every chart is calculated.</p>
+              <p>Showing first 150 filtered tickets in the same report order as the source-style register. Site ID and Site Name include all affected sites for each distinct TT, and CSV/Excel exports include every filtered ticket in this same order.</p>
             </div>
             <div className="table-scroll" id="ticket-table-wrapper">
               <table>
                 <thead>
-                  <tr><th>TT</th><th>Primary site</th><th>All affected sites</th><th>Severity</th><th>Status</th><th>Region</th><th>Impact</th><th>Escalation</th><th>Issue</th></tr>
+                  <tr>{DISTINCT_REPORT_HEADERS.map((header) => <th key={header}>{header}</th>)}</tr>
                 </thead>
                 <tbody>
-                  {filteredTickets.slice(0, 150).map((ticket) => {
+                  {filteredTickets.slice(0, 150).map((ticket, index) => {
                     const row = ticket.primary;
+                    const reportRow = distinctReportRow(ticket, index);
                     return (
                       <tr key={ticket.tt}>
-                        <td className="mono">{ticket.tt}</td>
-                        <td><strong>{row.siteId || ""}</strong><small>{row.siteName}</small></td>
-                        <td>{Array.from(ticket.siteIds).join(", ")}</td>
-                        <td><span className="pill" style={{ ["--pill" as string]: SEVERITY_COLORS[row.severity] ?? "#64748b" }}>{row.severity}</span></td>
-                        <td><span className="pill" style={{ ["--pill" as string]: STATUS_COLORS[row.status] ?? "#64748b" }}>{row.status}</span></td>
-                        <td>{row.region}</td>
-                        <td>{row.impact}</td>
-                        <td>{row.escalationLevel}</td>
-                        <td className="issue-cell">{row.issue}</td>
+                        {reportRow.map((cell, cellIndex) => {
+                          const header = DISTINCT_REPORT_HEADERS[cellIndex];
+                          if (header === "#" || header === "TT") return <td key={header} className="mono">{cell}</td>;
+                          if (header === "Severity") return <td key={header}><span className="pill" style={{ ["--pill" as string]: SEVERITY_COLORS[row.severity] ?? "#64748b" }}>{cell}</span></td>;
+                          if (header === "Status") return <td key={header}><span className="pill" style={{ ["--pill" as string]: STATUS_COLORS[row.status] ?? "#64748b" }}>{cell}</span></td>;
+                          if (header === "Issues" || header === "Comments-Feedback") return <td key={header} className="issue-cell">{cell}</td>;
+                          return <td key={header}>{cell}</td>;
+                        })}
                       </tr>
                     );
                   })}
