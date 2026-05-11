@@ -31,6 +31,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   Legend,
   Line,
   LineChart,
@@ -277,6 +278,14 @@ function metricValue(items: { name: string; value: number }[], expected: string)
   return items.find((item) => item.name.toLowerCase() === expected.toLowerCase())?.value ?? 0;
 }
 
+function renderPieLabel(props: { name?: string; value?: number; percent?: number }) {
+  const name = props.name ?? "";
+  const value = props.value ?? 0;
+  const percent = props.percent ?? 0;
+  if (!value) return "";
+  return `${name}: ${value} (${(percent * 100).toFixed(0)}%)`;
+}
+
 function exportCsv(rows: TicketAggregate[]) {
   const header = ["TT", "Primary Site ID", "Primary Site Name", "All Site IDs", "Severity", "Region", "Status", "Impact", "Escalation Level", "Issue"];
   const body = rows.map((ticket) => {
@@ -426,11 +435,22 @@ export default function Home() {
     const rootCauseUpdated = primaryRows.filter((row) => row.actionTaken).length;
     const totalSiteAffected = filteredTickets.reduce((sum, ticket) => sum + Math.max(ticket.siteIds.size, ticket.primary.siteId ? 1 : 0), 0);
 
+    const siteNameById = new Map<string, string>();
+    filteredTickets.forEach((ticket) => {
+      ticket.rows.forEach((row) => {
+        if (row.siteId && row.siteName && !siteNameById.has(row.siteId)) siteNameById.set(row.siteId, row.siteName);
+      });
+    });
+    const siteLabel = (siteId: string) => {
+      const siteName = siteNameById.get(siteId);
+      if (!siteId || siteId === "Blank") return "Blank";
+      return siteName ? `${siteId} — ${siteName}` : siteId;
+    };
     const siteMap = new Map<string, { name: string; value: number; exposure?: number }>();
     if (countMode === "primary") {
       filteredTickets.forEach((ticket) => {
         const site = ticket.primary.siteId || "Blank";
-        const current = siteMap.get(site) ?? { name: site, value: 0 };
+        const current = siteMap.get(site) ?? { name: siteLabel(site), value: 0 };
         current.value += 1;
         siteMap.set(site, current);
       });
@@ -438,7 +458,7 @@ export default function Home() {
       filteredTickets.forEach((ticket) => {
         const sites = ticket.siteIds.size ? Array.from(ticket.siteIds) : [ticket.primary.siteId || "Blank"];
         sites.forEach((site) => {
-          const current = siteMap.get(site) ?? { name: site, value: 0 };
+          const current = siteMap.get(site) ?? { name: siteLabel(site), value: 0 };
           current.value += 1;
           siteMap.set(site, current);
         });
@@ -532,7 +552,6 @@ export default function Home() {
             <StatCard label="Non-Service Impact" value={nonServiceImpact.toLocaleString()} note="No Service Impact" icon={XCircle} tone="#94a3b8" />
             <StatCard label="Unique Sites" value={analytics.uniqueSites.toLocaleString()} note="Unique Site ID" icon={BarChart3} tone="#60a5fa" />
             <StatCard label="Root Cause Updated" value={analytics.rootCauseUpdated.toLocaleString()} note="TT with Alarm Root Cause" icon={FileSpreadsheet} tone="#34d399" />
-            <StatCard label="Total Site Effected" value={analytics.totalSiteAffected.toLocaleString()} note="Affected-site exposure" icon={Network} tone="#f472b6" />
           </section>
 
           <section className="filters-panel no-print">
@@ -557,20 +576,24 @@ export default function Home() {
                   <XAxis dataKey="name" stroke="#94a3b8" tickLine={false} axisLine={false} />
                   <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
-                  <Line type="monotone" dataKey="value" stroke="#22d3ee" strokeWidth={3} dot={{ r: 4, fill: "#071426", strokeWidth: 2 }} />
+                  <Line type="monotone" dataKey="value" stroke="#22d3ee" strokeWidth={3} dot={{ r: 4, fill: "#071426", strokeWidth: 2 }}>
+                    <LabelList dataKey="value" position="top" fill="#e2e8f0" fontSize={12} />
+                  </Line>
                 </LineChart>
               </ResponsiveContainer>
             </article>
 
             <article className="glass-card tall">
               <div className="card-heading"><div><span>{countMode === "primary" ? "Primary allocation" : "Site exposure"}</span><h3>Top sites by unique TT</h3></div></div>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={analytics.topSites.slice(0, 10)} layout="vertical" margin={{ left: 18, right: 24, top: 8, bottom: 8 }}>
+              <ResponsiveContainer width="100%" height={360}>
+                <BarChart data={analytics.topSites.slice(0, 10)} layout="vertical" margin={{ left: 18, right: 44, top: 8, bottom: 8 }}>
                   <CartesianGrid stroke="rgba(148,163,184,.12)" horizontal={false} />
                   <XAxis type="number" stroke="#94a3b8" allowDecimals={false} />
-                  <YAxis dataKey="name" type="category" stroke="#cbd5e1" width={92} tickLine={false} axisLine={false} />
+                  <YAxis dataKey="name" type="category" stroke="#cbd5e1" width={210} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} interval={0} />
                   <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
-                  <Bar dataKey="value" radius={[0, 10, 10, 0]} fill="#22d3ee" />
+                  <Bar dataKey="value" radius={[0, 10, 10, 0]} fill="#22d3ee">
+                    <LabelList dataKey="value" position="right" fill="#e2e8f0" fontSize={12} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
               <div className="top-site-mini-table">
@@ -584,7 +607,7 @@ export default function Home() {
               <div className="card-heading"><div><span>Distribution</span><h3>Status</h3></div></div>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
-                  <Pie data={analytics.status} dataKey="value" nameKey="name" innerRadius={58} outerRadius={88} paddingAngle={3}>
+                  <Pie data={analytics.status} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
                     {analytics.status.map((entry, index) => <Cell key={entry.name} fill={STATUS_COLORS[entry.name] ?? COLORS[index % COLORS.length]} />)}
                   </Pie>
                   <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
@@ -597,7 +620,7 @@ export default function Home() {
               <div className="card-heading"><div><span>Distribution</span><h3>Severity</h3></div></div>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
-                  <Pie data={analytics.severity} dataKey="value" nameKey="name" innerRadius={58} outerRadius={88} paddingAngle={3}>
+                  <Pie data={analytics.severity} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
                     {analytics.severity.map((entry, index) => <Cell key={entry.name} fill={SEVERITY_COLORS[entry.name] ?? COLORS[index % COLORS.length]} />)}
                   </Pie>
                   <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
@@ -610,7 +633,7 @@ export default function Home() {
               <div className="card-heading"><div><span>Distribution</span><h3>Region</h3></div></div>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
-                  <Pie data={analytics.region} dataKey="value" nameKey="name" innerRadius={58} outerRadius={88} paddingAngle={3}>
+                  <Pie data={analytics.region} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
                     {analytics.region.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
                   </Pie>
                   <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
@@ -623,7 +646,7 @@ export default function Home() {
               <div className="card-heading"><div><span>Operational view</span><h3>Escalation level</h3></div></div>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
-                  <Pie data={analytics.escalation} dataKey="value" nameKey="name" innerRadius={58} outerRadius={88} paddingAngle={3}>
+                  <Pie data={analytics.escalation} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
                     {analytics.escalation.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
                   </Pie>
                   <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
@@ -634,16 +657,18 @@ export default function Home() {
 
             <article className="glass-card">
               <div className="card-heading"><div><span>Impact</span><h3>Service impact</h3></div></div>
-              <div className="impact-list">
-                {analytics.impact.map((item, index) => (
-                  <div key={item.name}>
-                    <span>{item.name}</span>
-                    <strong>{item.value}</strong>
-                    <small>{pct(item.value, analytics.totalUnique)}</small>
-                    <i style={{ background: COLORS[index % COLORS.length], width: pct(item.value, analytics.totalUnique) || "0%" }} />
-                  </div>
-                ))}
-              </div>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={analytics.impact} margin={{ left: 0, right: 24, top: 18, bottom: 42 }}>
+                  <CartesianGrid stroke="rgba(148,163,184,.12)" vertical={false} />
+                  <XAxis dataKey="name" stroke="#cbd5e1" tickLine={false} axisLine={false} interval={0} angle={-18} textAnchor="end" height={58} tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                  <Bar dataKey="value" radius={[10, 10, 0, 0]} fill="#a78bfa">
+                    <LabelList dataKey="value" position="top" fill="#e2e8f0" fontSize={12} />
+                    {analytics.impact.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </article>
           </section>
 
