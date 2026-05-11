@@ -74,6 +74,8 @@ type TicketRecord = {
   severity: string;
   region: string;
   observationDate: string;
+  openingMonthKey: string;
+  openingMonthLabel: string;
   recoveryDate: string;
   duration: string;
   impact: string;
@@ -140,21 +142,42 @@ function getField(row: Record<string, unknown>, aliases: string[]): string {
   return "";
 }
 
-function parseDateValue(value: string): Date | null {
-  if (!value) return null;
-  const direct = new Date(value);
+function parseDateValue(value: unknown): Date | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  const numericValue = typeof value === "number" ? value : /^\d+(\.\d+)?$/.test(clean(value)) ? Number(clean(value)) : null;
+  if (numericValue !== null && numericValue > 20000 && numericValue < 90000) {
+    const excelDate = XLSX.SSF.parse_date_code(numericValue);
+    if (excelDate) return new Date(excelDate.y, excelDate.m - 1, excelDate.d);
+  }
+  const text = clean(value);
+  const direct = new Date(text);
   if (!Number.isNaN(direct.getTime())) return direct;
-  const match = value.match(/(\d{1,2})[-/ ]([A-Za-z]{3,}|\d{1,2})[-/ ](\d{2,4})/);
+  const match = text.match(/(\d{1,2})[-/ ]([A-Za-z]{3,}|\d{1,2})[-/ ](\d{2,4})/);
   if (!match) return null;
-  const parsed = new Date(value.replace(/-/g, " "));
+  const parsed = new Date(text.replace(/-/g, " "));
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function openingMonthKey(value: string): string {
+function normalizeMonthKey(value: unknown): string | null {
+  const text = clean(value);
+  if (!text) return null;
+  const keyMatch = text.match(/^(\d{4})[-/](\d{1,2})$/);
+  if (keyMatch) return `${keyMatch[1]}-${keyMatch[2].padStart(2, "0")}`;
+  const parsed = parseDateValue(text.startsWith("1 ") ? text : `1 ${text}`);
+  if (!parsed) return null;
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function openingMonthKey(value: unknown): string {
   const parsed = parseDateValue(value);
   if (!parsed) return "Unknown";
   const month = String(parsed.getMonth() + 1).padStart(2, "0");
   return `${parsed.getFullYear()}-${month}`;
+}
+
+function resolveOpeningMonthKey(sourceKey: unknown, sourceLabel: unknown, observationDate: unknown): string {
+  return normalizeMonthKey(sourceKey) ?? normalizeMonthKey(sourceLabel) ?? openingMonthKey(observationDate);
 }
 
 function openingMonthLabel(key: string): string {
@@ -162,10 +185,6 @@ function openingMonthLabel(key: string): string {
   const parsed = new Date(`${key}-01T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return key;
   return parsed.toLocaleDateString("en", { month: "short", year: "numeric" });
-}
-
-function dateToMonth(value: string): string {
-  return openingMonthLabel(openingMonthKey(value));
 }
 
 function dateKey(value: string): number {
@@ -214,24 +233,34 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
   const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false });
 
   const rows: TicketRecord[] = raw
-    .map((row, index) => ({
-      rowNo: index + 2,
-      tt: getField(row, ["TT", "Ticket", "Ticket Number"]),
-      siteId: getField(row, ["Site ID", "SiteID"]),
-      siteName: getField(row, ["Site Name", "SiteName"]),
-      issue: getField(row, ["Issues", "Issue"]),
-      severity: getField(row, ["Severity"]),
-      region: getField(row, ["Region"]),
-      observationDate: getField(row, ["Observation Date", "Observed Date"]),
-      recoveryDate: getField(row, ["Recovery Date"]),
-      duration: getField(row, ["Total Durration Days/Hours", "Total Duration Days/Hours", "Duration"]),
-      impact: getField(row, ["Service Impaction Status", "Service Impact Status"]),
-      escalatedTo: getField(row, ["Escalated to", "Escalated to "]),
-      escalationLevel: getField(row, ["Escalation Level", "Esclation Level"]),
-      status: getField(row, ["Status"]),
-      comments: getField(row, ["Comments-Feedback", "Comments"]),
-      actionTaken: getField(row, ["Action Taken/RCA", "Action Taken", "RCA"]),
-    }))
+    .map((row, index) => {
+      const observationDate = getField(row, ["Observation Date", "Observed Date"]);
+      const monthKey = resolveOpeningMonthKey(
+        getField(row, ["Opening Month Key", "OpeningMonthKey"]),
+        getField(row, ["Opening Month", "OpeningMonth"]),
+        observationDate,
+      );
+      return {
+        rowNo: index + 2,
+        tt: getField(row, ["TT", "Ticket", "Ticket Number"]),
+        siteId: getField(row, ["Site ID", "SiteID"]),
+        siteName: getField(row, ["Site Name", "SiteName"]),
+        issue: getField(row, ["Issues", "Issue"]),
+        severity: getField(row, ["Severity"]),
+        region: getField(row, ["Region"]),
+        observationDate,
+        openingMonthKey: monthKey,
+        openingMonthLabel: openingMonthLabel(monthKey),
+        recoveryDate: getField(row, ["Recovery Date"]),
+        duration: getField(row, ["Total Durration Days/Hours", "Total Duration Days/Hours", "Duration"]),
+        impact: getField(row, ["Service Impaction Status", "Service Impact Status"]),
+        escalatedTo: getField(row, ["Escalated to", "Escalated to "]),
+        escalationLevel: getField(row, ["Escalation Level", "Esclation Level"]),
+        status: getField(row, ["Status"]),
+        comments: getField(row, ["Comments-Feedback", "Comments"]),
+        actionTaken: getField(row, ["Action Taken/RCA", "Action Taken", "RCA"]),
+      };
+    })
     .filter((row) => row.tt || row.siteId || row.siteName || row.issue);
 
   return {
@@ -414,7 +443,7 @@ export default function Home() {
   const filterOptions = useMemo(() => {
     const primaryRows = uniqueRows.map((ticket) => ticket.primary);
     const uniq = (field: keyof TicketRecord) => Array.from(new Set(primaryRows.map((row) => clean(row[field])).filter(Boolean))).sort();
-    const openingMonths = Array.from(new Set(primaryRows.map((row) => openingMonthKey(row.observationDate)).filter(Boolean))).sort((a, b) => {
+    const openingMonths = Array.from(new Set(primaryRows.map((row) => row.openingMonthKey || openingMonthKey(row.observationDate)).filter(Boolean))).sort((a, b) => {
       if (a === "Unknown") return 1;
       if (b === "Unknown") return -1;
       return a.localeCompare(b);
@@ -444,7 +473,7 @@ export default function Home() {
         (filters.severity === "all" || row.severity === filters.severity) &&
         (filters.region === "all" || row.region === filters.region) &&
         (filters.impact === "all" || row.impact === filters.impact) &&
-        (filters.openingMonth === "all" || openingMonthKey(row.observationDate) === filters.openingMonth) &&
+        (filters.openingMonth === "all" || (row.openingMonthKey || openingMonthKey(row.observationDate)) === filters.openingMonth) &&
         (filters.site === "all" || (countMode === "primary" ? row.siteId === filters.site : ticket.siteIds.has(filters.site)))
       );
     });
@@ -458,7 +487,20 @@ export default function Home() {
     const region = countBy(primaryRows, (row) => row.region);
     const impact = countBy(primaryRows, (row) => row.impact);
     const escalation = countBy(primaryRows, (row) => row.escalationLevel);
-    const monthly = countBy(primaryRows, (row) => dateToMonth(row.observationDate)).reverse();
+    const monthlyMap = new Map<string, { name: string; value: number }>();
+    primaryRows.forEach((row) => {
+      const key = row.openingMonthKey || openingMonthKey(row.observationDate);
+      const current = monthlyMap.get(key) ?? { name: openingMonthLabel(key), value: 0 };
+      current.value += 1;
+      monthlyMap.set(key, current);
+    });
+    const monthly = Array.from(monthlyMap.entries())
+      .sort(([a], [b]) => {
+        if (a === "Unknown") return 1;
+        if (b === "Unknown") return -1;
+        return a.localeCompare(b);
+      })
+      .map(([, value]) => value);
     const avgHoursSource = primaryRows.map((row) => parseDurationHours(row.duration)).filter((value): value is number => value !== null);
     const avgHours = avgHoursSource.length ? avgHoursSource.reduce((sum, value) => sum + value, 0) / avgHoursSource.length : 0;
     const uniqueSites = new Set(primaryRows.map((row) => row.siteId).filter(Boolean)).size;
@@ -507,7 +549,7 @@ export default function Home() {
   const minor = metricValue(analytics.severity, "Minor");
   const serviceImpact = metricValue(analytics.impact, "Service Impact");
   const nonServiceImpact = metricValue(analytics.impact, "Non-Service Impact");
-  const duplicateRows = data ? data.rows.filter((row) => row.tt).length - data.uniqueTickets.length : 0;
+  const filteredSourceRowCount = filteredTickets.reduce((sum, ticket) => sum + ticket.rows.length, 0);
 
   return (
     <main className="dashboard-shell">
@@ -561,7 +603,7 @@ export default function Home() {
             <div>
               <span className="section-kicker"><FileSpreadsheet size={14} /> {data.fileName}</span>
               <h2>Live dashboard from `{data.sheetName}`</h2>
-              <p>Last parsed: {data.generatedAt}. The register has {data.rows.length.toLocaleString()} source rows and {data.uniqueTickets.length.toLocaleString()} unique TT numbers.</p>
+              <p>Last parsed: {data.generatedAt}. Current filters show {filteredSourceRowCount.toLocaleString()} source rows and {filteredTickets.length.toLocaleString()} unique TT numbers from {data.rows.length.toLocaleString()} uploaded rows.</p>
               {savedAt && <p className="session-note"><HardDrive size={14} /> Saved locally in this browser at {savedAt}; it will reopen automatically until cleared.</p>}
             </div>
             <div className="count-toggle" role="group" aria-label="Site counting mode">
@@ -711,7 +753,7 @@ export default function Home() {
           <section className="table-card">
             <div className="table-heading">
               <div><span className="section-kicker">Unique register</span><h2>{filteredTickets.length.toLocaleString()} distinct TT records</h2></div>
-              <p>Showing first 150 filtered tickets. Use search and filters to narrow the register.</p>
+              <p>Showing first 150 filtered tickets. The Opening Month slicer is applied before this register, every KPI card, and every chart is calculated.</p>
             </div>
             <div className="table-scroll" id="ticket-table-wrapper">
               <table>

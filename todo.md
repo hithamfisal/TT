@@ -44,7 +44,7 @@
 - [x] Populate month options from unique ticket opening months in chronological order.
 - [x] Apply the month filter before KPI, chart, and register calculations.
 - [x] Validate TypeScript after the implementation.
-- [ ] Send the modified Home.tsx file to the user.
+- [x] Send the modified Home.tsx file to the user.
 
 # Excel Opening Month Slicer Implementation Todo
 
@@ -53,4 +53,12 @@
 - [x] Add a workbook-facing Opening Month slicer/control area using unique chronological months.
 - [x] Preserve the original workbook structure as much as possible and save a modified copy.
 - [x] Validate the modified workbook can be opened and inspected.
-- [ ] Deliver the modified Excel workbook and updated Home.tsx file.
+- [x] Deliver the modified Excel workbook and updated Home.tsx file.
+
+# Opening Month Defect Fix Todo
+
+- [ ] Replace static Excel Opening Month helper values with formulas based on Observation Date.
+- [ ] Audit the web dashboard data flow to find metrics and charts still using unfiltered data.
+- [ ] Apply the selected Opening Month before all KPI, chart, export, and register calculations.
+- [ ] Validate the workbook formulas and web dashboard build.
+- [ ] Deliver corrected Home.tsx and Excel workbook files.
