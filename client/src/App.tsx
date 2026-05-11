@@ -1,3 +1,8 @@
+/*
+Design philosophy: Calm Enterprise Glass for a premium telecom network-observability cockpit.
+Use deep ink backgrounds, translucent panels, cyan focus accents, tabular TT numerals, and restrained motion.
+Does this choice reinforce or dilute our design philosophy?
+*/
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -27,7 +32,7 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider
-        defaultTheme="light"
+        defaultTheme="dark"
         // switchable
       >
         <TooltipProvider>
