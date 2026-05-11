@@ -118,6 +118,7 @@ type Filters = {
   region: string;
   impact: string;
   site: string;
+  openingMonth: string;
 };
 
 function clean(value: unknown): string {
@@ -139,17 +140,32 @@ function getField(row: Record<string, unknown>, aliases: string[]): string {
   return "";
 }
 
-function dateToMonth(value: string): string {
-  if (!value) return "Unknown";
+function parseDateValue(value: string): Date | null {
+  if (!value) return null;
   const direct = new Date(value);
-  if (!Number.isNaN(direct.getTime())) {
-    return direct.toLocaleDateString("en", { month: "short", year: "numeric" });
-  }
+  if (!Number.isNaN(direct.getTime())) return direct;
   const match = value.match(/(\d{1,2})[-/ ]([A-Za-z]{3,}|\d{1,2})[-/ ](\d{2,4})/);
-  if (!match) return "Unknown";
+  if (!match) return null;
   const parsed = new Date(value.replace(/-/g, " "));
-  if (Number.isNaN(parsed.getTime())) return "Unknown";
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function openingMonthKey(value: string): string {
+  const parsed = parseDateValue(value);
+  if (!parsed) return "Unknown";
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  return `${parsed.getFullYear()}-${month}`;
+}
+
+function openingMonthLabel(key: string): string {
+  if (!key || key === "Unknown") return "Unknown";
+  const parsed = new Date(`${key}-01T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return key;
   return parsed.toLocaleDateString("en", { month: "short", year: "numeric" });
+}
+
+function dateToMonth(value: string): string {
+  return openingMonthLabel(openingMonthKey(value));
 }
 
 function dateKey(value: string): number {
@@ -326,7 +342,13 @@ function StatCard({ label, value, note, icon: Icon, tone }: { label: string; val
   );
 }
 
-function SelectFilter({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+function SelectFilter({ label, value, options, optionLabels, onChange }: {
+  label: string;
+  value: string;
+  options: string[];
+  optionLabels?: Record<string, string>;
+  onChange: (value: string) => void;
+}) {
   return (
     <label className="filter-field">
       <span>{label}</span>
@@ -334,7 +356,7 @@ function SelectFilter({ label, value, options, onChange }: { label: string; valu
         <select value={value} onChange={(event) => onChange(event.target.value)}>
           <option value="all">All</option>
           {options.map((option) => (
-            <option key={option} value={option}>{option}</option>
+            <option key={option} value={option}>{optionLabels?.[option] ?? option}</option>
           ))}
         </select>
         <ChevronDown size={14} />
@@ -350,7 +372,7 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const [countMode, setCountMode] = useState<CountMode>("primary");
   const [savedAt, setSavedAt] = useState("");
-  const [filters, setFilters] = useState<Filters>({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all" });
+  const [filters, setFilters] = useState<Filters>({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all" });
 
   useEffect(() => {
     try {
@@ -376,7 +398,7 @@ export default function Home() {
       }
       setData(parsed);
       setSavedAt(saveSession(parsed));
-      setFilters({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all" });
+      setFilters({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all" });
       if (inputRef.current) inputRef.current.value = "";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to read this workbook.");
@@ -392,12 +414,19 @@ export default function Home() {
   const filterOptions = useMemo(() => {
     const primaryRows = uniqueRows.map((ticket) => ticket.primary);
     const uniq = (field: keyof TicketRecord) => Array.from(new Set(primaryRows.map((row) => clean(row[field])).filter(Boolean))).sort();
+    const openingMonths = Array.from(new Set(primaryRows.map((row) => openingMonthKey(row.observationDate)).filter(Boolean))).sort((a, b) => {
+      if (a === "Unknown") return 1;
+      if (b === "Unknown") return -1;
+      return a.localeCompare(b);
+    });
     return {
       status: uniq("status"),
       severity: uniq("severity"),
       region: uniq("region"),
       impact: uniq("impact"),
       site: uniq("siteId"),
+      openingMonth: openingMonths,
+      openingMonthLabels: Object.fromEntries(openingMonths.map((key) => [key, openingMonthLabel(key)])),
     };
   }, [uniqueRows]);
 
@@ -415,6 +444,7 @@ export default function Home() {
         (filters.severity === "all" || row.severity === filters.severity) &&
         (filters.region === "all" || row.region === filters.region) &&
         (filters.impact === "all" || row.impact === filters.impact) &&
+        (filters.openingMonth === "all" || openingMonthKey(row.observationDate) === filters.openingMonth) &&
         (filters.site === "all" || (countMode === "primary" ? row.siteId === filters.site : ticket.siteIds.has(filters.site)))
       );
     });
@@ -563,8 +593,9 @@ export default function Home() {
             <SelectFilter label="Severity" value={filters.severity} options={filterOptions.severity} onChange={(value) => setFilters((prev) => ({ ...prev, severity: value }))} />
             <SelectFilter label="Region" value={filters.region} options={filterOptions.region} onChange={(value) => setFilters((prev) => ({ ...prev, region: value }))} />
             <SelectFilter label="Impact" value={filters.impact} options={filterOptions.impact} onChange={(value) => setFilters((prev) => ({ ...prev, impact: value }))} />
+            <SelectFilter label="Opening Month" value={filters.openingMonth} options={filterOptions.openingMonth} optionLabels={filterOptions.openingMonthLabels} onChange={(value) => setFilters((prev) => ({ ...prev, openingMonth: value }))} />
             <SelectFilter label="Site" value={filters.site} options={filterOptions.site} onChange={(value) => setFilters((prev) => ({ ...prev, site: value }))} />
-            <button className="ghost-button" onClick={() => setFilters({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all" })}><Filter size={16} /> Clear</button>
+            <button className="ghost-button" onClick={() => setFilters({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all" })}><Filter size={16} /> Clear</button>
           </section>
 
           <section className="chart-mosaic">
