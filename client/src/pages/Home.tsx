@@ -198,6 +198,51 @@ function recordDateMonthKey(value: string): string {
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function selectedMonthRange(selectedMonth: string): { start: Date; end: Date } | null {
+  const match = selectedMonth.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const start = new Date(year, monthIndex, 1);
+  const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
+  return Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) ? null : { start, end };
+}
+
+function observationRecoveryOverlapsMonth(row: TicketRecord, selectedMonth: string): boolean {
+  const range = selectedMonthRange(selectedMonth);
+  if (!range) return false;
+  const observation = parseDateValue(row.observationDate);
+  const recovery = parseDateValue(row.recoveryDate);
+  if (!observation || !recovery) return false;
+  const startDate = observation <= recovery ? observation : recovery;
+  const endDate = recovery >= observation ? recovery : observation;
+  return startDate <= range.end && endDate >= range.start;
+}
+
+function coveredMonthKeys(row: TicketRecord): string[] {
+  const observation = parseDateValue(row.observationDate);
+  const recovery = parseDateValue(row.recoveryDate);
+  const keys = new Set<string>();
+  const addEndpoint = (value: string) => {
+    const key = recordDateMonthKey(value);
+    if (key !== "Unknown") keys.add(key);
+  };
+  addEndpoint(row.observationDate);
+  addEndpoint(row.recoveryDate);
+  if (!observation || !recovery) return Array.from(keys);
+  const startDate = observation <= recovery ? observation : recovery;
+  const endDate = recovery >= observation ? recovery : observation;
+  const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const final = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+  let guard = 0;
+  while (cursor <= final && guard < 240) {
+    keys.add(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
+    cursor.setMonth(cursor.getMonth() + 1);
+    guard += 1;
+  }
+  return Array.from(keys);
+}
+
 function isPendingStatus(value: string): boolean {
   return clean(value).toLowerCase() === "pending";
 }
@@ -208,7 +253,8 @@ function ticketMatchesMonthlyExport(ticket: TicketAggregate, selectedMonth: stri
     const observationMatches = recordDateMonthKey(row.observationDate) === selectedMonth;
     const recoveryMatches = recordDateMonthKey(row.recoveryDate) === selectedMonth;
     const pendingMatches = isPendingStatus(row.status);
-    return observationMatches || recoveryMatches || pendingMatches;
+    const intervalOverlapsMonth = observationRecoveryOverlapsMonth(row, selectedMonth);
+    return observationMatches || recoveryMatches || pendingMatches || intervalOverlapsMonth;
   });
 }
 
@@ -542,7 +588,7 @@ export default function Home() {
       return a.localeCompare(b);
     });
     const exportMonths = Array.from(new Set(uniqueRows.flatMap((ticket) =>
-      ticket.rows.flatMap((row) => [recordDateMonthKey(row.observationDate), recordDateMonthKey(row.recoveryDate)]),
+      ticket.rows.flatMap((row) => coveredMonthKeys(row)),
     ).filter((key) => key && key !== "Unknown"))).sort((a, b) => a.localeCompare(b));
     return {
       status: uniq("status"),
@@ -877,7 +923,7 @@ export default function Home() {
               <div className="monthly-export-panel no-print">
                 <div>
                   <strong>Monthly TT export filter</strong>
-                  <span>{monthlyExportTickets.length.toLocaleString()} TT records export for {selectedExportMonthLabel}. Rule: Observation Date in month OR Recovery Date in month OR Status pending.</span>
+                  <span>{monthlyExportTickets.length.toLocaleString()} TT records export for {selectedExportMonthLabel}. Rule: Observation Date in month OR Recovery Date in month OR Status pending OR Observation–Recovery interval overlaps the month.</span>
                 </div>
                 <SelectFilter label="Report Month" value={exportMonth} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setExportMonth} />
                 <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> Export CSV</button>

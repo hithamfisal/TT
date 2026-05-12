@@ -94,3 +94,18 @@
 - [x] Add a separate monthly report export filter control.
 - [x] Use the separate export filter only for CSV and Excel monthly TT report exports.
 - [x] Apply monthly export logic as Observation Date in selected month OR Recovery Date in selected month OR Status pending.
+
+# Latest ZIP Delivery Todo
+
+- [x] Package the latest dashboard version with the separate monthly TT export filter as a lightweight ZIP archive.
+- [x] Exclude dependency folders, build output, logs, and git metadata from the archive.
+- [x] Verify the ZIP exists before delivering it to the user.
+
+# Monthly Export Interval Overlap Refinement Todo
+
+- [x] Keep the existing dashboard Opening Month filter unchanged.
+- [x] Refine the separate Report Month export logic to include TTs where Observation Date is in the selected month.
+- [x] Refine the separate Report Month export logic to include TTs where Recovery Date is in the selected month.
+- [x] Refine the separate Report Month export logic to include TTs where Status is pending.
+- [x] Add interval-overlap logic so TTs are included when the Observation-to-Recovery period covers any day in the selected month.
+- [ ] Save a new checkpoint for the validated interval-overlap update.
