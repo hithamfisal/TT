@@ -192,6 +192,26 @@ function openingMonthLabel(key: string): string {
   return parsed.toLocaleDateString("en", { month: "short", year: "numeric" });
 }
 
+function recordDateMonthKey(value: string): string {
+  const parsed = parseDateValue(value);
+  if (!parsed) return "Unknown";
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function isPendingStatus(value: string): boolean {
+  return clean(value).toLowerCase() === "pending";
+}
+
+function ticketMatchesMonthlyExport(ticket: TicketAggregate, selectedMonth: string): boolean {
+  if (selectedMonth === "all") return true;
+  return ticket.rows.some((row) => {
+    const observationMatches = recordDateMonthKey(row.observationDate) === selectedMonth;
+    const recoveryMatches = recordDateMonthKey(row.recoveryDate) === selectedMonth;
+    const pendingMatches = isPendingStatus(row.status);
+    return observationMatches || recoveryMatches || pendingMatches;
+  });
+}
+
 function dateKey(value: string): number {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
@@ -472,6 +492,7 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const [countMode, setCountMode] = useState<CountMode>("primary");
   const [savedAt, setSavedAt] = useState("");
+  const [exportMonth, setExportMonth] = useState("all");
   const [filters, setFilters] = useState<Filters>({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all" });
 
   useEffect(() => {
@@ -498,6 +519,7 @@ export default function Home() {
       }
       setData(parsed);
       setSavedAt(saveSession(parsed));
+      setExportMonth("all");
       setFilters({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all" });
       if (inputRef.current) inputRef.current.value = "";
     } catch (err) {
@@ -519,6 +541,9 @@ export default function Home() {
       if (b === "Unknown") return -1;
       return a.localeCompare(b);
     });
+    const exportMonths = Array.from(new Set(uniqueRows.flatMap((ticket) =>
+      ticket.rows.flatMap((row) => [recordDateMonthKey(row.observationDate), recordDateMonthKey(row.recoveryDate)]),
+    ).filter((key) => key && key !== "Unknown"))).sort((a, b) => a.localeCompare(b));
     return {
       status: uniq("status"),
       severity: uniq("severity"),
@@ -527,6 +552,8 @@ export default function Home() {
       site: uniq("siteId"),
       openingMonth: openingMonths,
       openingMonthLabels: Object.fromEntries(openingMonths.map((key) => [key, openingMonthLabel(key)])),
+      exportMonth: exportMonths,
+      exportMonthLabels: Object.fromEntries(exportMonths.map((key) => [key, openingMonthLabel(key)])),
     };
   }, [uniqueRows]);
 
@@ -566,6 +593,10 @@ export default function Home() {
       );
     });
   }, [countMode, filters, uniqueRows]);
+
+  const monthlyExportTickets = useMemo(() => filteredTickets.filter((ticket) => ticketMatchesMonthlyExport(ticket, exportMonth)), [exportMonth, filteredTickets]);
+
+  const selectedExportMonthLabel = exportMonth === "all" ? "All dashboard-filtered TT" : openingMonthLabel(exportMonth);
 
   const analytics = useMemo(() => {
     const primaryRows = filteredTickets.map((ticket) => ticket.primary);
@@ -647,8 +678,8 @@ export default function Home() {
           <div className="topbar-actions">
             {data && <button className="ghost-button" onClick={() => inputRef.current?.click()}><RefreshCw size={16} /> New workbook</button>}
             {data && savedAt && <button className="ghost-button" onClick={clearSavedSession}><Trash2 size={16} /> Clear saved session</button>}
-            {data && <button className="ghost-button" onClick={() => exportCsv(filteredTickets)}><Download size={16} /> CSV</button>}
-            {data && <button className="ghost-button" onClick={() => exportExcel(filteredTickets)}><FileSpreadsheet size={16} /> Excel</button>}
+            {data && <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> CSV</button>}
+            {data && <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={16} /> Excel</button>}
             {data && <button className="primary-button" onClick={() => window.print()}><Printer size={16} /> Print / PDF</button>}
           </div>
         </nav>
@@ -842,7 +873,16 @@ export default function Home() {
           <section className="table-card">
             <div className="table-heading">
               <div><span className="section-kicker">Unique register</span><h2>{filteredTickets.length.toLocaleString()} distinct TT records</h2></div>
-              <p>Showing first 150 filtered tickets in the same report order as the source-style register. Site ID and Site Name include all affected sites for each distinct TT, and CSV/Excel exports include every filtered ticket in this same order.</p>
+              <p>Showing first 150 dashboard-filtered tickets in the same report order as the source-style register. Site ID and Site Name include all affected sites for each distinct TT.</p>
+              <div className="monthly-export-panel no-print">
+                <div>
+                  <strong>Monthly TT export filter</strong>
+                  <span>{monthlyExportTickets.length.toLocaleString()} TT records export for {selectedExportMonthLabel}. Rule: Observation Date in month OR Recovery Date in month OR Status pending.</span>
+                </div>
+                <SelectFilter label="Report Month" value={exportMonth} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setExportMonth} />
+                <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> Export CSV</button>
+                <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={16} /> Export Excel</button>
+              </div>
             </div>
             <div className="table-scroll" id="ticket-table-wrapper">
               <table>

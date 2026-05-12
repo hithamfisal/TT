@@ -10,6 +10,7 @@
 
 # ZIP Delivery Todo
 
+- [x] Package the latest distinct-report dashboard update as a ZIP archive for user download.
 - [x] Create updated ZIP archive after latest validated dashboard changes and deliver it to the user.
 - [x] Package the current dashboard source code into a downloadable ZIP archive.
 - [x] Verify the archive was created successfully.
@@ -70,3 +71,26 @@
 - [ ] Ensure the site output uses all affected sites from the affected sites column instead of only the primary site.
 - [ ] Validate the modified dashboard source and generated Excel report artifact.
 - [ ] Deliver the corrected modified files to the user.
+
+# Excel Opening Month Dropdown Guidance Todo
+
+- [x] Explain what the `OpeningMonthList` named range means in Excel data validation.
+- [x] Explain how to create or verify the named range for the month dropdown source.
+- [x] Explain how to make the Dashboard formulas respond to the selected month.
+- [x] Provide practical formula examples for KPI cards and filtered distinct TT reports.
+
+# Monthly TT Export Filter Todo
+
+- [ ] Inspect the current web dashboard month filter and TT export functions.
+- [ ] Add a dedicated export-month filter for TT monthly reports.
+- [ ] Apply the monthly export inclusion logic: Observation Date is selected month, Recovery Date is selected month, or Status is pending.
+- [ ] Ensure CSV and Excel exports use the same filtered TT report rows.
+- [ ] Validate TypeScript and production build after implementation.
+- [ ] Save a checkpoint and deliver the updated dashboard version.
+
+# Separate Monthly TT Export Filter Clarification Todo
+
+- [x] Keep the existing TT opened-month dashboard filter unchanged.
+- [x] Add a separate monthly report export filter control.
+- [x] Use the separate export filter only for CSV and Excel monthly TT report exports.
+- [x] Apply monthly export logic as Observation Date in selected month OR Recovery Date in selected month OR Status pending.
