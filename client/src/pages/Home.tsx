@@ -616,30 +616,12 @@ function StatCard({ label, value, note, icon: Icon, tone }: { label: string; val
   );
 }
 
-function NationalGridLogo() {
-  return (
-    <div className="partner-logo national-grid-logo" aria-label="National Grid logo">
-      <span className="ng-symbol" aria-hidden="true"><i /> <i /> <i /> <i /></span>
-      <span className="logo-wordmark"><strong>national</strong><em>grid</em></span>
-    </div>
-  );
-}
-
-function NascoLogo() {
-  return (
-    <div className="partner-logo nasco-logo" aria-label="Nasco logo">
-      <span className="nasco-symbol" aria-hidden="true">N</span>
-      <span className="logo-wordmark"><strong>NASCO</strong><em>National Advanced Systems Co.</em></span>
-    </div>
-  );
-}
-
 function PartnerLogoStrip() {
   return (
     <div className="partner-logo-strip" aria-label="Project partner logos">
-      <NationalGridLogo />
+      <img src="/manus-storage/nglogo_c55ff091.png" alt="National Grid SA" className="partner-logo-img ng-logo" />
       <span className="logo-divider" aria-hidden="true" />
-      <NascoLogo />
+      <img src="/manus-storage/nascologo_42619f23.png" alt="NASCO" className="partner-logo-img nasco-logo" />
     </div>
   );
 }
@@ -907,6 +889,11 @@ export default function Home() {
     }
     const topSites = Array.from(siteMap.values()).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name)).slice(0, 12);
 
+    const preventableBreakdown = [
+      { name: "Preventable", value: preventableCount },
+      { name: "Non-preventable", value: primaryRows.length - preventableCount },
+    ].filter((item) => item.value > 0);
+
     return {
       totalUnique,
       status,
@@ -928,6 +915,9 @@ export default function Home() {
       repeatedRcaSites,
       rcaNotProvidedCount,
       preventableCount,
+      rcaByDowntime: downtimeByRca.map((item) => ({ name: item.name, value: Math.round(item.value * 10) / 10 })),
+      rcaByMttr: mttrByRca.map((item) => ({ name: item.name, value: Math.round(item.value * 10) / 10 })),
+      preventableBreakdown,
     };
   }, [countMode, filteredTickets]);
 
@@ -1139,31 +1129,93 @@ export default function Home() {
               </ResponsiveContainer>
             </article>
 
-            <article className="glass-card wide">
-              <div className="card-heading"><div><span>Root cause</span><h3>Top RCA by unique TT</h3></div></div>
-              <ResponsiveContainer width="100%" height={290}>
-                <BarChart data={analytics.rcaByCount.slice(0, 10)} layout="vertical" margin={{ left: 18, right: 44, top: 8, bottom: 8 }}>
+            <article className="glass-card full">
+              <div className="card-heading"><div><span>Root cause analysis</span><h3>Top 10 RCA by unique TT count</h3></div></div>
+              <ResponsiveContainer width="100%" height={320}>
+                <BarChart data={analytics.rcaByCount.slice(0, 10)} layout="vertical" margin={{ left: 18, right: 56, top: 8, bottom: 8 }}>
                   <CartesianGrid stroke="rgba(148,163,184,.12)" horizontal={false} />
                   <XAxis type="number" stroke="#94a3b8" allowDecimals={false} />
-                  <YAxis dataKey="name" type="category" stroke="#cbd5e1" width={180} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} interval={0} />
+                  <YAxis dataKey="name" type="category" stroke="#cbd5e1" width={200} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} interval={0} />
                   <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
                   <Bar dataKey="value" radius={[0, 10, 10, 0]} fill="#22d3ee">
-                    <LabelList dataKey="value" position="right" fill="#e2e8f0" fontSize={12} />
+                    <LabelList dataKey="value" position="right" fill="#e2e8f0" fontSize={13} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </article>
+
+            <article className="glass-card wide">
+              <div className="card-heading"><div><span>RCA family</span><h3>Operational families — TT distribution</h3></div></div>
+              <div className="rca-family-layout">
+                <ResponsiveContainer width="100%" height={280}>
+                  <PieChart>
+                    <Pie data={analytics.rcaFamily} dataKey="value" nameKey="name" innerRadius={68} outerRadius={110} paddingAngle={4} labelLine={false}>
+                      {analytics.rcaFamily.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="rca-family-legend">
+                  {analytics.rcaFamily.map((entry, index) => (
+                    <div key={entry.name} className="rca-legend-row">
+                      <span className="rca-legend-dot" style={{ background: COLORS[index % COLORS.length] }} />
+                      <span className="rca-legend-name">{entry.name}</span>
+                      <strong className="rca-legend-val">{entry.value} <small>({pct(entry.value, analytics.totalUnique)})</small></strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </article>
+
+            <article className="glass-card">
+              <div className="card-heading"><div><span>Preventability</span><h3>Preventable vs Non-preventable</h3></div></div>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={analytics.preventableBreakdown} dataKey="value" nameKey="name" innerRadius={52} outerRadius={82} paddingAngle={4} labelLine={false} label={renderPieLabel}>
+                    {analytics.preventableBreakdown.map((entry, index) => <Cell key={entry.name} fill={entry.name === "Preventable" ? "#34d399" : "#f59e0b"} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="rca-prev-summary">
+                {analytics.preventableBreakdown.map((entry: { name: string; value: number }) => (
+                  <div key={entry.name} className="rca-prev-row">
+                    <span style={{ color: entry.name === "Preventable" ? "#34d399" : "#f59e0b" }}>{entry.name}</span>
+                    <strong>{entry.value}</strong>
+                    <small>{pct(entry.value, analytics.totalUnique)}</small>
+                  </div>
+                ))}
+              </div>
+            </article>
+
+            <article className="glass-card wide">
+              <div className="card-heading"><div><span>Downtime analysis</span><h3>Top 10 RCA by total downtime (hrs)</h3></div></div>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={analytics.rcaByDowntime.slice(0, 10)} layout="vertical" margin={{ left: 18, right: 72, top: 8, bottom: 8 }}>
+                  <CartesianGrid stroke="rgba(148,163,184,.12)" horizontal={false} />
+                  <XAxis type="number" stroke="#94a3b8" allowDecimals={false} />
+                  <YAxis dataKey="name" type="category" stroke="#cbd5e1" width={200} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} interval={0} />
+                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} formatter={(v: number) => [`${v.toLocaleString()} hrs`, "Downtime"]} />
+                  <Bar dataKey="value" radius={[0, 10, 10, 0]} fill="#f59e0b">
+                    <LabelList dataKey="value" position="right" fill="#e2e8f0" fontSize={12} formatter={(v: number) => `${v.toLocaleString()}h`} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </article>
 
             <article className="glass-card">
-              <div className="card-heading"><div><span>RCA family</span><h3>Operational families</h3></div></div>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie data={analytics.rcaFamily} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
-                    {analytics.rcaFamily.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
-                  <Legend />
-                </PieChart>
+              <div className="card-heading"><div><span>MTTR analysis</span><h3>Highest MTTR by RCA</h3></div></div>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={analytics.rcaByMttr.slice(0, 8)} layout="vertical" margin={{ left: 18, right: 72, top: 8, bottom: 8 }}>
+                  <CartesianGrid stroke="rgba(148,163,184,.12)" horizontal={false} />
+                  <XAxis type="number" stroke="#94a3b8" allowDecimals={false} />
+                  <YAxis dataKey="name" type="category" stroke="#cbd5e1" width={200} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} interval={0} />
+                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} formatter={(v: number) => [`${v.toLocaleString()} hrs avg`, "MTTR"]} />
+                  <Bar dataKey="value" radius={[0, 10, 10, 0]} fill="#ef4444">
+                    <LabelList dataKey="value" position="right" fill="#e2e8f0" fontSize={12} formatter={(v: number) => `${v.toLocaleString()}h`} />
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </article>
 
@@ -1184,10 +1236,7 @@ export default function Home() {
             </article>
           </section>
 
-          <section className="definition-card">
-            <h3>Unique TT logic used in this dashboard</h3>
-            <p><strong>Primary TT allocation</strong> counts each TT number only once globally and assigns it to the first/earliest site row for that TT. The sum of site counts equals the filtered unique TT total. <strong>Affected-site exposure</strong> counts one TT once per affected site, so totals can exceed global unique TT when the same TT appears in multiple sites.</p>
-          </section>
+
 
           <section className="table-card">
             <div className="table-heading">

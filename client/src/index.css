@@ -115,16 +115,11 @@ Does this choice reinforce or dilute our design philosophy?
 .brand-cluster { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-width: 0; }
 .brand-mark, .hero-meta span, .section-kicker, .eyebrow { display: inline-flex; align-items: center; gap: 8px; color: #a5f3fc; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
 .brand-mark { padding: 10px 14px; border: 1px solid rgba(34, 211, 238, .24); border-radius: 999px; background: rgba(2, 6, 23, .42); backdrop-filter: blur(14px); color: #e0f2fe; }
-.partner-logo-strip { display: inline-flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(148, 163, 184, .18); border-radius: 999px; background: rgba(2, 6, 23, .50); box-shadow: inset 0 1px rgba(255,255,255,.06), 0 18px 45px rgba(2,6,23,.25); backdrop-filter: blur(16px); }
-.partner-logo { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; color: #f8fafc; white-space: nowrap; }
-.logo-wordmark { display: grid; gap: 1px; line-height: 1; }
-.logo-wordmark strong { color: #f8fafc; font-family: "Sora", system-ui, sans-serif; font-size: 12px; font-weight: 850; letter-spacing: -.02em; }
-.logo-wordmark em { color: #94a3b8; font-size: 9px; font-style: normal; letter-spacing: .04em; }
-.ng-symbol { position: relative; display: grid; grid-template-columns: repeat(2, 8px); grid-template-rows: repeat(2, 8px); gap: 2px; width: 22px; height: 22px; transform: rotate(45deg); }
-.ng-symbol i { display: block; border-radius: 2px; background: #ef4444; box-shadow: 0 0 16px rgba(239,68,68,.32); }
-.ng-symbol i:nth-child(2), .ng-symbol i:nth-child(3) { background: #38bdf8; box-shadow: 0 0 16px rgba(56,189,248,.32); }
-.nasco-symbol { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; background: linear-gradient(135deg, #0ea5e9, #22c55e); color: #02111d; font-family: "IBM Plex Mono", monospace; font-weight: 950; box-shadow: 0 0 22px rgba(14,165,233,.22); }
-.logo-divider { width: 1px; height: 28px; background: linear-gradient(180deg, transparent, rgba(148,163,184,.45), transparent); }
+.partner-logo-strip { display: inline-flex; align-items: center; gap: 12px; padding: 6px 14px 6px 8px; border: 1px solid rgba(148, 163, 184, .18); border-radius: 999px; background: rgba(2, 6, 23, .50); box-shadow: inset 0 1px rgba(255,255,255,.06), 0 18px 45px rgba(2,6,23,.25); backdrop-filter: blur(16px); }
+.partner-logo-img { display: block; object-fit: contain; }
+.partner-logo-img.ng-logo { height: 38px; max-width: 160px; }
+.partner-logo-img.nasco-logo { height: 38px; max-width: 160px; filter: brightness(1.08); }
+.logo-divider { width: 1px; height: 32px; background: linear-gradient(180deg, transparent, rgba(148,163,184,.45), transparent); }
 .topbar-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
 .hero-layout { position: relative; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 470px); align-items: start; gap: 28px; padding: 32px 34px 48px 44px; }
 .hero-content { display: grid; align-items: end; min-height: 260px; max-width: 900px; padding: 0; }
@@ -170,6 +165,18 @@ Does this choice reinforce or dilute our design philosophy?
 .glass-card { min-height: 310px; grid-column: span 4; padding: 22px; border-radius: 26px; }
 .glass-card.wide { grid-column: span 8; }
 .glass-card.tall { grid-column: span 4; grid-row: span 2; }
+.glass-card.full { grid-column: span 12; }
+.rca-family-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: center; }
+.rca-family-legend { display: grid; gap: 8px; }
+.rca-legend-row { display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid rgba(148,163,184,.12); border-radius: 12px; background: rgba(2,6,23,.28); }
+.rca-legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.rca-legend-name { color: #cbd5e1; font-size: 13px; }
+.rca-legend-val { color: #f8fafc; font-family: "IBM Plex Mono", monospace; font-size: 13px; white-space: nowrap; }
+.rca-legend-val small { color: #94a3b8; font-weight: 400; }
+.rca-prev-summary { display: grid; gap: 8px; margin-top: 14px; }
+.rca-prev-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid rgba(148,163,184,.12); border-radius: 12px; background: rgba(2,6,23,.28); font-size: 13px; }
+.rca-prev-row strong { font-family: "IBM Plex Mono", monospace; color: #f8fafc; font-size: 16px; }
+.rca-prev-row small { color: #94a3b8; }
 .card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .card-heading span { color: #67e8f9; font-size: 11px; text-transform: uppercase; letter-spacing: .13em; }
 .card-heading h3 { margin: 4px 0 0; color: #f8fafc; font-size: 22px; }
@@ -187,7 +194,7 @@ Does this choice reinforce or dilute our design philosophy?
 .monthly-export-panel { display: grid; grid-template-columns: minmax(280px, 1.4fr) minmax(230px, 280px) minmax(150px, auto) minmax(150px, auto); align-items: end; gap: 14px; width: min(100%, 1080px); padding: 16px; border: 1px solid rgba(34, 211, 238, .2); border-radius: 20px; background: linear-gradient(135deg, rgba(2, 6, 23, .62), rgba(14, 116, 144, .12)); }
 .monthly-export-panel strong { display: block; color: #f8fafc; font-family: "Sora", system-ui, sans-serif; font-size: 14px; letter-spacing: -.01em; }
 .monthly-export-panel span { display: block; margin-top: 5px; color: #a5b4c6; font-size: 12px; line-height: 1.55; }
-.hero-export-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 180px) auto; align-items: end; gap: 12px; margin-top: 10px; padding: 16px; border: 1px solid rgba(34, 211, 238, .22); border-radius: 22px; background: linear-gradient(135deg, rgba(2, 6, 23, .78), rgba(8, 47, 73, .46)); box-shadow: 0 26px 80px rgba(2,6,23,.42), inset 0 1px rgba(255,255,255,.07); backdrop-filter: blur(18px); }
+.hero-export-card { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(200px, 260px) auto auto; align-items: end; gap: 16px; margin-top: 10px; padding: 22px 24px; border: 1px solid rgba(34, 211, 238, .22); border-radius: 22px; background: linear-gradient(135deg, rgba(2, 6, 23, .78), rgba(8, 47, 73, .46)); box-shadow: 0 26px 80px rgba(2,6,23,.42), inset 0 1px rgba(255,255,255,.07); backdrop-filter: blur(18px); min-width: 0; }
 .hero-export-copy span { display: block; color: #a5f3fc; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
 .hero-export-copy strong { display: block; margin-top: 7px; color: #f8fafc; font-family: "Sora", system-ui, sans-serif; font-size: 14px; letter-spacing: -.01em; }
 .hero-export-card .filter-field { min-width: 0; }
@@ -205,10 +212,11 @@ td small { display: block; margin-top: 3px; color: #94a3b8; }
 
 @media (max-width: 1180px) {
   .hero-layout { grid-template-columns: 1fr; padding-right: 34px; }
-  .hero-export-card { max-width: 760px; }
+  .hero-export-card { max-width: 900px; grid-template-columns: 1fr minmax(200px, 260px) auto auto; }
   .stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .filters-panel { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .glass-card, .glass-card.wide, .glass-card.tall { grid-column: span 6; }
+  .glass-card, .glass-card.wide, .glass-card.tall, .glass-card.full { grid-column: span 6; }
+  .rca-family-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
   .dashboard-shell { padding: 12px; }
@@ -224,7 +232,9 @@ td small { display: block; margin-top: 3px; color: #94a3b8; }
   .upload-stage { margin-top: -48px; }
   .upload-card { grid-template-columns: 1fr; padding: 24px; }
   .stats-grid, .filters-panel, .chart-mosaic { grid-template-columns: 1fr; }
-  .glass-card, .glass-card.wide, .glass-card.tall { grid-column: span 1; }
+  .glass-card, .glass-card.wide, .glass-card.tall, .glass-card.full { grid-column: span 1; }
+  .rca-family-layout { grid-template-columns: 1fr; }
+  .hero-export-card { grid-template-columns: 1fr; }
 }
 
 @media print {
