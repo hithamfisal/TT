@@ -130,6 +130,7 @@ type Filters = {
   impact: string;
   site: string;
   openingMonth: string;
+  rcaFamily: string;
 };
 
 function clean(value: unknown): string {
@@ -657,7 +658,7 @@ export default function Home() {
   const [countMode, setCountMode] = useState<CountMode>("primary");
   const [savedAt, setSavedAt] = useState("");
   const [exportMonth, setExportMonth] = useState("all");
-  const [filters, setFilters] = useState<Filters>({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all" });
+  const [filters, setFilters] = useState<Filters>({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all", rcaFamily: "all" });
 
   useEffect(() => {
     try {
@@ -684,7 +685,7 @@ export default function Home() {
       setData(parsed);
       setSavedAt(saveSession(parsed));
       setExportMonth("all");
-      setFilters({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all" });
+      setFilters({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all", rcaFamily: "all" });
       if (inputRef.current) inputRef.current.value = "";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to read this workbook.");
@@ -708,6 +709,7 @@ export default function Home() {
     const exportMonths = Array.from(new Set(uniqueRows.flatMap((ticket) =>
       ticket.rows.flatMap((row) => coveredMonthKeys(row)),
     ).filter((key) => key && key !== "Unknown"))).sort((a, b) => a.localeCompare(b));
+    const rcaFamilyOptions = Array.from(new Set(primaryRows.map((row) => row.rcaFamily || getRcaFamily(row.rca)).filter(Boolean))).sort() as string[];
     return {
       status: uniq("status"),
       severity: uniq("severity"),
@@ -718,6 +720,7 @@ export default function Home() {
       openingMonthLabels: Object.fromEntries(openingMonths.map((key) => [key, openingMonthLabel(key)])),
       exportMonth: exportMonths,
       exportMonthLabels: Object.fromEntries(exportMonths.map((key) => [key, openingMonthLabel(key)])),
+      rcaFamily: rcaFamilyOptions,
     };
   }, [uniqueRows]);
 
@@ -756,7 +759,8 @@ export default function Home() {
         (filters.region === "all" || row.region === filters.region) &&
         (filters.impact === "all" || row.impact === filters.impact) &&
         (filters.openingMonth === "all" || (row.openingMonthKey || openingMonthKey(row.observationDate)) === filters.openingMonth) &&
-        (filters.site === "all" || (countMode === "primary" ? row.siteId === filters.site : ticket.siteIds.has(filters.site)))
+        (filters.site === "all" || (countMode === "primary" ? row.siteId === filters.site : ticket.siteIds.has(filters.site))) &&
+        (filters.rcaFamily === "all" || (row.rcaFamily || getRcaFamily(row.rca)) === filters.rcaFamily)
       );
     });
   }, [countMode, filters, uniqueRows]);
@@ -795,10 +799,11 @@ export default function Home() {
         (filters.severity === "all" || row.severity === filters.severity) &&
         (filters.region === "all" || row.region === filters.region) &&
         (filters.impact === "all" || row.impact === filters.impact) &&
-        (filters.site === "all" || (countMode === "primary" ? row.siteId === filters.site : ticket.siteIds.has(filters.site)))
+        (filters.site === "all" || (countMode === "primary" ? row.siteId === filters.site : ticket.siteIds.has(filters.site))) &&
+        (filters.rcaFamily === "all" || (row.rcaFamily || getRcaFamily(row.rca)) === filters.rcaFamily)
       );
     });
-  }, [countMode, filters.impact, filters.region, filters.search, filters.severity, filters.site, filters.status, uniqueRows]);
+  }, [countMode, filters.impact, filters.rcaFamily, filters.region, filters.search, filters.severity, filters.site, filters.status, uniqueRows]);
 
   const monthlyExportTickets = useMemo(() => monthlyExportBaseTickets.filter((ticket) => ticketMatchesMonthlyExport(ticket, exportMonth)), [exportMonth, monthlyExportBaseTickets]);
 
@@ -894,6 +899,25 @@ export default function Home() {
       { name: "Non-preventable", value: primaryRows.length - preventableCount },
     ].filter((item) => item.value > 0);
 
+    // Monthly RCA Family stacked bar data
+    const RCA_FAMILIES = ["Power & Environment", "Fiber & Physical", "Transmission & Link", "Hardware & Device", "Configuration / Software", "Human / Process / Planned", "Other / Review"];
+    const monthlyRcaFamilyMap = new Map<string, Record<string, string | number>>();
+    primaryRows.forEach((row) => {
+      const key = row.openingMonthKey || openingMonthKey(row.observationDate);
+      if (!key || key === "Unknown") return;
+      const family = row.rcaFamily || getRcaFamily(row.rca);
+      if (!monthlyRcaFamilyMap.has(key)) {
+        const entry: Record<string, string | number> = { monthKey: key, name: openingMonthLabel(key) };
+        RCA_FAMILIES.forEach((f) => { entry[f] = 0; });
+        monthlyRcaFamilyMap.set(key, entry);
+      }
+      const entry = monthlyRcaFamilyMap.get(key)!;
+      entry[family] = ((entry[family] as number) || 0) + 1;
+    });
+    const monthlyRcaFamily = Array.from(monthlyRcaFamilyMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, value]) => value);
+
     return {
       totalUnique,
       status,
@@ -918,6 +942,8 @@ export default function Home() {
       rcaByDowntime: downtimeByRca.map((item) => ({ name: item.name, value: Math.round(item.value * 10) / 10 })),
       rcaByMttr: mttrByRca.map((item) => ({ name: item.name, value: Math.round(item.value * 10) / 10 })),
       preventableBreakdown,
+      monthlyRcaFamily,
+      rcaFamilyKeys: RCA_FAMILIES,
     };
   }, [countMode, filteredTickets]);
 
@@ -1038,7 +1064,8 @@ export default function Home() {
             <SelectFilter label="Impact" value={filters.impact} options={filterOptions.impact} onChange={(value) => setFilters((prev) => ({ ...prev, impact: value }))} />
             <SelectFilter label="Opening Month" value={filters.openingMonth} options={filterOptions.openingMonth} optionLabels={filterOptions.openingMonthLabels} onChange={(value) => setFilters((prev) => ({ ...prev, openingMonth: value }))} />
             <SelectFilter label="Site" value={filters.site} options={filterOptions.site} onChange={(value) => setFilters((prev) => ({ ...prev, site: value }))} />
-            <button className="ghost-button" onClick={() => setFilters({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all" })}><Filter size={16} /> Clear</button>
+            <SelectFilter label="RCA Family" value={filters.rcaFamily} options={filterOptions.rcaFamily} onChange={(value) => setFilters((prev) => ({ ...prev, rcaFamily: value }))} />
+            <button className="ghost-button" onClick={() => setFilters({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all", rcaFamily: "all" })}><Filter size={16} /> Clear</button>
           </section>
 
           <section className="chart-mosaic">
@@ -1215,6 +1242,22 @@ export default function Home() {
                   <Bar dataKey="value" radius={[0, 10, 10, 0]} fill="#ef4444">
                     <LabelList dataKey="value" position="right" fill="#e2e8f0" fontSize={12} formatter={(v: number) => `${v.toLocaleString()}h`} />
                   </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </article>
+
+            <article className="glass-card full">
+              <div className="card-heading"><div><span>RCA Family Trend</span><h3>Monthly RCA Family distribution — stacked TT count</h3></div></div>
+              <ResponsiveContainer width="100%" height={340}>
+                <BarChart data={analytics.monthlyRcaFamily} margin={{ left: 0, right: 24, top: 8, bottom: 48 }}>
+                  <CartesianGrid stroke="rgba(148,163,184,.12)" vertical={false} />
+                  <XAxis dataKey="name" stroke="#cbd5e1" tickLine={false} axisLine={false} interval={0} angle={-30} textAnchor="end" height={64} tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                  <Legend wrapperStyle={{ paddingTop: 8, fontSize: 12, color: "#cbd5e1" }} />
+                  {analytics.rcaFamilyKeys.map((family, index) => (
+                    <Bar key={family} dataKey={family} stackId="a" fill={COLORS[index % COLORS.length]} radius={index === analytics.rcaFamilyKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                  ))}
                 </BarChart>
               </ResponsiveContainer>
             </article>
