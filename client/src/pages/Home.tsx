@@ -640,9 +640,45 @@ export default function Home() {
     });
   }, [countMode, filters, uniqueRows]);
 
-  const monthlyExportTickets = useMemo(() => filteredTickets.filter((ticket) => ticketMatchesMonthlyExport(ticket, exportMonth)), [exportMonth, filteredTickets]);
+  const monthlyExportBaseTickets = useMemo(() => {
+    const q = filters.search.toLowerCase().trim();
+    return uniqueRows.filter((ticket) => {
+      const row = ticket.primary;
+      const allSites = Array.from(ticket.siteIds).join(" ");
+      const allSiteNames = Array.from(ticket.siteNames).join(" ");
+      const haystack = [
+        ticket.tt,
+        row.siteId,
+        row.siteName,
+        allSites,
+        allSiteNames,
+        row.managedResource,
+        row.issue,
+        row.status,
+        row.severity,
+        row.region,
+        row.impact,
+        row.escalationLevel,
+        row.escalatedTo,
+        row.escalatedForL3SupportDate,
+        row.escalatedForL3SupportTime,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return (
+        (!q || haystack.includes(q)) &&
+        (filters.status === "all" || row.status === filters.status) &&
+        (filters.severity === "all" || row.severity === filters.severity) &&
+        (filters.region === "all" || row.region === filters.region) &&
+        (filters.impact === "all" || row.impact === filters.impact) &&
+        (filters.site === "all" || (countMode === "primary" ? row.siteId === filters.site : ticket.siteIds.has(filters.site)))
+      );
+    });
+  }, [countMode, filters.impact, filters.region, filters.search, filters.severity, filters.site, filters.status, uniqueRows]);
 
-  const selectedExportMonthLabel = exportMonth === "all" ? "All dashboard-filtered TT" : openingMonthLabel(exportMonth);
+  const monthlyExportTickets = useMemo(() => monthlyExportBaseTickets.filter((ticket) => ticketMatchesMonthlyExport(ticket, exportMonth)), [exportMonth, monthlyExportBaseTickets]);
+
+  const selectedExportMonthLabel = exportMonth === "all" ? "All export-eligible TT" : openingMonthLabel(exportMonth);
 
   const analytics = useMemo(() => {
     const primaryRows = filteredTickets.map((ticket) => ticket.primary);
@@ -923,7 +959,7 @@ export default function Home() {
               <div className="monthly-export-panel no-print">
                 <div>
                   <strong>Monthly TT export filter</strong>
-                  <span>{monthlyExportTickets.length.toLocaleString()} TT records export for {selectedExportMonthLabel}. Rule: Observation Date in month OR Recovery Date in month OR Status pending OR Observation–Recovery interval overlaps the month.</span>
+                  <span>{monthlyExportTickets.length.toLocaleString()} TT records export for {selectedExportMonthLabel}. Rule: Observation Date in month OR Recovery Date in month OR Status pending OR Observation–Recovery interval overlaps the month. This export deliberately ignores the dashboard Opening Month slicer while preserving the other dashboard filters.</span>
                 </div>
                 <SelectFilter label="Report Month" value={exportMonth} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setExportMonth} />
                 <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> Export CSV</button>

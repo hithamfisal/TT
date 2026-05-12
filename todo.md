@@ -108,4 +108,19 @@
 - [x] Refine the separate Report Month export logic to include TTs where Recovery Date is in the selected month.
 - [x] Refine the separate Report Month export logic to include TTs where Status is pending.
 - [x] Add interval-overlap logic so TTs are included when the Observation-to-Recovery period covers any day in the selected month.
-- [ ] Save a new checkpoint for the validated interval-overlap update.
+- [x] Save a new checkpoint for the validated interval-overlap update.
+
+# Interval-Overlap Update ZIP Delivery Todo
+
+- [x] Package the latest validated dashboard source with the interval-overlap monthly export refinement as a lightweight ZIP archive.
+- [x] Exclude dependency folders, build output, logs, and git metadata from the archive.
+- [x] Verify the ZIP archive integrity before delivery.
+- [x] Deliver the ZIP archive to the user.
+
+# TT 16262 April 2026 Export Investigation Todo
+
+- [x] Inspect the current Report Month export inclusion logic for date parsing and interval overlap.
+- [x] Locate available workbook data containing TT 16262.
+- [x] Check TT 16262 Observation Date, Recovery Date, Status, and parsed date values against April 2026.
+- [x] Determine that TT 16262 matches April 2026 by interval overlap but can be excluded when the dashboard Opening Month filter is active because the monthly export was based on `filteredTickets`.
+- [x] Apply the fix so the monthly export ignores the dashboard Opening Month slicer while preserving the other dashboard filters.
