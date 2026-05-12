@@ -88,6 +88,10 @@ type TicketRecord = {
   escalatedForL3SupportTime: string;
   status: string;
   rca: string;
+  rcaFamily: string;
+  preventability: string;
+  responsibleTeam: string;
+  recommendedAction: string;
   actionTaken: string;
 };
 
@@ -272,6 +276,92 @@ function parseDurationHours(duration: string): number | null {
   return Number.isFinite(total) ? total : null;
 }
 
+const RCA_FAMILY_MAP: Record<string, string> = {
+  "Power Issue": "Power & Environment",
+  "High Temperature": "Power & Environment",
+  "High VSWR": "Power & Environment",
+  "Weather Issue": "Power & Environment",
+  "DC Charger Faulty": "Power & Environment",
+  "Link Down": "Transmission & Link",
+  "Link Flapping": "Transmission & Link",
+  "Transmission": "Transmission & Link",
+  "MW Issue": "Transmission & Link",
+  "MPLS Issue": "Transmission & Link",
+  "SDH Hanged": "Transmission & Link",
+  "Hardware Failure": "Hardware & Device",
+  "Hardware Faulty": "Hardware & Device",
+  "Device Hanged": "Hardware & Device",
+  "Fiber Cut": "Fiber & Physical",
+  "Cabling": "Fiber & Physical",
+  "Port Disable": "Fiber & Physical",
+  "Port Hang": "Fiber & Physical",
+  "Loss of Signal": "Fiber & Physical",
+  "Media Converter Faulty": "Fiber & Physical",
+  "Configuration Issue": "Configuration / Software",
+  "Software Issue": "Configuration / Software",
+  "Application Issue": "Configuration / Software",
+  "Human Mistake": "Human / Process / Planned",
+  "Approved Activity": "Human / Process / Planned",
+  "Un-Approved Activity": "Human / Process / Planned",
+  "Planned Activity": "Human / Process / Planned",
+  "Project Team": "Human / Process / Planned",
+  "FMD Team": "Human / Process / Planned",
+  "NG FO Team": "Human / Process / Planned",
+  "RCA not Provided": "Unknown / Missing",
+};
+
+const NON_PREVENTABLE_RCAS = new Set(["Weather Issue", "Approved Activity", "Planned Activity", "RCA not Provided"]);
+
+const RESPONSIBLE_TEAM_BY_FAMILY: Record<string, string> = {
+  "Power & Environment": "Power / Facilities Team",
+  "Transmission & Link": "Transmission / NOC Team",
+  "Hardware & Device": "Field Maintenance / Vendor",
+  "Fiber & Physical": "Fiber / Physical Maintenance Team",
+  "Configuration / Software": "NOC / Configuration Team",
+  "Human / Process / Planned": "Process Owner / Project Team",
+  "Unknown / Missing": "RCA Owner / Follow-up Required",
+  "Other / Review": "Operations Review Team",
+};
+
+const RECOMMENDED_ACTION_BY_FAMILY: Record<string, string> = {
+  "Power & Environment": "Check power source, rectifier, batteries, grounding, cooling, and repeated environmental alarms.",
+  "Transmission & Link": "Review link stability, transmission path, MPLS/MW/SDH health, and vendor escalation history.",
+  "Hardware & Device": "Inspect device health, replace faulty hardware, verify spares, and monitor repeated failures.",
+  "Fiber & Physical": "Inspect fiber/cabling route, port status, optical levels, patching quality, and civil-work exposure.",
+  "Configuration / Software": "Review recent changes, configuration backup, software version, rollback records, and approval controls.",
+  "Human / Process / Planned": "Validate activity approval, handover, method of procedure, and team process compliance.",
+  "Unknown / Missing": "Complete RCA, assign owner, and update action taken before closure reporting.",
+  "Other / Review": "Review RCA text manually and assign the correct operational owner.",
+};
+
+function getRcaFamily(rca: string): string {
+  const normalized = clean(rca) || "RCA not Provided";
+  return RCA_FAMILY_MAP[normalized] ?? "Other / Review";
+}
+
+function getPreventability(rca: string): string {
+  const normalized = clean(rca) || "RCA not Provided";
+  return NON_PREVENTABLE_RCAS.has(normalized) ? "Non-preventable" : "Preventable";
+}
+
+function getResponsibleTeam(rcaFamily: string): string {
+  return RESPONSIBLE_TEAM_BY_FAMILY[rcaFamily] ?? RESPONSIBLE_TEAM_BY_FAMILY["Other / Review"];
+}
+
+function getRecommendedAction(rcaFamily: string): string {
+  return RECOMMENDED_ACTION_BY_FAMILY[rcaFamily] ?? RECOMMENDED_ACTION_BY_FAMILY["Other / Review"];
+}
+
+function rcaNotProvided(rca: string): boolean {
+  const normalized = clean(rca).toLowerCase();
+  return !normalized || normalized === "rca not provided";
+}
+
+function formatHours(value: number): string {
+  if (!value || !Number.isFinite(value)) return "";
+  return `${value.toFixed(1)} hrs`;
+}
+
 function groupTickets(rows: TicketRecord[]): TicketAggregate[] {
   const grouped = new Map<string, TicketAggregate>();
   rows.forEach((row) => {
@@ -311,6 +401,8 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
         getField(row, ["Opening Month", "OpeningMonth"]),
         observationDate,
       );
+      const rca = getField(row, ["RCA", "Root Cause Analysis", "Root Cause", "Action Taken/RCA"]);
+      const rcaFamily = getRcaFamily(rca);
       return {
         rowNo: index + 2,
         tt: getField(row, ["TT", "Ticket", "Ticket Number"]),
@@ -333,7 +425,11 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
         escalatedForL3SupportDate: getField(row, ["Escalated for L3 Support Date", "Escalated For L3 Support Date", "L3 Support Date", "L3 Escalation Date", "Escalation L3 Date", "Escalated L3 Date"]),
         escalatedForL3SupportTime: getField(row, ["Escalated for L3 Support Time", "Escalated For L3 Support Time", "L3 Support Time", "L3 Escalation Time", "Escalation L3 Time", "Escalated L3 Time"]),
         status: getField(row, ["Status"]),
-        rca: getField(row, ["RCA", "Root Cause Analysis", "Root Cause", "Action Taken/RCA"]),
+        rca,
+        rcaFamily,
+        preventability: getPreventability(rca),
+        responsibleTeam: getResponsibleTeam(rcaFamily),
+        recommendedAction: getRecommendedAction(rcaFamily),
         actionTaken: getField(row, ["Action Taken/RCA", "Action Taken"]),
       };
     })
@@ -425,6 +521,10 @@ const DISTINCT_REPORT_HEADERS = [
   "Status",
   "Escalated to",
   "RCA",
+  "RCA Family",
+  "Preventable / Non-preventable",
+  "Responsible Team",
+  "Recommended Action",
 ];
 
 function uniqueTicketValues(ticket: TicketAggregate, field: keyof TicketRecord): string {
@@ -451,6 +551,10 @@ function distinctReportRow(ticket: TicketAggregate, index: number): string[] {
     row.status || "",
     row.escalatedTo || "",
     row.rca || "",
+    row.rcaFamily || getRcaFamily(row.rca),
+    row.preventability || getPreventability(row.rca),
+    row.responsibleTeam || getResponsibleTeam(row.rcaFamily || getRcaFamily(row.rca)),
+    row.recommendedAction || getRecommendedAction(row.rcaFamily || getRcaFamily(row.rca)),
   ];
 }
 
@@ -491,6 +595,10 @@ function exportExcel(rows: TicketAggregate[]) {
     { wch: 14 },
     { wch: 20 },
     { wch: 34 },
+    { wch: 26 },
+    { wch: 28 },
+    { wch: 30 },
+    { wch: 58 },
   ];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Distinct TT Report");
@@ -651,6 +759,9 @@ export default function Home() {
         row.impact,
         row.escalationLevel,
         row.escalatedTo,
+        row.rca,
+        row.rcaFamily || getRcaFamily(row.rca),
+        row.responsibleTeam || getResponsibleTeam(row.rcaFamily || getRcaFamily(row.rca)),
         row.escalatedForL3SupportDate,
         row.escalatedForL3SupportTime,
       ]
@@ -688,6 +799,9 @@ export default function Home() {
         row.impact,
         row.escalationLevel,
         row.escalatedTo,
+        row.rca,
+        row.rcaFamily || getRcaFamily(row.rca),
+        row.responsibleTeam || getResponsibleTeam(row.rcaFamily || getRcaFamily(row.rca)),
         row.escalatedForL3SupportDate,
         row.escalatedForL3SupportTime,
       ]
@@ -733,8 +847,34 @@ export default function Home() {
     const avgHoursSource = primaryRows.map((row) => parseDurationHours(row.duration)).filter((value): value is number => value !== null);
     const avgHours = avgHoursSource.length ? avgHoursSource.reduce((sum, value) => sum + value, 0) / avgHoursSource.length : 0;
     const uniqueSites = new Set(primaryRows.map((row) => row.siteId).filter(Boolean)).size;
-    const rootCauseUpdated = primaryRows.filter((row) => row.actionTaken).length;
+    const rootCauseUpdated = primaryRows.filter((row) => row.actionTaken || !rcaNotProvided(row.rca)).length;
     const totalSiteAffected = filteredTickets.reduce((sum, ticket) => sum + Math.max(ticket.siteIds.size, ticket.primary.siteId ? 1 : 0), 0);
+    const rcaByCount = countBy(primaryRows, (row) => rcaNotProvided(row.rca) ? "RCA not Provided" : row.rca);
+    const topRcaByCount = rcaByCount[0] ?? { name: "", value: 0 };
+    const downtimeByRcaMap = new Map<string, { name: string; value: number; count: number }>();
+    primaryRows.forEach((row) => {
+      const name = rcaNotProvided(row.rca) ? "RCA not Provided" : row.rca;
+      const hours = parseDurationHours(row.duration) ?? 0;
+      const current = downtimeByRcaMap.get(name) ?? { name, value: 0, count: 0 };
+      current.value += hours;
+      if (hours) current.count += 1;
+      downtimeByRcaMap.set(name, current);
+    });
+    const downtimeByRca = Array.from(downtimeByRcaMap.values()).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+    const mttrByRca = Array.from(downtimeByRcaMap.values())
+      .map((item) => ({ name: item.name, value: item.count ? item.value / item.count : 0, count: item.count }))
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+    const repeatedSiteRcaMap = new Map<string, number>();
+    primaryRows.forEach((row) => {
+      const site = row.siteId || "Blank";
+      const rca = rcaNotProvided(row.rca) ? "RCA not Provided" : row.rca;
+      const key = `${site}||${rca}`;
+      repeatedSiteRcaMap.set(key, (repeatedSiteRcaMap.get(key) ?? 0) + 1);
+    });
+    const repeatedRcaSites = Array.from(repeatedSiteRcaMap.values()).filter((value) => value > 1).length;
+    const rcaNotProvidedCount = primaryRows.filter((row) => rcaNotProvided(row.rca)).length;
+    const preventableCount = primaryRows.filter((row) => (row.preventability || getPreventability(row.rca)) === "Preventable").length;
+    const rcaFamily = countBy(primaryRows, (row) => row.rcaFamily || getRcaFamily(row.rca));
 
     const siteNameById = new Map<string, string>();
     filteredTickets.forEach((ticket) => {
@@ -767,7 +907,28 @@ export default function Home() {
     }
     const topSites = Array.from(siteMap.values()).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name)).slice(0, 12);
 
-    return { totalUnique, status, severity, region, impact, escalation, monthly, avgHours, uniqueSites, rootCauseUpdated, totalSiteAffected, topSites };
+    return {
+      totalUnique,
+      status,
+      severity,
+      region,
+      impact,
+      escalation,
+      monthly,
+      avgHours,
+      uniqueSites,
+      rootCauseUpdated,
+      totalSiteAffected,
+      topSites,
+      rcaByCount,
+      rcaFamily,
+      topRcaByCount,
+      topRcaByDowntime: downtimeByRca[0] ?? { name: "", value: 0, count: 0 },
+      highestMttrRca: mttrByRca[0] ?? { name: "", value: 0, count: 0 },
+      repeatedRcaSites,
+      rcaNotProvidedCount,
+      preventableCount,
+    };
   }, [countMode, filteredTickets]);
 
   const closed = metricValue(analytics.status, "Closed");
@@ -779,6 +940,8 @@ export default function Home() {
   const serviceImpact = metricValue(analytics.impact, "Service Impact");
   const nonServiceImpact = metricValue(analytics.impact, "Non-Service Impact");
   const filteredSourceRowCount = filteredTickets.reduce((sum, ticket) => sum + ticket.rows.length, 0);
+  const rcaNotProvidedPct = pct(analytics.rcaNotProvidedCount, analytics.totalUnique);
+  const preventableRcaPct = pct(analytics.preventableCount, analytics.totalUnique);
 
   return (
     <main className="dashboard-shell">
@@ -866,6 +1029,12 @@ export default function Home() {
             <StatCard label="Non-Service Impact" value={nonServiceImpact.toLocaleString()} note="No Service Impact" icon={XCircle} tone="#94a3b8" />
             <StatCard label="Unique Sites" value={analytics.uniqueSites.toLocaleString()} note="Unique Site ID" icon={BarChart3} tone="#60a5fa" />
             <StatCard label="Root Cause Updated" value={analytics.rootCauseUpdated.toLocaleString()} note="TT with Alarm Root Cause" icon={FileSpreadsheet} tone="#34d399" />
+            <StatCard label="Top RCA by TT Count" value={analytics.topRcaByCount.name || ""} note={analytics.topRcaByCount.value ? `${analytics.topRcaByCount.value.toLocaleString()} TT` : ""} icon={BarChart3} tone="#22d3ee" />
+            <StatCard label="Top RCA by Downtime" value={analytics.topRcaByDowntime.name || ""} note={formatHours(analytics.topRcaByDowntime.value)} icon={Activity} tone="#f59e0b" />
+            <StatCard label="Highest MTTR RCA" value={analytics.highestMttrRca.name || ""} note={formatHours(analytics.highestMttrRca.value)} icon={AlertTriangle} tone="#ef4444" />
+            <StatCard label="Repeated RCA Sites" value={analytics.repeatedRcaSites.toLocaleString()} note="Site + RCA pairs repeated" icon={Network} tone="#a78bfa" />
+            <StatCard label="RCA not Provided %" value={rcaNotProvidedPct} note={`${analytics.rcaNotProvidedCount.toLocaleString()} TT missing RCA`} icon={ShieldAlert} tone="#f97316" />
+            <StatCard label="Preventable RCA %" value={preventableRcaPct} note={`${analytics.preventableCount.toLocaleString()} preventable TT`} icon={CheckCircle2} tone="#34d399" />
           </section>
 
           <section className="filters-panel no-print">
@@ -970,6 +1139,34 @@ export default function Home() {
               </ResponsiveContainer>
             </article>
 
+            <article className="glass-card wide">
+              <div className="card-heading"><div><span>Root cause</span><h3>Top RCA by unique TT</h3></div></div>
+              <ResponsiveContainer width="100%" height={290}>
+                <BarChart data={analytics.rcaByCount.slice(0, 10)} layout="vertical" margin={{ left: 18, right: 44, top: 8, bottom: 8 }}>
+                  <CartesianGrid stroke="rgba(148,163,184,.12)" horizontal={false} />
+                  <XAxis type="number" stroke="#94a3b8" allowDecimals={false} />
+                  <YAxis dataKey="name" type="category" stroke="#cbd5e1" width={180} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} interval={0} />
+                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                  <Bar dataKey="value" radius={[0, 10, 10, 0]} fill="#22d3ee">
+                    <LabelList dataKey="value" position="right" fill="#e2e8f0" fontSize={12} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </article>
+
+            <article className="glass-card">
+              <div className="card-heading"><div><span>RCA family</span><h3>Operational families</h3></div></div>
+              <ResponsiveContainer width="100%" height={250}>
+                <PieChart>
+                  <Pie data={analytics.rcaFamily} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
+                    {analytics.rcaFamily.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </article>
+
             <article className="glass-card">
               <div className="card-heading"><div><span>Impact</span><h3>Service impact</h3></div></div>
               <ResponsiveContainer width="100%" height={250}>
@@ -1014,7 +1211,7 @@ export default function Home() {
                           if (header === "#" || header === "TT") return <td key={header} className="mono">{cell}</td>;
                           if (header === "Severity") return <td key={header}><span className="pill" style={{ ["--pill" as string]: SEVERITY_COLORS[row.severity] ?? "#64748b" }}>{cell}</span></td>;
                           if (header === "Status") return <td key={header}><span className="pill" style={{ ["--pill" as string]: STATUS_COLORS[row.status] ?? "#64748b" }}>{cell}</span></td>;
-                          if (header === "Issues" || header === "RCA") return <td key={header} className="issue-cell">{cell}</td>;
+                          if (["Issues", "RCA", "Recommended Action", "Responsible Team"].includes(header)) return <td key={header} className="issue-cell">{cell}</td>;
                           return <td key={header}>{cell}</td>;
                         })}
                       </tr>

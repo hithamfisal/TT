@@ -151,7 +151,7 @@
 - [x] Remove the buttons/chips below the title.
 - [ ] Validate the production build after the hero cleanup.
 - [ ] Create a fresh lightweight ZIP archive.
-- [ ] Deliver the updated ZIP archive to the user.
+- [x] Deliver the updated ZIP archive to the user.
 
 # RCA Column Replacement and ZIP Delivery Todo
 
@@ -160,4 +160,23 @@
 - [x] Replace Comments with RCA in the monthly CSV and Excel exports.
 - [x] Validate the production build after the RCA update.
 - [x] Create a fresh lightweight ZIP archive after all requested changes.
-- [ ] Deliver the updated ZIP archive to the user.
+- [x] Deliver the updated ZIP archive to the user.
+
+# RCA Measures Advisory Todo
+
+- [x] Recommend practical RCA-based measures for each TT.
+- [x] Group RCA categories into operational families for clearer management reporting.
+- [x] Suggest dashboard KPIs, charts, and export fields that can use the RCA column.
+
+# RCA KPI, Formula, and Dashboard Enhancement Todo
+
+- [ ] Inspect the uploaded Excel workbook sheets, table headers, and existing report structure.
+- [ ] Add RCA Family mapping using corrected categories, including DC Charger Faulty under Power & Environment and Media Converter Faulty under Fiber & Physical.
+- [ ] Add derived Excel columns for RCA Family, Preventable / Non-preventable, Responsible Team, and Recommended Action.
+- [ ] Add Excel formulas or summary cells for Top RCA by TT Count, Top RCA by Downtime, Highest MTTR RCA, Repeated RCA Sites, RCA not Provided %, and Preventable RCA %.
+- [ ] Update the web dashboard parser and data model with the derived RCA fields.
+- [ ] Add RCA KPI cards and management summaries to the web page.
+- [ ] Add RCA-derived columns to monthly CSV/Excel exports and the full report layout.
+- [ ] Widen the monthly export filter box so the Report Month selector and export buttons are clear and readable.
+- [ ] Validate the production build and workbook integrity.
+- [ ] Package and deliver the updated workbook and latest source ZIP.
