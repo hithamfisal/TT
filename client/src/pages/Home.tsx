@@ -508,6 +508,34 @@ function StatCard({ label, value, note, icon: Icon, tone }: { label: string; val
   );
 }
 
+function NationalGridLogo() {
+  return (
+    <div className="partner-logo national-grid-logo" aria-label="National Grid logo">
+      <span className="ng-symbol" aria-hidden="true"><i /> <i /> <i /> <i /></span>
+      <span className="logo-wordmark"><strong>national</strong><em>grid</em></span>
+    </div>
+  );
+}
+
+function NascoLogo() {
+  return (
+    <div className="partner-logo nasco-logo" aria-label="Nasco logo">
+      <span className="nasco-symbol" aria-hidden="true">N</span>
+      <span className="logo-wordmark"><strong>NASCO</strong><em>National Advanced Systems Co.</em></span>
+    </div>
+  );
+}
+
+function PartnerLogoStrip() {
+  return (
+    <div className="partner-logo-strip" aria-label="Project partner logos">
+      <NationalGridLogo />
+      <span className="logo-divider" aria-hidden="true" />
+      <NascoLogo />
+    </div>
+  );
+}
+
 function SelectFilter({ label, value, options, optionLabels, onChange }: {
   label: string;
   value: string;
@@ -756,7 +784,10 @@ export default function Home() {
     <main className="dashboard-shell">
       <section className="hero-panel" style={{ backgroundImage: `linear-gradient(90deg, rgba(3,7,18,.96) 0%, rgba(3,7,18,.78) 42%, rgba(3,7,18,.26) 100%), url(${HERO_IMAGE})` }}>
         <nav className="topbar no-print">
-          <div className="brand-mark"><Network size={18} /> TT Operations Cockpit</div>
+          <div className="brand-cluster">
+            <div className="brand-mark"><Network size={18} /> TT Operations Cockpit</div>
+            <PartnerLogoStrip />
+          </div>
           <div className="topbar-actions">
             {data && <button className="ghost-button" onClick={() => inputRef.current?.click()}><RefreshCw size={16} /> New workbook</button>}
             {data && savedAt && <button className="ghost-button" onClick={clearSavedSession}><Trash2 size={16} /> Clear saved session</button>}
@@ -765,17 +796,32 @@ export default function Home() {
             {data && <button className="primary-button" onClick={() => window.print()}><Printer size={16} /> Print / PDF</button>}
           </div>
         </nav>
-        <div className="hero-content">
-          <div>
-            <p className="eyebrow"><CircleDot size={12} /> Excel-powered unique TT intelligence</p>
-            <h1>Follow-Up Sheets Dashboard</h1>
-            <p className="hero-copy">Upload the workbook and convert the ticket register into an interactive executive dashboard with corrected unique TT counting, operational filters, site ranking, trend analysis, and an export-ready view.</p>
-            <div className="hero-meta">
-              <span>Source sheet: Tickets_Data</span>
-              <span>Rule: one TT number = one ticket</span>
-              <span>Runs in browser</span>
+        <div className="hero-layout">
+          <div className="hero-content">
+            <div>
+              <p className="eyebrow"><CircleDot size={12} /> Excel-powered unique TT intelligence</p>
+              <h1>Follow-Up Sheets Dashboard</h1>
+              <p className="hero-copy">Upload the workbook and convert the ticket register into an interactive executive dashboard with corrected unique TT counting, operational filters, site ranking, trend analysis, and an export-ready view.</p>
+              <div className="hero-meta">
+                <span>Source sheet: Tickets_Data</span>
+                <span>Rule: one TT number = one ticket</span>
+                <span>Runs in browser</span>
+              </div>
             </div>
           </div>
+          {data && (
+            <aside className="hero-export-card no-print" aria-label="Monthly TT export filter">
+              <div className="hero-export-copy">
+                <span>Monthly TT export filter</span>
+                <strong>{monthlyExportTickets.length.toLocaleString()} records for {selectedExportMonthLabel}</strong>
+              </div>
+              <SelectFilter label="Report Month" value={exportMonth} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setExportMonth} />
+              <div className="hero-export-actions">
+                <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> Export CSV</button>
+                <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={16} /> Export Excel</button>
+              </div>
+            </aside>
+          )}
         </div>
       </section>
 
@@ -956,15 +1002,7 @@ export default function Home() {
             <div className="table-heading">
               <div><span className="section-kicker">Unique register</span><h2>{filteredTickets.length.toLocaleString()} distinct TT records</h2></div>
               <p>Showing first 150 dashboard-filtered tickets in the same report order as the source-style register. Site ID and Site Name include all affected sites for each distinct TT.</p>
-              <div className="monthly-export-panel no-print">
-                <div>
-                  <strong>Monthly TT export filter</strong>
-                  <span>{monthlyExportTickets.length.toLocaleString()} TT records export for {selectedExportMonthLabel}. Rule: Observation Date in month OR Recovery Date in month OR Status pending OR Observation–Recovery interval overlaps the month. This export deliberately ignores the dashboard Opening Month slicer while preserving the other dashboard filters.</span>
-                </div>
-                <SelectFilter label="Report Month" value={exportMonth} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setExportMonth} />
-                <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> Export CSV</button>
-                <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={16} /> Export Excel</button>
-              </div>
+
             </div>
             <div className="table-scroll" id="ticket-table-wrapper">
               <table>

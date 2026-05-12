@@ -124,3 +124,18 @@
 - [x] Check TT 16262 Observation Date, Recovery Date, Status, and parsed date values against April 2026.
 - [x] Determine that TT 16262 matches April 2026 by interval overlap but can be excluded when the dashboard Opening Month filter is active because the monthly export was based on `filteredTickets`.
 - [x] Apply the fix so the monthly export ignores the dashboard Opening Month slicer while preserving the other dashboard filters.
+
+# TT 16262 Fix ZIP Delivery Todo
+
+- [x] Package the latest dashboard source after the TT 16262 monthly export fix.
+- [x] Exclude dependency folders, build output, logs, and git metadata from the archive.
+- [x] Verify the ZIP archive exists and can be listed.
+- [x] Deliver the ZIP archive to the user.
+
+# Header Logo Layout Revision Todo
+
+- [x] Locate existing National Grid and Nasco logo assets or embedded logo references from the project workspace; no reusable local logo files were found, so embedded wordmark-style logos were created in the header.
+- [x] Update the hero/header area to match the provided reference composition with a compact title, top-right actions, and export panel.
+- [x] Embed the National Grid and Nasco logos in a professional header arrangement.
+- [x] Validate the production build after the header update.
+- [ ] Save a new checkpoint and deliver the updated version and ZIP archive.
