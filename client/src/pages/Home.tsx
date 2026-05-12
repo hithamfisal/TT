@@ -87,7 +87,7 @@ type TicketRecord = {
   escalatedForL3SupportDate: string;
   escalatedForL3SupportTime: string;
   status: string;
-  comments: string;
+  rca: string;
   actionTaken: string;
 };
 
@@ -333,8 +333,8 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
         escalatedForL3SupportDate: getField(row, ["Escalated for L3 Support Date", "Escalated For L3 Support Date", "L3 Support Date", "L3 Escalation Date", "Escalation L3 Date", "Escalated L3 Date"]),
         escalatedForL3SupportTime: getField(row, ["Escalated for L3 Support Time", "Escalated For L3 Support Time", "L3 Support Time", "L3 Escalation Time", "Escalation L3 Time", "Escalated L3 Time"]),
         status: getField(row, ["Status"]),
-        comments: getField(row, ["Comments-Feedback", "Comments Feedback", "Comments"]),
-        actionTaken: getField(row, ["Action Taken/RCA", "Action Taken", "RCA"]),
+        rca: getField(row, ["RCA", "Root Cause Analysis", "Root Cause", "Action Taken/RCA"]),
+        actionTaken: getField(row, ["Action Taken/RCA", "Action Taken"]),
       };
     })
     .filter((row) => row.tt || row.siteId || row.siteName || row.issue);
@@ -424,7 +424,7 @@ const DISTINCT_REPORT_HEADERS = [
   "TT",
   "Status",
   "Escalated to",
-  "Comments-Feedback",
+  "RCA",
 ];
 
 function uniqueTicketValues(ticket: TicketAggregate, field: keyof TicketRecord): string {
@@ -450,7 +450,7 @@ function distinctReportRow(ticket: TicketAggregate, index: number): string[] {
     ticket.tt || "",
     row.status || "",
     row.escalatedTo || "",
-    row.comments || "",
+    row.rca || "",
   ];
 }
 
@@ -801,12 +801,6 @@ export default function Home() {
             <div>
               <p className="eyebrow"><CircleDot size={12} /> Excel-powered unique TT intelligence</p>
               <h1>Follow-Up Sheets Dashboard</h1>
-              <p className="hero-copy">Upload the workbook and convert the ticket register into an interactive executive dashboard with corrected unique TT counting, operational filters, site ranking, trend analysis, and an export-ready view.</p>
-              <div className="hero-meta">
-                <span>Source sheet: Tickets_Data</span>
-                <span>Rule: one TT number = one ticket</span>
-                <span>Runs in browser</span>
-              </div>
             </div>
           </div>
           {data && (
@@ -1020,7 +1014,7 @@ export default function Home() {
                           if (header === "#" || header === "TT") return <td key={header} className="mono">{cell}</td>;
                           if (header === "Severity") return <td key={header}><span className="pill" style={{ ["--pill" as string]: SEVERITY_COLORS[row.severity] ?? "#64748b" }}>{cell}</span></td>;
                           if (header === "Status") return <td key={header}><span className="pill" style={{ ["--pill" as string]: STATUS_COLORS[row.status] ?? "#64748b" }}>{cell}</span></td>;
-                          if (header === "Issues" || header === "Comments-Feedback") return <td key={header} className="issue-cell">{cell}</td>;
+                          if (header === "Issues" || header === "RCA") return <td key={header} className="issue-cell">{cell}</td>;
                           return <td key={header}>{cell}</td>;
                         })}
                       </tr>

@@ -139,3 +139,25 @@
 - [x] Embed the National Grid and Nasco logos in a professional header arrangement.
 - [x] Validate the production build after the header update.
 - [ ] Save a new checkpoint and deliver the updated version and ZIP archive.
+
+# Header Update ZIP Delivery Todo
+
+- [ ] Confirm the latest header-logo ZIP archive is available.
+- [ ] Attach the ZIP archive for the user.
+
+# Hero Cleanup and ZIP Delivery Todo
+
+- [x] Remove the descriptive paragraph below the Follow-Up Sheets Dashboard title.
+- [x] Remove the buttons/chips below the title.
+- [ ] Validate the production build after the hero cleanup.
+- [ ] Create a fresh lightweight ZIP archive.
+- [ ] Deliver the updated ZIP archive to the user.
+
+# RCA Column Replacement and ZIP Delivery Todo
+
+- [x] Inspect current ticket parsing and report/export column mappings for Comments.
+- [x] Replace Comments with the new RCA column from `Tickets_Data` in the full report layout.
+- [x] Replace Comments with RCA in the monthly CSV and Excel exports.
+- [x] Validate the production build after the RCA update.
+- [x] Create a fresh lightweight ZIP archive after all requested changes.
+- [ ] Deliver the updated ZIP archive to the user.
