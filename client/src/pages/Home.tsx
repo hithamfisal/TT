@@ -4,7 +4,10 @@ Use deep ink backgrounds, translucent panels, cyan focus accents, tabular TT num
 Does this choice reinforce or dilute our design philosophy?
 */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import {
   Activity,
   AlertTriangle,
@@ -14,8 +17,6 @@ import {
   CircleDot,
   Download,
   FileSpreadsheet,
-  HardDrive,
-  Trash2,
   Filter,
   Layers3,
   Network,
@@ -43,6 +44,9 @@ import {
   YAxis,
 } from "recharts";
 
+import nascoLogoSrc from "../assets/nascologo.png";
+import ngLogoSrc from "../assets/nglogo.png";
+
 const HERO_IMAGE =
   "https://d2xsxph8kpxj0f.cloudfront.net/310419663031216744/LFprMZJgQoCY2omHrJr6xN/followup-hero-network-cockpit-GEqHM9kSYycEMt32RSfRxg.webp";
 const UPLOAD_IMAGE =
@@ -51,7 +55,6 @@ const RIBBON_IMAGE =
   "https://d2xsxph8kpxj0f.cloudfront.net/310419663031216744/LFprMZJgQoCY2omHrJr6xN/followup-network-ribbon-Lv2N5GpYhLW5eJjvLPNzkg.webp";
 
 const COLORS = ["#22d3ee", "#60a5fa", "#f59e0b", "#ef4444", "#34d399", "#a78bfa", "#f472b6", "#94a3b8"];
-const SESSION_KEY = "follow-up-sheets-dashboard-session-v1";
 const STATUS_COLORS: Record<string, string> = {
   Closed: "#34d399",
   Pending: "#f59e0b",
@@ -111,27 +114,19 @@ type DashboardData = {
   uniqueTickets: TicketAggregate[];
 };
 
-type StoredDashboardSession = {
-  version: 1;
-  fileName: string;
-  sheetName: string;
-  generatedAt: string;
-  savedAt: string;
-  rows: TicketRecord[];
-};
-
-type CountMode = "primary" | "exposure";
 
 type Filters = {
   search: string;
-  status: string;
-  severity: string;
-  region: string;
-  impact: string;
-  site: string;
-  openingMonth: string;
-  rcaFamily: string;
+  status: string[];
+  severity: string[];
+  region: string[];
+  impact: string[];
+  site: string[];
+  openingMonth: string[];
+  rcaFamily: string[];
 };
+
+const EMPTY_FILTERS: Filters = { search: "", status: [], severity: [], region: [], impact: [], site: [], openingMonth: [], rcaFamily: [] };
 
 function clean(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -152,6 +147,17 @@ function getField(row: Record<string, unknown>, aliases: string[]): string {
   return "";
 }
 
+// Like getField but returns the raw value without converting to string (needed for Date/time cells)
+function getRawField(row: Record<string, unknown>, aliases: string[]): unknown {
+  const map = new Map<string, unknown>();
+  Object.entries(row).forEach(([key, value]) => map.set(normalizeHeader(key), value));
+  for (const alias of aliases) {
+    const found = map.get(normalizeHeader(alias));
+    if (found !== undefined && found !== null && found !== "") return found;
+  }
+  return "";
+}
+
 function parseDateValue(value: unknown): Date | null {
   if (value === null || value === undefined || value === "") return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
@@ -161,6 +167,22 @@ function parseDateValue(value: unknown): Date | null {
     if (excelDate) return new Date(excelDate.y, excelDate.m - 1, excelDate.d);
   }
   const text = clean(value);
+  // Handle dd/mm/yyyy and dd-mm-yyyy (produced by toDateStr helper)
+  const dmyMatch = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if (dmyMatch) {
+    const d = Number(dmyMatch[1]);
+    const m = Number(dmyMatch[2]);
+    const y = Number(dmyMatch[3]);
+    // Detect dd/mm/yyyy vs mm/dd/yyyy: if day > 12 it must be dd/mm/yyyy
+    if (d > 12) {
+      const candidate = new Date(y, m - 1, d);
+      if (!Number.isNaN(candidate.getTime())) return candidate;
+    } else {
+      // Ambiguous: assume dd/mm/yyyy (our toDateStr always produces dd/mm/yyyy)
+      const candidate = new Date(y, m - 1, d);
+      if (!Number.isNaN(candidate.getTime())) return candidate;
+    }
+  }
   const direct = new Date(text);
   if (!Number.isNaN(direct.getTime())) return direct;
   const match = text.match(/(\d{1,2})[-/ ]([A-Za-z]{3,}|\d{1,2})[-/ ](\d{2,4})/);
@@ -252,20 +274,143 @@ function isPendingStatus(value: string): boolean {
   return clean(value).toLowerCase() === "pending";
 }
 
+function dateWithinMonth(dateValue: string, selectedMonth: string): boolean {
+  const range = selectedMonthRange(selectedMonth);
+  if (!range) return false;
+  const parsed = parseDateValue(dateValue);
+  if (!parsed) return false;
+  return parsed >= range.start && parsed <= range.end;
+}
+
 function ticketMatchesMonthlyExport(ticket: TicketAggregate, selectedMonth: string): boolean {
   if (selectedMonth === "all") return true;
+  const range = selectedMonthRange(selectedMonth);
+  if (!range) return false;
+
+  // Check all rows of the ticket (a TT can span multiple site rows)
   return ticket.rows.some((row) => {
-    const observationMatches = recordDateMonthKey(row.observationDate) === selectedMonth;
-    const recoveryMatches = recordDateMonthKey(row.recoveryDate) === selectedMonth;
-    const pendingMatches = isPendingStatus(row.status);
-    const intervalOverlapsMonth = observationRecoveryOverlapsMonth(row, selectedMonth);
-    return observationMatches || recoveryMatches || pendingMatches || intervalOverlapsMonth;
+    const obsDate = parseDateValue(row.observationDate);
+    const recDate = parseDateValue(row.recoveryDate);
+
+    // Criterion 1: Observation Date falls within the selected month
+    const observationInMonth = obsDate !== null && obsDate >= range.start && obsDate <= range.end;
+
+    // Criterion 2: Recovery Date falls within the selected month
+    const recoveryInMonth = recDate !== null && recDate >= range.start && recDate <= range.end;
+
+    // Criterion 3: Status is Pending AND Observation Date ≤ last day of the selected month
+    // (ticket was opened any time before or during the month and is still unresolved as of that month)
+    const pendingBeforeMonthEnd = isPendingStatus(row.status) && obsDate !== null && obsDate <= range.end;
+
+    // Criterion 4: Ticket was active throughout the entire month
+    // (Observation Date before the first day AND Recovery Date after the last day)
+    const spansEntireMonth = obsDate !== null && recDate !== null && obsDate < range.start && recDate > range.end;
+
+    return observationInMonth || recoveryInMonth || pendingBeforeMonthEnd || spansEntireMonth;
   });
 }
 
 function dateKey(value: string): number {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function formatDateDDMMYYYY(value: string): string {
+  const parsed = parseDateValue(value);
+  if (!parsed) return value || "";
+  const d = String(parsed.getDate()).padStart(2, "0");
+  const m = String(parsed.getMonth() + 1).padStart(2, "0");
+  const y = parsed.getFullYear();
+  return `${d}/${m}/${y}`;
+}
+
+function formatMonthMMMMYYYY(monthKey: string): string {
+  if (!monthKey || monthKey === "all") return "";
+  const parsed = new Date(`${monthKey}-01T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return monthKey;
+  return parsed.toLocaleDateString("en", { month: "short", year: "numeric" });
+}
+
+async function exportFormattedExcel(rows: TicketAggregate[], monthKey: string) {
+  // Fetch the pre-formatted template
+  const templateUrl = "/manus-storage/DMRMonthlyReportEOA_76429c79.xlsx";
+  let templateBuffer: ArrayBuffer;
+  try {
+    const response = await fetch(templateUrl);
+    if (!response.ok) throw new Error("Template not found");
+    templateBuffer = await response.arrayBuffer();
+  } catch {
+    // Fallback: export as plain Excel
+    exportExcel(rows);
+    return;
+  }
+  const wb = XLSX.read(templateBuffer, { type: "array", cellStyles: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+
+  // Write month label at R5 (col 18 = R)
+  const monthLabel = formatMonthMMMMYYYY(monthKey);
+  if (monthLabel) {
+    ws["R5"] = { t: "s", v: monthLabel };
+  }
+
+  // Data starts at row 39 (after header rows 37-38)
+  const DATA_START_ROW = 39;
+  // Column mapping (1-indexed): A=1 No, B=2 Equipment/site, C=3 Site Name, E=5 Managed Resource,
+  // F=6 Severity, G=7 Alarm Type, H=8 Escalation Date, I=9 Escalation Time,
+  // J=10 Recovery Date, K=11 Recovery Time, L=12 L3 Date, M=13 L3 Time,
+  // N=14 Duration, O=15 TT Number, P=16 TT Status, Q=17 TT Owner, R=18 Comments
+  const colLetter = (n: number) => {
+    let s = "";
+    while (n > 0) { s = String.fromCharCode(((n - 1) % 26) + 65) + s; n = Math.floor((n - 1) / 26); }
+    return s;
+  };
+  const setCell = (row: number, col: number, value: string | number) => {
+    const addr = `${colLetter(col)}${row}`;
+    ws[addr] = { t: typeof value === "number" ? "n" : "s", v: value };
+  };
+
+  // Remove existing data rows between DATA_START_ROW and the signature rows (row 60)
+  // by clearing cells in those rows
+  for (let r = DATA_START_ROW; r < 60; r++) {
+    for (let c = 1; c <= 18; c++) {
+      delete ws[`${colLetter(c)}${r}`];
+    }
+  }
+
+  // Write ticket rows
+  rows.forEach((ticket, idx) => {
+    const row = ticket.primary;
+    const r = DATA_START_ROW + idx;
+    const siteIds = Array.from(ticket.siteIds).join(", ");
+    const siteNames = Array.from(ticket.siteNames).join(", ");
+    setCell(r, 1, idx + 1);
+    setCell(r, 2, siteIds || row.siteId || "");
+    setCell(r, 3, siteNames || row.siteName || "");
+    setCell(r, 5, row.managedResource || "");
+    setCell(r, 6, row.severity || "");
+    setCell(r, 7, row.issue || "");
+    setCell(r, 8, formatDateDDMMYYYY(row.observationDate));
+    setCell(r, 9, row.observationTime || "");
+    setCell(r, 10, formatDateDDMMYYYY(row.recoveryDate));
+    setCell(r, 11, row.recoveryTime || "");
+    setCell(r, 12, formatDateDDMMYYYY(row.escalatedForL3SupportDate));
+    setCell(r, 13, row.escalatedForL3SupportTime || "");
+    setCell(r, 14, row.duration || "");
+    setCell(r, 15, ticket.tt || "");
+    setCell(r, 16, row.status || "");
+    setCell(r, 17, row.escalatedTo || "");
+    setCell(r, 18, row.actionTaken || "");
+  });
+
+  // Update the worksheet ref range
+  if (!ws["!ref"]) ws["!ref"] = "A1:R62";
+  else {
+    const lastDataRow = Math.max(DATA_START_ROW + rows.length - 1, 59);
+    ws["!ref"] = `A1:R${lastDataRow}`;
+  }
+
+  const monthSuffix = monthKey !== "all" ? `-${formatMonthMMMMYYYY(monthKey).replace(" ", "-")}` : "";
+  XLSX.writeFile(wb, `DMR-Monthly-Report${monthSuffix}.xlsx`);
 }
 
 function parseDurationHours(duration: string): number | null {
@@ -392,11 +537,47 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
   const preferred = workbook.SheetNames.find((name) => name.toLowerCase().includes("tickets_data"));
   const sheetName = preferred ?? workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false });
+  // Use raw:true so date cells come in as Excel serial numbers (reliable for parseDateValue).
+  // We immediately convert date fields to dd/mm/yyyy strings so display remains readable.
+  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: true });
+
+  // Helper: convert a raw cell value (serial number, Date, or string) to dd/mm/yyyy string
+  function toDateStr(val: unknown): string {
+    if (val === null || val === undefined || val === "") return "";
+    const parsed = parseDateValue(val);
+    if (!parsed) return String(val);
+    const d = String(parsed.getDate()).padStart(2, "0");
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    return `${d}/${m}/${parsed.getFullYear()}`;
+  }
+
+  // Helper: convert a raw cell value (Excel time fraction, Date object, or string) to hh:mm string
+  function toTimeStr(val: unknown): string {
+    if (val === null || val === undefined || val === "") return "";
+    // SheetJS raw:true returns time-only cells as Date objects (epoch 1899-12-30, time in UTC)
+    if (val instanceof Date) {
+      const hh = String(val.getUTCHours()).padStart(2, "0");
+      const mm = String(val.getUTCMinutes()).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+    // Excel stores time as a fractional day (0.0 = midnight, 0.5 = noon)
+    if (typeof val === "number") {
+      const totalMinutes = Math.round(val * 24 * 60);
+      const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0");
+      const mm = String(totalMinutes % 60).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+    const text = String(val).trim();
+    // Already hh:mm or hh:mm:ss -- strip seconds
+    const hhmmss = text.match(/^(\d{1,2}):(\d{2})(:\d{2})?$/);
+    if (hhmmss) return `${hhmmss[1].padStart(2, "0")}:${hhmmss[2]}`;
+    // Fallback: return as-is
+    return text;
+  }
 
   const rows: TicketRecord[] = raw
     .map((row, index) => {
-      const observationDate = getField(row, ["Observation Date", "Observed Date"]);
+      const observationDate = toDateStr(getField(row, ["Observation Date", "Observed Date"]) || "");
       const monthKey = resolveOpeningMonthKey(
         getField(row, ["Opening Month Key", "OpeningMonthKey"]),
         getField(row, ["Opening Month", "OpeningMonth"]),
@@ -414,17 +595,17 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
         severity: getField(row, ["Severity"]),
         region: getField(row, ["Region"]),
         observationDate,
-        observationTime: getField(row, ["Observation Time", "Observed Time", "ObservationTime"]),
+        observationTime: toTimeStr(getRawField(row, ["Observation Time", "Observed Time", "ObservationTime"])),
         openingMonthKey: monthKey,
         openingMonthLabel: openingMonthLabel(monthKey),
-        recoveryDate: getField(row, ["Recovery Date"]),
-        recoveryTime: getField(row, ["Recovery Time", "RecoveryTime"]),
+        recoveryDate: toDateStr(getField(row, ["Recovery Date"]) || ""),
+        recoveryTime: toTimeStr(getRawField(row, ["Recovery Time", "RecoveryTime"])),
         duration: getField(row, ["Total Duration Days/Hours", "Total Durration Days/Hours", "Duration"]),
         impact: getField(row, ["Service Impaction Status", "Service Impact Status"]),
         escalatedTo: getField(row, ["Escalated to", "Escalated To", "Escalated to "]),
         escalationLevel: getField(row, ["Escalation Level", "Esclation Level"]),
-        escalatedForL3SupportDate: getField(row, ["Escalated for L3 Support Date", "Escalated For L3 Support Date", "L3 Support Date", "L3 Escalation Date", "Escalation L3 Date", "Escalated L3 Date"]),
-        escalatedForL3SupportTime: getField(row, ["Escalated for L3 Support Time", "Escalated For L3 Support Time", "L3 Support Time", "L3 Escalation Time", "Escalation L3 Time", "Escalated L3 Time"]),
+        escalatedForL3SupportDate: toDateStr(getField(row, ["Escalated for L3 Support Date", "Escalated For L3 Support Date", "L3 Support Date", "L3 Escalation Date", "Escalation L3 Date", "Escalated L3 Date"]) || ""),
+        escalatedForL3SupportTime: toTimeStr(getRawField(row, ["Escalated for L3 Support Time", "Escalated For L3 Support Time", "L3 Support Time", "L3 Escalation Time", "Escalation L3 Time", "Escalated L3 Time"])),
         status: getField(row, ["Status"]),
         rca,
         rcaFamily,
@@ -442,37 +623,6 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
     generatedAt: new Date().toLocaleString(),
     rows,
     uniqueTickets: groupTickets(rows),
-  };
-}
-
-function saveSession(parsed: DashboardData): string {
-  const savedAt = new Date().toLocaleString();
-  const session: StoredDashboardSession = {
-    version: 1,
-    fileName: parsed.fileName,
-    sheetName: parsed.sheetName,
-    generatedAt: parsed.generatedAt,
-    savedAt,
-    rows: parsed.rows,
-  };
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  return savedAt;
-}
-
-function loadSession(): { data: DashboardData; savedAt: string } | null {
-  const rawSession = localStorage.getItem(SESSION_KEY);
-  if (!rawSession) return null;
-  const session = JSON.parse(rawSession) as StoredDashboardSession;
-  if (session.version !== 1 || !Array.isArray(session.rows) || !session.rows.length) return null;
-  return {
-    savedAt: session.savedAt,
-    data: {
-      fileName: session.fileName,
-      sheetName: session.sheetName,
-      generatedAt: session.generatedAt,
-      rows: session.rows,
-      uniqueTickets: groupTickets(session.rows),
-    },
   };
 }
 
@@ -497,11 +647,9 @@ function metricValue(items: { name: string; value: number }[], expected: string)
 }
 
 function renderPieLabel(props: { name?: string; value?: number; percent?: number }) {
-  const name = props.name ?? "";
   const value = props.value ?? 0;
-  const percent = props.percent ?? 0;
   if (!value) return "";
-  return `${name}: ${value} (${(percent * 100).toFixed(0)}%)`;
+  return `${value}`;
 }
 
 const DISTINCT_REPORT_HEADERS = [
@@ -521,11 +669,7 @@ const DISTINCT_REPORT_HEADERS = [
   "TT",
   "Status",
   "Escalated to",
-  "RCA",
-  "RCA Family",
-  "Preventable / Non-preventable",
-  "Responsible Team",
-  "Recommended Action",
+  "Action",
 ];
 
 function uniqueTicketValues(ticket: TicketAggregate, field: keyof TicketRecord): string {
@@ -551,11 +695,7 @@ function distinctReportRow(ticket: TicketAggregate, index: number): string[] {
     ticket.tt || "",
     row.status || "",
     row.escalatedTo || "",
-    row.rca || "",
-    row.rcaFamily || getRcaFamily(row.rca),
-    row.preventability || getPreventability(row.rca),
-    row.responsibleTeam || getResponsibleTeam(row.rcaFamily || getRcaFamily(row.rca)),
-    row.recommendedAction || getRecommendedAction(row.rcaFamily || getRcaFamily(row.rca)),
+    row.actionTaken || "",
   ];
 }
 
@@ -606,9 +746,77 @@ function exportExcel(rows: TicketAggregate[]) {
   XLSX.writeFile(workbook, "follow-up-distinct-tt-report.xlsx");
 }
 
-function StatCard({ label, value, note, icon: Icon, tone }: { label: string; value: string | number; note: string; icon: typeof Activity; tone: string }) {
+function exportPdf(rows: TicketAggregate[], monthKey: string) {
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
+
+  // Title
+  const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
+  doc.setFontSize(14);
+  doc.setTextColor(10, 30, 60);
+  doc.text(`DMR Monthly Tickets Report -- ${monthLabel}`, 14, 16);
+  doc.setFontSize(9);
+  doc.setTextColor(100);
+  doc.text(`Generated: ${new Date().toLocaleString()} | Total Tickets: ${rows.length}`, 14, 22);
+
+  const headers = DISTINCT_REPORT_HEADERS;
+  const body = distinctReportRows(rows);
+
+  autoTable(doc, {
+    startY: 26,
+    head: [headers],
+    body,
+    styles: {
+      fontSize: 7,
+      cellPadding: 1.5,
+      overflow: "linebreak",
+      valign: "middle",
+    },
+    headStyles: {
+      fillColor: [4, 60, 100],
+      textColor: 255,
+      fontStyle: "bold",
+      fontSize: 7.5,
+    },
+    alternateRowStyles: { fillColor: [240, 246, 255] },
+    columnStyles: {
+      0:  { cellWidth: 8 },   // #
+      1:  { cellWidth: 18 },  // Site ID
+      2:  { cellWidth: 22 },  // Site Name
+      3:  { cellWidth: 26 },  // Managed Resource
+      4:  { cellWidth: 14 },  // Severity
+      5:  { cellWidth: 30 },  // Issues
+      6:  { cellWidth: 18 },  // Observation Date
+      7:  { cellWidth: 16 },  // Observation Time
+      8:  { cellWidth: 18 },  // Recovery Date
+      9:  { cellWidth: 16 },  // Recovery Time
+      10: { cellWidth: 22 },  // L3 Support Date
+      11: { cellWidth: 20 },  // L3 Support Time
+      12: { cellWidth: 22 },  // Duration
+      13: { cellWidth: 14 },  // TT
+      14: { cellWidth: 14 },  // Status
+      15: { cellWidth: 18 },  // Escalated to
+      16: { cellWidth: 36 },  // RCA
+    },
+    margin: { left: 10, right: 10 },
+    didDrawPage: (data) => {
+      const pageCount = (doc as jsPDF & { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages();
+      doc.setFontSize(7);
+      doc.setTextColor(150);
+      doc.text(
+        `Page ${data.pageNumber} of ${pageCount}`,
+        doc.internal.pageSize.getWidth() - 30,
+        doc.internal.pageSize.getHeight() - 6,
+      );
+    },
+  });
+
+  const suffix = monthKey !== "all" ? `-${monthLabel.replace(" ", "-")}` : "";
+  doc.save(`DMR-Monthly-Report${suffix}.pdf`);
+}
+
+function StatCard({ label, value, note, icon: Icon, tone, onClick }: { label: string; value: string | number; note: string; icon: typeof Activity; tone: string; onClick?: () => void }) {
   return (
-    <div className="stat-card" style={{ ["--tone" as string]: tone }}>
+    <div className="stat-card" style={{ ["--tone" as string]: tone, cursor: onClick ? "pointer" : undefined }} onClick={onClick} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined} onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") onClick(); } : undefined}>
       <div className="stat-icon"><Icon size={18} /></div>
       <span>{label}</span>
       <strong>{value}</strong>
@@ -620,9 +828,9 @@ function StatCard({ label, value, note, icon: Icon, tone }: { label: string; val
 function PartnerLogoStrip() {
   return (
     <div className="partner-logo-strip" aria-label="Project partner logos">
-      <img src="/manus-storage/nglogo_c55ff091.png" alt="National Grid SA" className="partner-logo-img ng-logo" />
+      <img src={ngLogoSrc} alt="National Grid SA" className="partner-logo-img ng-logo" />
       <span className="logo-divider" aria-hidden="true" />
-      <img src="/manus-storage/nascologo_42619f23.png" alt="NASCO" className="partner-logo-img nasco-logo" />
+      <img src={nascoLogoSrc} alt="NASCO" className="partner-logo-img nasco-logo" />
     </div>
   );
 }
@@ -650,27 +858,107 @@ function SelectFilter({ label, value, options, optionLabels, onChange }: {
   );
 }
 
-export default function Home() {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [error, setError] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
-  const [countMode, setCountMode] = useState<CountMode>("primary");
-  const [savedAt, setSavedAt] = useState("");
-  const [exportMonth, setExportMonth] = useState("all");
-  const [filters, setFilters] = useState<Filters>({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all", rcaFamily: "all" });
+function MultiSelectFilter({ label, value, options, optionLabels, onChange }: {
+  label: string;
+  value: string[];
+  options: string[];
+  optionLabels?: Record<string, string>;
+  onChange: (value: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    try {
-      const restored = loadSession();
-      if (restored) {
-        setData(restored.data);
-        setSavedAt(restored.savedAt);
-      }
-    } catch {
-      localStorage.removeItem(SESSION_KEY);
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+      const insideTrigger = wrapRef.current?.contains(target);
+      const insideDropdown = dropdownRef.current?.contains(target);
+      if (!insideTrigger && !insideDropdown) setOpen(false);
     }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  function computePosition() {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const dropW = Math.max(rect.width, 220);
+    const dropH = Math.min(280, options.length * 36 + 48);
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const left = Math.min(rect.left, window.innerWidth - dropW - 8);
+    if (spaceBelow >= dropH || spaceBelow >= 160) {
+      setDropdownStyle({ position: "fixed", top: rect.bottom + 4, left, width: dropW, zIndex: 99999 });
+    } else {
+      setDropdownStyle({ position: "fixed", bottom: window.innerHeight - rect.top + 4, left, width: dropW, zIndex: 99999 });
+    }
+  }
+
+  function handleOpen() {
+    if (!open) computePosition();
+    setOpen((o) => !o);
+  }
+
+  // Reposition on scroll/resize while open
+  useEffect(() => {
+    if (!open) return;
+    const update = () => computePosition();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const toggle = (opt: string) => {
+    if (value.includes(opt)) onChange(value.filter((v) => v !== opt));
+    else onChange([...value, opt]);
+  };
+  const displayLabel = value.length === 0 ? "All" : value.length === 1 ? (optionLabels?.[value[0]] ?? value[0]) : `${value.length} selected`;
+
+  const dropdown = open ? createPortal(
+    <div className="multi-select-dropdown" style={dropdownStyle} ref={dropdownRef}>
+      {value.length > 0 && (
+        <button type="button" className="multi-select-clear" onClick={() => onChange([])}>× Clear</button>
+      )}
+      {options.map((opt) => (
+        <label key={opt} className="multi-select-option">
+          <input type="checkbox" checked={value.includes(opt)} onChange={() => toggle(opt)} />
+          <span>{optionLabels?.[opt] ?? opt}</span>
+        </label>
+      ))}
+    </div>,
+    document.body
+  ) : null;
+
+  return (
+    <div className="filter-field multi-select-filter" ref={wrapRef}>
+      <span>{label}</span>
+      <button type="button" className="multi-select-trigger" ref={triggerRef} onClick={handleOpen}>
+        <span className="multi-select-value">{displayLabel}</span>
+        <ChevronDown size={14} style={{ transform: open ? "rotate(180deg)" : undefined, transition: "transform .15s" }} />
+      </button>
+      {dropdown}
+    </div>
+  );
+}
+
+export default function Home() {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const addRegionRef = useRef<HTMLInputElement | null>(null);
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [regions, setRegions] = useState<DashboardData[]>([]);
+  const [error, setError] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+
+  const [exportMonth, setExportMonth] = useState("all");
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [tablePage, setTablePage] = useState(1);
+  const TABLE_PAGE_SIZE = 50;
 
   async function handleFile(file?: File) {
     if (!file) return;
@@ -683,18 +971,57 @@ export default function Home() {
         throw new Error("No ticket rows with TT numbers were found. Please upload the Follow-Up Sheets workbook with the Tickets_Data sheet.");
       }
       setData(parsed);
-      setSavedAt(saveSession(parsed));
+      setRegions([parsed]);
       setExportMonth("all");
-      setFilters({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all", rcaFamily: "all" });
+      setFilters(EMPTY_FILTERS);
+      setTablePage(1);
       if (inputRef.current) inputRef.current.value = "";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to read this workbook.");
     }
   }
 
-  function clearSavedSession() {
-    localStorage.removeItem(SESSION_KEY);
-    setSavedAt("");
+  async function handleAddRegion(file?: File) {
+    if (!file) return;
+    setError("");
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+      const parsed = parseRows(workbook, file.name);
+      if (!parsed.rows.length || !parsed.uniqueTickets.length) {
+        throw new Error("No ticket rows with TT numbers were found in the additional workbook.");
+      }
+      setRegions((prev) => {
+        const updated = [...prev, parsed];
+        // Merge all regions into a combined DashboardData
+        const allRows = updated.flatMap((r) => r.rows);
+        const ttMap = new Map<string, TicketAggregate>();
+        for (const row of allRows) {
+          if (!row.tt) continue;
+          const existing = ttMap.get(row.tt);
+          if (!existing) {
+            ttMap.set(row.tt, { tt: row.tt, primary: row, siteIds: new Set([row.siteId].filter(Boolean)), siteNames: new Set([row.siteName].filter(Boolean)), rows: [row] });
+          } else {
+            existing.rows.push(row);
+            if (row.siteId) existing.siteIds.add(row.siteId);
+            if (row.siteName) existing.siteNames.add(row.siteName);
+          }
+        }
+        const merged: DashboardData = {
+          fileName: updated.map((r) => r.fileName).join(" + "),
+          sheetName: updated[0].sheetName,
+          generatedAt: new Date().toLocaleString(),
+          rows: allRows,
+          uniqueTickets: Array.from(ttMap.values()),
+        };
+        setData(merged);
+        return updated;
+      });
+      setTablePage(1);
+      if (addRegionRef.current) addRegionRef.current.value = "";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to read the additional workbook.");
+    }
   }
 
   const uniqueRows = data?.uniqueTickets ?? [];
@@ -723,6 +1050,9 @@ export default function Home() {
       rcaFamily: rcaFamilyOptions,
     };
   }, [uniqueRows]);
+
+  // Reset page when filters change
+  useEffect(() => { setTablePage(1); }, [filters]);
 
   const filteredTickets = useMemo(() => {
     const q = filters.search.toLowerCase().trim();
@@ -754,16 +1084,16 @@ export default function Home() {
         .toLowerCase();
       return (
         (!q || haystack.includes(q)) &&
-        (filters.status === "all" || row.status === filters.status) &&
-        (filters.severity === "all" || row.severity === filters.severity) &&
-        (filters.region === "all" || row.region === filters.region) &&
-        (filters.impact === "all" || row.impact === filters.impact) &&
-        (filters.openingMonth === "all" || (row.openingMonthKey || openingMonthKey(row.observationDate)) === filters.openingMonth) &&
-        (filters.site === "all" || (countMode === "primary" ? row.siteId === filters.site : ticket.siteIds.has(filters.site))) &&
-        (filters.rcaFamily === "all" || (row.rcaFamily || getRcaFamily(row.rca)) === filters.rcaFamily)
+        (!filters.status.length || filters.status.includes(row.status)) &&
+        (!filters.severity.length || filters.severity.includes(row.severity)) &&
+        (!filters.region.length || filters.region.includes(row.region)) &&
+        (!filters.impact.length || filters.impact.includes(row.impact)) &&
+        (!filters.openingMonth.length || filters.openingMonth.includes(row.openingMonthKey || openingMonthKey(row.observationDate))) &&
+        (!filters.site.length || filters.site.some((s) => ticket.siteIds.has(s))) &&
+        (!filters.rcaFamily.length || filters.rcaFamily.includes(row.rcaFamily || getRcaFamily(row.rca)))
       );
     });
-  }, [countMode, filters, uniqueRows]);
+  }, [filters, uniqueRows]);
 
   const monthlyExportBaseTickets = useMemo(() => {
     const q = filters.search.toLowerCase().trim();
@@ -793,17 +1123,19 @@ export default function Home() {
       ]
         .join(" ")
         .toLowerCase();
+      // NOTE: Status filter is intentionally excluded here.
+      // ticketMatchesMonthlyExport applies its own Pending criterion,
+      // so filtering by status here would incorrectly exclude Pending tickets.
       return (
         (!q || haystack.includes(q)) &&
-        (filters.status === "all" || row.status === filters.status) &&
-        (filters.severity === "all" || row.severity === filters.severity) &&
-        (filters.region === "all" || row.region === filters.region) &&
-        (filters.impact === "all" || row.impact === filters.impact) &&
-        (filters.site === "all" || (countMode === "primary" ? row.siteId === filters.site : ticket.siteIds.has(filters.site))) &&
-        (filters.rcaFamily === "all" || (row.rcaFamily || getRcaFamily(row.rca)) === filters.rcaFamily)
+        (!filters.severity.length || filters.severity.includes(row.severity)) &&
+        (!filters.region.length || filters.region.includes(row.region)) &&
+        (!filters.impact.length || filters.impact.includes(row.impact)) &&
+        (!filters.site.length || filters.site.some((s) => ticket.siteIds.has(s))) &&
+        (!filters.rcaFamily.length || filters.rcaFamily.includes(row.rcaFamily || getRcaFamily(row.rca)))
       );
     });
-  }, [countMode, filters.impact, filters.rcaFamily, filters.region, filters.search, filters.severity, filters.site, filters.status, uniqueRows]);
+  }, [filters.impact, filters.rcaFamily, filters.region, filters.search, filters.severity, filters.site, uniqueRows]);
 
   const monthlyExportTickets = useMemo(() => monthlyExportBaseTickets.filter((ticket) => ticketMatchesMonthlyExport(ticket, exportMonth)), [exportMonth, monthlyExportBaseTickets]);
 
@@ -872,26 +1204,17 @@ export default function Home() {
     const siteLabel = (siteId: string) => {
       const siteName = siteNameById.get(siteId);
       if (!siteId || siteId === "Blank") return "Blank";
-      return siteName ? `${siteId} — ${siteName}` : siteId;
+      return siteName ? `${siteId} -- ${siteName}` : siteId;
     };
     const siteMap = new Map<string, { name: string; value: number; exposure?: number }>();
-    if (countMode === "primary") {
-      filteredTickets.forEach((ticket) => {
-        const site = ticket.primary.siteId || "Blank";
+    filteredTickets.forEach((ticket) => {
+      const sites = ticket.siteIds.size ? Array.from(ticket.siteIds) : [ticket.primary.siteId || "Blank"];
+      sites.forEach((site) => {
         const current = siteMap.get(site) ?? { name: siteLabel(site), value: 0 };
         current.value += 1;
         siteMap.set(site, current);
       });
-    } else {
-      filteredTickets.forEach((ticket) => {
-        const sites = ticket.siteIds.size ? Array.from(ticket.siteIds) : [ticket.primary.siteId || "Blank"];
-        sites.forEach((site) => {
-          const current = siteMap.get(site) ?? { name: siteLabel(site), value: 0 };
-          current.value += 1;
-          siteMap.set(site, current);
-        });
-      });
-    }
+    });
     const topSites = Array.from(siteMap.values()).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name)).slice(0, 12);
 
     const preventableBreakdown = [
@@ -917,6 +1240,9 @@ export default function Home() {
     const monthlyRcaFamily = Array.from(monthlyRcaFamilyMap.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([, value]) => value);
+
+    const managedResourceByCount = countBy(primaryRows, (row) => row.managedResource || "Unknown");
+    const topManagedResources = managedResourceByCount.slice(0, 12);
 
     return {
       totalUnique,
@@ -944,8 +1270,9 @@ export default function Home() {
       preventableBreakdown,
       monthlyRcaFamily,
       rcaFamilyKeys: RCA_FAMILIES,
+      topManagedResources,
     };
-  }, [countMode, filteredTickets]);
+  }, [filteredTickets]);
 
   const closed = metricValue(analytics.status, "Closed");
   const pending = metricValue(analytics.status, "Pending");
@@ -964,41 +1291,52 @@ export default function Home() {
       <section className="hero-panel" style={{ backgroundImage: `linear-gradient(90deg, rgba(3,7,18,.96) 0%, rgba(3,7,18,.78) 42%, rgba(3,7,18,.26) 100%), url(${HERO_IMAGE})` }}>
         <nav className="topbar no-print">
           <div className="brand-cluster">
-            <div className="brand-mark"><Network size={18} /> TT Operations Cockpit</div>
+            <div className="brand-mark"><Network size={18} /> DMR Ticketing Dashboard</div>
             <PartnerLogoStrip />
           </div>
           <div className="topbar-actions">
+            {data && <button className="ghost-button" onClick={() => addRegionRef.current?.click()}><UploadCloud size={16} /> Add region</button>}
             {data && <button className="ghost-button" onClick={() => inputRef.current?.click()}><RefreshCw size={16} /> New workbook</button>}
-            {data && savedAt && <button className="ghost-button" onClick={clearSavedSession}><Trash2 size={16} /> Clear saved session</button>}
             {data && <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> CSV</button>}
             {data && <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={16} /> Excel</button>}
-            {data && <button className="primary-button" onClick={() => window.print()}><Printer size={16} /> Print / PDF</button>}
+            {data && <button className="ghost-button" onClick={() => exportPdf(monthlyExportTickets, exportMonth)}><Printer size={16} /> PDF</button>}
+            {data && <button className="primary-button" onClick={() => window.print()}><Printer size={16} /> Dashboard PDF</button>}
           </div>
         </nav>
-        <div className="hero-layout">
+          <div className="hero-layout">
           <div className="hero-content">
             <div>
-              <p className="eyebrow"><CircleDot size={12} /> Excel-powered unique TT intelligence</p>
-              <h1>Follow-Up Sheets Dashboard</h1>
+              <h1>DMR Ticketing Dashboard</h1>
             </div>
           </div>
-          {data && (
-            <aside className="hero-export-card no-print" aria-label="Monthly TT export filter">
+        </div>
+        {data && regions.length > 0 && (
+          <div className="region-badges no-print">
+            {regions.map((r, i) => (
+              <span key={i} className="region-badge"><FileSpreadsheet size={12} /> {r.fileName}</span>
+            ))}
+          </div>
+        )}
+        {data && (
+          <div className="hero-export-row no-print">
+            <aside className="hero-export-card" aria-label="Monthly TT export filter">
               <div className="hero-export-copy">
-                <span>Monthly TT export filter</span>
-                <strong>{monthlyExportTickets.length.toLocaleString()} records for {selectedExportMonthLabel}</strong>
+                <span>Monthly Tickets export filter</span>
+                <strong><span className="export-badge">{monthlyExportTickets.length}</span> tickets for {selectedExportMonthLabel}</strong>
               </div>
               <SelectFilter label="Report Month" value={exportMonth} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setExportMonth} />
               <div className="hero-export-actions">
                 <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> Export CSV</button>
                 <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={16} /> Export Excel</button>
+                <button className="ghost-button" onClick={() => exportPdf(monthlyExportTickets, exportMonth)}><Printer size={16} /> Export PDF</button>
               </div>
             </aside>
-          )}
-        </div>
+          </div>
+        )}
       </section>
 
       <input ref={inputRef} className="sr-only" type="file" accept=".xlsx,.xls,.xlsm" onChange={(event) => handleFile(event.target.files?.[0])} />
+      <input ref={addRegionRef} className="sr-only" type="file" accept=".xlsx,.xls,.xlsm" onChange={(event) => handleAddRegion(event.target.files?.[0])} />
 
       {!data ? (
         <section className="upload-stage no-print">
@@ -1009,9 +1347,9 @@ export default function Home() {
             onDrop={(event) => { event.preventDefault(); setIsDragging(false); handleFile(event.dataTransfer.files?.[0]); }}
           >
             <div className="upload-copy">
-              <span className="section-kicker"><UploadCloud size={14} /> Workbook upload</span>
-              <h2>Bring the Follow-Up Sheets workbook online.</h2>
-              <p>The parser reads the `Tickets_Data` sheet, groups records by TT number, removes duplicated tickets from KPI totals, and keeps a separate site-exposure mode when a single TT is associated with multiple sites.</p>
+              <span className="section-kicker"><UploadCloud size={14} /> Workbooks upload</span>
+              <h2>Please Upload the Tickets Data.</h2>
+  
               {error && <div className="error-banner"><AlertTriangle size={16} /> {error}</div>}
               <button className="primary-button large" onClick={() => inputRef.current?.click()}><FileSpreadsheet size={18} /> Select Excel workbook</button>
             </div>
@@ -1019,58 +1357,46 @@ export default function Home() {
           </div>
         </section>
       ) : (
-        <>
-          <section className="control-strip no-print">
-            <div>
-              <span className="section-kicker"><FileSpreadsheet size={14} /> {data.fileName}</span>
-              <h2>Live dashboard from `{data.sheetName}`</h2>
-              <p>Last parsed: {data.generatedAt}. Current filters show {filteredSourceRowCount.toLocaleString()} source rows and {filteredTickets.length.toLocaleString()} unique TT numbers from {data.rows.length.toLocaleString()} uploaded rows.</p>
-              {savedAt && <p className="session-note"><HardDrive size={14} /> Saved locally in this browser at {savedAt}; it will reopen automatically until cleared.</p>}
-            </div>
-            <div className="count-toggle" role="group" aria-label="Site counting mode">
-              <button className={countMode === "primary" ? "active" : ""} onClick={() => setCountMode("primary")}>Primary TT allocation</button>
-              <button className={countMode === "exposure" ? "active" : ""} onClick={() => setCountMode("exposure")}>Affected-site exposure</button>
-            </div>
-          </section>
-
-          <section className="stats-grid workbook-cards" style={{ backgroundImage: `linear-gradient(90deg, rgba(4,13,31,.88), rgba(4,13,31,.70)), url(${RIBBON_IMAGE})` }}>
-            <StatCard label="Unique TT" value={analytics.totalUnique.toLocaleString()} note="Core Ticket Volume" icon={Layers3} tone="#22d3ee" />
-            <StatCard label="Closed TT" value={closed.toLocaleString()} note={`${pct(closed, analytics.totalUnique)} closed`} icon={CheckCircle2} tone="#34d399" />
-            <StatCard label="Pending TT" value={pending.toLocaleString()} note="Needs Follow-Up" icon={ShieldAlert} tone="#f59e0b" />
-            <StatCard label="Resolved TT" value={resolved.toLocaleString()} note="TT Resolved" icon={CheckCircle2} tone="#60a5fa" />
-            <StatCard label="Critical TT" value={critical.toLocaleString()} note="High Priority Severity" icon={AlertTriangle} tone="#ef4444" />
-            <StatCard label="Major TT" value={major.toLocaleString()} note="Medium Priority Severity" icon={Activity} tone="#f59e0b" />
-            <StatCard label="Minor TT" value={minor ? minor.toLocaleString() : ""} note="Low Priority Severity" icon={CircleDot} tone="#22d3ee" />
-            <StatCard label="Service Impact" value={serviceImpact.toLocaleString()} note="Exact Service Impact" icon={Network} tone="#a78bfa" />
-            <StatCard label="Non-Service Impact" value={nonServiceImpact.toLocaleString()} note="No Service Impact" icon={XCircle} tone="#94a3b8" />
-            <StatCard label="Unique Sites" value={analytics.uniqueSites.toLocaleString()} note="Unique Site ID" icon={BarChart3} tone="#60a5fa" />
-            <StatCard label="Root Cause Updated" value={analytics.rootCauseUpdated.toLocaleString()} note="TT with Alarm Root Cause" icon={FileSpreadsheet} tone="#34d399" />
-            <StatCard label="Top RCA by TT Count" value={analytics.topRcaByCount.name || ""} note={analytics.topRcaByCount.value ? `${analytics.topRcaByCount.value.toLocaleString()} TT` : ""} icon={BarChart3} tone="#22d3ee" />
-            <StatCard label="Top RCA by Downtime" value={analytics.topRcaByDowntime.name || ""} note={formatHours(analytics.topRcaByDowntime.value)} icon={Activity} tone="#f59e0b" />
-            <StatCard label="Highest MTTR RCA" value={analytics.highestMttrRca.name || ""} note={formatHours(analytics.highestMttrRca.value)} icon={AlertTriangle} tone="#ef4444" />
-            <StatCard label="Repeated RCA Sites" value={analytics.repeatedRcaSites.toLocaleString()} note="Site + RCA pairs repeated" icon={Network} tone="#a78bfa" />
-            <StatCard label="RCA not Provided %" value={rcaNotProvidedPct} note={`${analytics.rcaNotProvidedCount.toLocaleString()} TT missing RCA`} icon={ShieldAlert} tone="#f97316" />
-            <StatCard label="Preventable RCA %" value={preventableRcaPct} note={`${analytics.preventableCount.toLocaleString()} preventable TT`} icon={CheckCircle2} tone="#34d399" />
-          </section>
-
+         <>
           <section className="filters-panel no-print">
             <label className="search-box">
               <Search size={16} />
               <input value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} placeholder="Search TT, site, issue, status, escalation..." />
             </label>
-            <SelectFilter label="Status" value={filters.status} options={filterOptions.status} onChange={(value) => setFilters((prev) => ({ ...prev, status: value }))} />
-            <SelectFilter label="Severity" value={filters.severity} options={filterOptions.severity} onChange={(value) => setFilters((prev) => ({ ...prev, severity: value }))} />
-            <SelectFilter label="Region" value={filters.region} options={filterOptions.region} onChange={(value) => setFilters((prev) => ({ ...prev, region: value }))} />
-            <SelectFilter label="Impact" value={filters.impact} options={filterOptions.impact} onChange={(value) => setFilters((prev) => ({ ...prev, impact: value }))} />
-            <SelectFilter label="Opening Month" value={filters.openingMonth} options={filterOptions.openingMonth} optionLabels={filterOptions.openingMonthLabels} onChange={(value) => setFilters((prev) => ({ ...prev, openingMonth: value }))} />
-            <SelectFilter label="Site" value={filters.site} options={filterOptions.site} onChange={(value) => setFilters((prev) => ({ ...prev, site: value }))} />
-            <SelectFilter label="RCA Family" value={filters.rcaFamily} options={filterOptions.rcaFamily} onChange={(value) => setFilters((prev) => ({ ...prev, rcaFamily: value }))} />
-            <button className="ghost-button" onClick={() => setFilters({ search: "", status: "all", severity: "all", region: "all", impact: "all", site: "all", openingMonth: "all", rcaFamily: "all" })}><Filter size={16} /> Clear</button>
+            <MultiSelectFilter label="Status" value={filters.status} options={filterOptions.status} onChange={(value) => setFilters((prev) => ({ ...prev, status: value }))} />
+            <MultiSelectFilter label="Severity" value={filters.severity} options={filterOptions.severity} onChange={(value) => setFilters((prev) => ({ ...prev, severity: value }))} />
+            <MultiSelectFilter label="Region" value={filters.region} options={filterOptions.region} onChange={(value) => setFilters((prev) => ({ ...prev, region: value }))} />
+            <MultiSelectFilter label="Impact" value={filters.impact} options={filterOptions.impact} onChange={(value) => setFilters((prev) => ({ ...prev, impact: value }))} />
+            <MultiSelectFilter label="Opening Month" value={filters.openingMonth} options={filterOptions.openingMonth} optionLabels={filterOptions.openingMonthLabels} onChange={(value) => setFilters((prev) => ({ ...prev, openingMonth: value }))} />
+            <MultiSelectFilter label="Site" value={filters.site} options={filterOptions.site} onChange={(value) => setFilters((prev) => ({ ...prev, site: value }))} />
+            <MultiSelectFilter label="RCA Family" value={filters.rcaFamily} options={filterOptions.rcaFamily} onChange={(value) => setFilters((prev) => ({ ...prev, rcaFamily: value }))} />
+            <button className="ghost-button" onClick={() => { setFilters(EMPTY_FILTERS); setTablePage(1); }}><Filter size={16} /> Clear</button>
           </section>
+
+          <section className="stats-grid workbook-cards" style={{ backgroundImage: `linear-gradient(90deg, rgba(4,13,31,.88), rgba(4,13,31,.70)), url(${RIBBON_IMAGE})` }}>
+            <StatCard label="Total Tickets" value={analytics.totalUnique.toLocaleString()} note="Core Ticket Volume" icon={Layers3} tone="#22d3ee" onClick={() => { setFilters(EMPTY_FILTERS); setTablePage(1); }} />
+            <StatCard label="Closed Tickets" value={closed.toLocaleString()} note={`${pct(closed, analytics.totalUnique)} closed`} icon={CheckCircle2} tone="#34d399" onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Closed"] }); setTablePage(1); }} />
+            <StatCard label="Pending Tickets" value={pending.toLocaleString()} note="Needs Follow-Up" icon={ShieldAlert} tone="#f59e0b" onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Pending"] }); setTablePage(1); }} />
+            <StatCard label="Resolved Tickets" value={resolved.toLocaleString()} note="Tickets Resolved" icon={CheckCircle2} tone="#60a5fa" onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Resolved"] }); setTablePage(1); }} />
+            <StatCard label="Critical Tickets" value={critical.toLocaleString()} note="High Priority Severity" icon={AlertTriangle} tone="#ef4444" onClick={() => { setFilters({ ...EMPTY_FILTERS, severity: ["Critical"] }); setTablePage(1); }} />
+            <StatCard label="Major Tickets" value={major.toLocaleString()} note="Medium Priority Severity" icon={Activity} tone="#f59e0b" onClick={() => { setFilters({ ...EMPTY_FILTERS, severity: ["Major"] }); setTablePage(1); }} />
+            <StatCard label="Minor Tickets" value={minor ? minor.toLocaleString() : ""} note="Low Priority Severity" icon={CircleDot} tone="#22d3ee" onClick={() => { setFilters({ ...EMPTY_FILTERS, severity: ["Minor"] }); setTablePage(1); }} />
+            <StatCard label="Service Impact" value={serviceImpact.toLocaleString()} note="Exact Service Impact" icon={Network} tone="#a78bfa" onClick={() => { setFilters({ ...EMPTY_FILTERS, impact: ["Service Impact"] }); setTablePage(1); }} />
+            <StatCard label="Non-Service Impact" value={nonServiceImpact.toLocaleString()} note="No Service Impact" icon={XCircle} tone="#94a3b8" onClick={() => { setFilters({ ...EMPTY_FILTERS, impact: ["Non-Service Impact"] }); setTablePage(1); }} />
+            <StatCard label="Unique Sites" value={analytics.uniqueSites.toLocaleString()} note="Unique Site ID" icon={BarChart3} tone="#60a5fa" />
+            <StatCard label="Root Cause Updated" value={analytics.rootCauseUpdated.toLocaleString()} note="Tickets with Alarm Root Cause" icon={FileSpreadsheet} tone="#34d399" />
+            <StatCard label="Top RCA by Tickets Count" value={analytics.topRcaByCount.name || ""} note={analytics.topRcaByCount.value ? `${analytics.topRcaByCount.value.toLocaleString()} Tickets` : ""} icon={BarChart3} tone="#22d3ee" />
+            <StatCard label="Top RCA by Downtime" value={analytics.topRcaByDowntime.name || ""} note={formatHours(analytics.topRcaByDowntime.value)} icon={Activity} tone="#f59e0b" />
+            <StatCard label="Highest MTTR RCA" value={analytics.highestMttrRca.name || ""} note={formatHours(analytics.highestMttrRca.value)} icon={AlertTriangle} tone="#ef4444" />
+            <StatCard label="Repeated RCA Sites" value={analytics.repeatedRcaSites.toLocaleString()} note="Site + RCA pairs repeated" icon={Network} tone="#a78bfa" />
+            <StatCard label="RCA not Provided %" value={rcaNotProvidedPct} note={`${analytics.rcaNotProvidedCount.toLocaleString()} Tickets missing RCA`} icon={ShieldAlert} tone="#f97316" />
+          </section>
+
+
 
           <section className="chart-mosaic">
             <article className="glass-card wide">
-              <div className="card-heading"><div><span>Trend</span><h3>Unique TT by month</h3></div><BarChart3 size={18} /></div>
+              <div className="card-heading"><div><h3>Unique Tickets by month</h3></div><BarChart3 size={18} /></div>
               <ResponsiveContainer width="100%" height={290}>
                 <LineChart data={analytics.monthly} margin={{ left: 0, right: 22, top: 16, bottom: 8 }}>
                   <CartesianGrid stroke="rgba(148,163,184,.16)" vertical={false} />
@@ -1085,7 +1411,7 @@ export default function Home() {
             </article>
 
             <article className="glass-card tall">
-              <div className="card-heading"><div><span>{countMode === "primary" ? "Primary allocation" : "Site exposure"}</span><h3>Top sites by unique TT</h3></div></div>
+              <div className="card-heading"><div><h3>Top sites by unique Tickets</h3></div></div>
               <ResponsiveContainer width="100%" height={360}>
                 <BarChart data={analytics.topSites.slice(0, 10)} layout="vertical" margin={{ left: 18, right: 44, top: 8, bottom: 8 }}>
                   <CartesianGrid stroke="rgba(148,163,184,.12)" horizontal={false} />
@@ -1105,7 +1431,7 @@ export default function Home() {
             </article>
 
             <article className="glass-card">
-              <div className="card-heading"><div><span>Distribution</span><h3>Status</h3></div></div>
+              <div className="card-heading"><div><h3>Status</h3></div></div>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
                   <Pie data={analytics.status} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
@@ -1118,7 +1444,7 @@ export default function Home() {
             </article>
 
             <article className="glass-card">
-              <div className="card-heading"><div><span>Distribution</span><h3>Severity</h3></div></div>
+              <div className="card-heading"><div><h3>Severity</h3></div></div>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
                   <Pie data={analytics.severity} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
@@ -1131,7 +1457,7 @@ export default function Home() {
             </article>
 
             <article className="glass-card">
-              <div className="card-heading"><div><span>Distribution</span><h3>Region</h3></div></div>
+              <div className="card-heading"><div><h3>Region</h3></div></div>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
                   <Pie data={analytics.region} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
@@ -1144,7 +1470,7 @@ export default function Home() {
             </article>
 
             <article className="glass-card">
-              <div className="card-heading"><div><span>Operational view</span><h3>Escalation level</h3></div></div>
+              <div className="card-heading"><div><h3>Escalation level</h3></div></div>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
                   <Pie data={analytics.escalation} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
@@ -1156,8 +1482,24 @@ export default function Home() {
               </ResponsiveContainer>
             </article>
 
+            <article className="glass-card">
+              <div className="card-heading"><div><h3>Service impact</h3></div></div>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={analytics.impact} margin={{ left: 0, right: 24, top: 18, bottom: 42 }}>
+                  <CartesianGrid stroke="rgba(148,163,184,.12)" vertical={false} />
+                  <XAxis dataKey="name" stroke="#cbd5e1" tickLine={false} axisLine={false} interval={0} angle={-18} textAnchor="end" height={58} tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                  <Bar dataKey="value" radius={[10, 10, 0, 0]} fill="#a78bfa">
+                    <LabelList dataKey="value" position="top" fill="#e2e8f0" fontSize={12} />
+                    {analytics.impact.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </article>
+
             <article className="glass-card full">
-              <div className="card-heading"><div><span>Root cause analysis</span><h3>Top 10 RCA by unique TT count</h3></div></div>
+              <div className="card-heading"><div><h3>Top 10 RCA by unique Tickets count</h3></div></div>
               <ResponsiveContainer width="100%" height={320}>
                 <BarChart data={analytics.rcaByCount.slice(0, 10)} layout="vertical" margin={{ left: 18, right: 56, top: 8, bottom: 8 }}>
                   <CartesianGrid stroke="rgba(148,163,184,.12)" horizontal={false} />
@@ -1172,7 +1514,7 @@ export default function Home() {
             </article>
 
             <article className="glass-card wide">
-              <div className="card-heading"><div><span>RCA family</span><h3>Operational families — TT distribution</h3></div></div>
+              <div className="card-heading"><div><h3>Operational families -- Tickets distribution</h3></div></div>
               <div className="rca-family-layout">
                 <ResponsiveContainer width="100%" height={280}>
                   <PieChart>
@@ -1194,30 +1536,23 @@ export default function Home() {
               </div>
             </article>
 
-            <article className="glass-card">
-              <div className="card-heading"><div><span>Preventability</span><h3>Preventable vs Non-preventable</h3></div></div>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={analytics.preventableBreakdown} dataKey="value" nameKey="name" innerRadius={52} outerRadius={82} paddingAngle={4} labelLine={false} label={renderPieLabel}>
-                    {analytics.preventableBreakdown.map((entry, index) => <Cell key={entry.name} fill={entry.name === "Preventable" ? "#34d399" : "#f59e0b"} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
-                  <Legend />
-                </PieChart>
+            <article className="glass-card wide">
+              <div className="card-heading"><div><h3>Top Managed Resources by Ticket Count</h3></div></div>
+              <ResponsiveContainer width="100%" height={Math.max(200, analytics.topManagedResources.length * 32 + 24)}>
+                <BarChart data={analytics.topManagedResources} layout="vertical" margin={{ left: 18, right: 72, top: 8, bottom: 8 }}>
+                  <CartesianGrid stroke="rgba(148,163,184,.12)" horizontal={false} />
+                  <XAxis type="number" stroke="#94a3b8" allowDecimals={false} />
+                  <YAxis dataKey="name" type="category" stroke="#cbd5e1" width={220} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} interval={0} />
+                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} formatter={(v: number) => [v.toLocaleString(), "Tickets"]} />
+                  <Bar dataKey="value" radius={[0, 10, 10, 0]} fill="#22d3ee">
+                    <LabelList dataKey="value" position="right" fill="#e2e8f0" fontSize={12} />
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
-              <div className="rca-prev-summary">
-                {analytics.preventableBreakdown.map((entry: { name: string; value: number }) => (
-                  <div key={entry.name} className="rca-prev-row">
-                    <span style={{ color: entry.name === "Preventable" ? "#34d399" : "#f59e0b" }}>{entry.name}</span>
-                    <strong>{entry.value}</strong>
-                    <small>{pct(entry.value, analytics.totalUnique)}</small>
-                  </div>
-                ))}
-              </div>
             </article>
 
             <article className="glass-card wide">
-              <div className="card-heading"><div><span>Downtime analysis</span><h3>Top 10 RCA by total downtime (hrs)</h3></div></div>
+              <div className="card-heading"><div><h3>Top 10 RCA by total downtime (hrs)</h3></div></div>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={analytics.rcaByDowntime.slice(0, 10)} layout="vertical" margin={{ left: 18, right: 72, top: 8, bottom: 8 }}>
                   <CartesianGrid stroke="rgba(148,163,184,.12)" horizontal={false} />
@@ -1232,7 +1567,7 @@ export default function Home() {
             </article>
 
             <article className="glass-card">
-              <div className="card-heading"><div><span>MTTR analysis</span><h3>Highest MTTR by RCA</h3></div></div>
+              <div className="card-heading"><div><h3>Highest MTTR by RCA</h3></div></div>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={analytics.rcaByMttr.slice(0, 8)} layout="vertical" margin={{ left: 18, right: 72, top: 8, bottom: 8 }}>
                   <CartesianGrid stroke="rgba(148,163,184,.12)" horizontal={false} />
@@ -1247,7 +1582,7 @@ export default function Home() {
             </article>
 
             <article className="glass-card full">
-              <div className="card-heading"><div><span>RCA Family Trend</span><h3>Monthly RCA Family distribution — stacked TT count</h3></div></div>
+              <div className="card-heading"><div><h3>Monthly RCA Family distribution -- stacked Tickets count</h3></div></div>
               <ResponsiveContainer width="100%" height={340}>
                 <BarChart data={analytics.monthlyRcaFamily} margin={{ left: 0, right: 24, top: 8, bottom: 48 }}>
                   <CartesianGrid stroke="rgba(148,163,184,.12)" vertical={false} />
@@ -1262,30 +1597,16 @@ export default function Home() {
               </ResponsiveContainer>
             </article>
 
-            <article className="glass-card">
-              <div className="card-heading"><div><span>Impact</span><h3>Service impact</h3></div></div>
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={analytics.impact} margin={{ left: 0, right: 24, top: 18, bottom: 42 }}>
-                  <CartesianGrid stroke="rgba(148,163,184,.12)" vertical={false} />
-                  <XAxis dataKey="name" stroke="#cbd5e1" tickLine={false} axisLine={false} interval={0} angle={-18} textAnchor="end" height={58} tick={{ fontSize: 11 }} />
-                  <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} allowDecimals={false} />
-                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
-                  <Bar dataKey="value" radius={[10, 10, 0, 0]} fill="#a78bfa">
-                    <LabelList dataKey="value" position="top" fill="#e2e8f0" fontSize={12} />
-                    {analytics.impact.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </article>
           </section>
 
 
 
           <section className="table-card">
             <div className="table-heading">
-              <div><span className="section-kicker">Unique register</span><h2>{filteredTickets.length.toLocaleString()} distinct TT records</h2></div>
-              <p>Showing first 150 dashboard-filtered tickets in the same report order as the source-style register. Site ID and Site Name include all affected sites for each distinct TT.</p>
-
+              <div><h2>{filteredTickets.length.toLocaleString()} distinct Ticket records</h2></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ color: "#94a3b8", fontSize: 13 }}>Page {tablePage} of {Math.max(1, Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE))} &mdash; {filteredTickets.length.toLocaleString()} total</span>
+              </div>
             </div>
             <div className="table-scroll" id="ticket-table-wrapper">
               <table>
@@ -1293,14 +1614,26 @@ export default function Home() {
                   <tr>{DISTINCT_REPORT_HEADERS.map((header) => <th key={header}>{header}</th>)}</tr>
                 </thead>
                 <tbody>
-                  {filteredTickets.slice(0, 150).map((ticket, index) => {
+                  {filteredTickets.slice((tablePage - 1) * TABLE_PAGE_SIZE, tablePage * TABLE_PAGE_SIZE).map((ticket, index) => {
                     const row = ticket.primary;
                     const reportRow = distinctReportRow(ticket, index);
+                    const siteIds = Array.from(ticket.siteIds).filter(Boolean);
+                    const siteNames = Array.from(ticket.siteNames).filter(Boolean);
                     return (
                       <tr key={ticket.tt}>
                         {reportRow.map((cell, cellIndex) => {
                           const header = DISTINCT_REPORT_HEADERS[cellIndex];
                           if (header === "#" || header === "TT") return <td key={header} className="mono">{cell}</td>;
+                          if (header === "Site ID") return (
+                            <td key={header} className="mono" style={{ whiteSpace: "pre-line", lineHeight: 1.9 }}>
+                              {siteIds.length ? siteIds.map((id, i) => <span key={id}>{id}{i < siteIds.length - 1 ? "\n" : ""}</span>) : cell}
+                            </td>
+                          );
+                          if (header === "Site Name") return (
+                            <td key={header} style={{ whiteSpace: "pre-line", lineHeight: 1.9 }}>
+                              {siteNames.length ? siteNames.map((name, i) => <span key={name}>{name}{i < siteNames.length - 1 ? "\n" : ""}</span>) : cell}
+                            </td>
+                          );
                           if (header === "Severity") return <td key={header}><span className="pill" style={{ ["--pill" as string]: SEVERITY_COLORS[row.severity] ?? "#64748b" }}>{cell}</span></td>;
                           if (header === "Status") return <td key={header}><span className="pill" style={{ ["--pill" as string]: STATUS_COLORS[row.status] ?? "#64748b" }}>{cell}</span></td>;
                           if (["Issues", "RCA", "Recommended Action", "Responsible Team"].includes(header)) return <td key={header} className="issue-cell">{cell}</td>;
@@ -1312,6 +1645,25 @@ export default function Home() {
                 </tbody>
               </table>
             </div>
+            {Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE) > 1 && (
+              <div className="pagination-bar no-print">
+                <button className="ghost-button" disabled={tablePage <= 1} onClick={() => setTablePage(1)}>«</button>
+                <button className="ghost-button" disabled={tablePage <= 1} onClick={() => setTablePage((p) => p - 1)}>‹ Prev</button>
+                {Array.from({ length: Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE) }, (_, i) => i + 1)
+                  .filter((p) => p === 1 || p === Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE) || Math.abs(p - tablePage) <= 2)
+                  .reduce<(number | "...")[]>((acc, p, idx, arr) => {
+                    if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push("...");
+                    acc.push(p);
+                    return acc;
+                  }, [])
+                  .map((p, idx) =>
+                    p === "..." ? <span key={`ellipsis-${idx}`} style={{ color: "#94a3b8", padding: "0 4px" }}>…</span> :
+                    <button key={p} className={`ghost-button${p === tablePage ? " active-page" : ""}`} onClick={() => setTablePage(p as number)}>{p}</button>
+                  )}
+                <button className="ghost-button" disabled={tablePage >= Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE)} onClick={() => setTablePage((p) => p + 1)}>Next ›</button>
+                <button className="ghost-button" disabled={tablePage >= Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE)} onClick={() => setTablePage(Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE))}>»</button>
+              </div>
+            )}
           </section>
         </>
       )}
