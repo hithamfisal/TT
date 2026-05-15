@@ -90,5 +90,8 @@
     "vite": "^7.1.7",
     "vite-plugin-manus-runtime": "^0.0.57",
     "vitest": "^2.1.4"
+  }
+  }
+    "vitest": "^2.1.4"
   
 }
