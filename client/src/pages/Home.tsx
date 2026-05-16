@@ -1,8 +1,3 @@
-/*
-Design philosophy: Calm Enterprise Glass for a premium telecom network-observability cockpit.
-Use deep ink backgrounds, translucent panels, cyan focus accents, tabular TT numerals, and restrained motion.
-Does this choice reinforce or dilute our design philosophy?
-*/
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
@@ -44,22 +39,17 @@ import {
   YAxis,
 } from "recharts";
 
-import nascoLogoSrc from "../assets/nascologo.png";
-import ngLogoSrc from "../assets/nglogo.png";
-
-const HERO_IMAGE =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310419663031216744/LFprMZJgQoCY2omHrJr6xN/followup-hero-network-cockpit-GEqHM9kSYycEMt32RSfRxg.webp";
-const UPLOAD_IMAGE =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310419663031216744/LFprMZJgQoCY2omHrJr6xN/followup-upload-orb-YcKWLpbfcdm5ofcRiuQymn.webp";
-const RIBBON_IMAGE =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310419663031216744/LFprMZJgQoCY2omHrJr6xN/followup-network-ribbon-Lv2N5GpYhLW5eJjvLPNzkg.webp";
-
+import nascoLogoSrc from "/nascologo.png";
+import ngLogoSrc from "/nglogo.png";
+const HERO_IMAGE = "/h.png";
+const UPLOAD_IMAGE = "/h.png";
+const RIBBON_IMAGE = "/h.png";
 const COLORS = ["#22d3ee", "#60a5fa", "#f59e0b", "#ef4444", "#34d399", "#a78bfa", "#f472b6", "#94a3b8"];
 const STATUS_COLORS: Record<string, string> = {
-  Closed: "#34d399",
-  Pending: "#f59e0b",
-  Resolved: "#60a5fa",
-  Open: "#ef4444",
+    Closed: "#34d399",
+    Pending: "#f59e0b",
+    Resolved: "#60a5fa",
+    Open: "#ef4444",
 };
 const SEVERITY_COLORS: Record<string, string> = {
   Critical: "#ef4444",
@@ -1288,7 +1278,15 @@ export default function Home() {
 
   return (
     <main className="dashboard-shell">
-      <section className="hero-panel" style={{ backgroundImage: `linear-gradient(90deg, rgba(3,7,18,.96) 0%, rgba(3,7,18,.78) 42%, rgba(3,7,18,.26) 100%), url(${HERO_IMAGE})` }}>
+<section
+  className="hero-panel"
+  style={{
+    backgroundImage: `linear-gradient(90deg, rgba(3,7,18,.96) 0%, rgba(3,7,18,.78) 42%, rgba(3,7,18,.26) 100%), url(${HERO_IMAGE})`,
+    backgroundSize: "contain",        // 👈 fills everything
+    backgroundPosition: "top",      // 👈 keeps top visible
+    backgroundRepeat: "no-repeat",
+  }}
+>
         <nav className="topbar no-print">
           <div className="brand-cluster">
             <div className="brand-mark"><Network size={18} /> DMR Ticketing Dashboard</div>
