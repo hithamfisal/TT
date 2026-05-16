@@ -1,3 +1,8 @@
+/*
+Design philosophy: Calm Enterprise Glass for a premium telecom network-observability cockpit.
+Use deep ink backgrounds, translucent panels, cyan focus accents, tabular TT numerals, and restrained motion.
+Does this choice reinforce or dilute our design philosophy?
+*/
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
@@ -39,17 +44,20 @@ import {
   YAxis,
 } from "recharts";
 
+
+
 import nascoLogoSrc from "/nascologo.png";
 import ngLogoSrc from "/nglogo.png";
 const HERO_IMAGE = "/h.png";
 const UPLOAD_IMAGE = "/h.png";
 const RIBBON_IMAGE = "/h.png";
+
 const COLORS = ["#22d3ee", "#60a5fa", "#f59e0b", "#ef4444", "#34d399", "#a78bfa", "#f472b6", "#94a3b8"];
 const STATUS_COLORS: Record<string, string> = {
-    Closed: "#34d399",
-    Pending: "#f59e0b",
-    Resolved: "#60a5fa",
-    Open: "#ef4444",
+  Closed: "#34d399",
+  Pending: "#f59e0b",
+  Resolved: "#60a5fa",
+  Open: "#ef4444",
 };
 const SEVERITY_COLORS: Record<string, string> = {
   Critical: "#ef4444",
@@ -102,6 +110,8 @@ type DashboardData = {
   generatedAt: string;
   rows: TicketRecord[];
   uniqueTickets: TicketAggregate[];
+  /** Ordered sites from the SiteID sheet (if present), used to sort the Monthly Performance table */
+  siteOrder: { siteId: string; siteName: string }[];
 };
 
 
@@ -225,15 +235,13 @@ function selectedMonthRange(selectedMonth: string): { start: Date; end: Date } |
   return Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) ? null : { start, end };
 }
 
-function observationRecoveryOverlapsMonth(row: TicketRecord, selectedMonth: string): boolean {
-  const range = selectedMonthRange(selectedMonth);
-  if (!range) return false;
-  const observation = parseDateValue(row.observationDate);
-  const recovery = parseDateValue(row.recoveryDate);
-  if (!observation || !recovery) return false;
-  const startDate = observation <= recovery ? observation : recovery;
-  const endDate = recovery >= observation ? recovery : observation;
-  return startDate <= range.end && endDate >= range.start;
+/** Total hours in a given month key (e.g. "2025-03" = 31 * 24 = 744) */
+function totalHoursInMonth(monthKey: string): number {
+  const range = selectedMonthRange(monthKey);
+  if (!range) return 0;
+  // days in month = day of last day
+  const daysInMonth = range.end.getDate();
+  return daysInMonth * 24;
 }
 
 function coveredMonthKeys(row: TicketRecord): string[] {
@@ -288,12 +296,10 @@ function ticketMatchesMonthlyExport(ticket: TicketAggregate, selectedMonth: stri
     // Criterion 2: Recovery Date falls within the selected month
     const recoveryInMonth = recDate !== null && recDate >= range.start && recDate <= range.end;
 
-    // Criterion 3: Status is Pending AND Observation Date ≤ last day of the selected month
-    // (ticket was opened any time before or during the month and is still unresolved as of that month)
+    // Criterion 3: Status is Pending AND Observation Date <= last day of the selected month
     const pendingBeforeMonthEnd = isPendingStatus(row.status) && obsDate !== null && obsDate <= range.end;
 
     // Criterion 4: Ticket was active throughout the entire month
-    // (Observation Date before the first day AND Recovery Date after the last day)
     const spansEntireMonth = obsDate !== null && recDate !== null && obsDate < range.start && recDate > range.end;
 
     return observationInMonth || recoveryInMonth || pendingBeforeMonthEnd || spansEntireMonth;
@@ -322,7 +328,6 @@ function formatMonthMMMMYYYY(monthKey: string): string {
 }
 
 async function exportFormattedExcel(rows: TicketAggregate[], monthKey: string) {
-  // Fetch the pre-formatted template
   const templateUrl = "/manus-storage/DMRMonthlyReportEOA_76429c79.xlsx";
   let templateBuffer: ArrayBuffer;
   try {
@@ -330,25 +335,18 @@ async function exportFormattedExcel(rows: TicketAggregate[], monthKey: string) {
     if (!response.ok) throw new Error("Template not found");
     templateBuffer = await response.arrayBuffer();
   } catch {
-    // Fallback: export as plain Excel
     exportExcel(rows);
     return;
   }
   const wb = XLSX.read(templateBuffer, { type: "array", cellStyles: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
 
-  // Write month label at R5 (col 18 = R)
   const monthLabel = formatMonthMMMMYYYY(monthKey);
   if (monthLabel) {
     ws["R5"] = { t: "s", v: monthLabel };
   }
 
-  // Data starts at row 39 (after header rows 37-38)
   const DATA_START_ROW = 39;
-  // Column mapping (1-indexed): A=1 No, B=2 Equipment/site, C=3 Site Name, E=5 Managed Resource,
-  // F=6 Severity, G=7 Alarm Type, H=8 Escalation Date, I=9 Escalation Time,
-  // J=10 Recovery Date, K=11 Recovery Time, L=12 L3 Date, M=13 L3 Time,
-  // N=14 Duration, O=15 TT Number, P=16 TT Status, Q=17 TT Owner, R=18 Comments
   const colLetter = (n: number) => {
     let s = "";
     while (n > 0) { s = String.fromCharCode(((n - 1) % 26) + 65) + s; n = Math.floor((n - 1) / 26); }
@@ -359,15 +357,12 @@ async function exportFormattedExcel(rows: TicketAggregate[], monthKey: string) {
     ws[addr] = { t: typeof value === "number" ? "n" : "s", v: value };
   };
 
-  // Remove existing data rows between DATA_START_ROW and the signature rows (row 60)
-  // by clearing cells in those rows
   for (let r = DATA_START_ROW; r < 60; r++) {
     for (let c = 1; c <= 18; c++) {
       delete ws[`${colLetter(c)}${r}`];
     }
   }
 
-  // Write ticket rows
   rows.forEach((ticket, idx) => {
     const row = ticket.primary;
     const r = DATA_START_ROW + idx;
@@ -392,7 +387,6 @@ async function exportFormattedExcel(rows: TicketAggregate[], monthKey: string) {
     setCell(r, 18, row.actionTaken || "");
   });
 
-  // Update the worksheet ref range
   if (!ws["!ref"]) ws["!ref"] = "A1:R62";
   else {
     const lastDataRow = Math.max(DATA_START_ROW + rows.length - 1, 59);
@@ -405,11 +399,21 @@ async function exportFormattedExcel(rows: TicketAggregate[], monthKey: string) {
 
 function parseDurationHours(duration: string): number | null {
   if (!duration) return null;
-  const days = Number(duration.match(/(\d+)\s*days?/i)?.[1] ?? 0);
-  const hrs = Number(duration.match(/(\d+)\s*hrs?/i)?.[1] ?? 0);
-  const mins = Number(duration.match(/(\d+)\s*mins?/i)?.[1] ?? 0);
-  const total = days * 24 + hrs + mins / 60;
-  return Number.isFinite(total) ? total : null;
+  // Handle text format: "3 days 21 hrs 29 mins" or "0 days 2 hrs 21 mins"
+  if (/days?/i.test(duration) || /hrs?/i.test(duration)) {
+    const days = Number(duration.match(/(\d+)\s*days?/i)?.[1] ?? 0);
+    const hrs = Number(duration.match(/(\d+)\s*hrs?/i)?.[1] ?? 0);
+    const mins = Number(duration.match(/(\d+)\s*mins?/i)?.[1] ?? 0);
+    const total = days * 24 + hrs + mins / 60;
+    return Number.isFinite(total) ? total : null;
+  }
+  // Handle Excel numeric fraction (timedelta stored as fraction of a day, e.g. 0.09791...)
+  const num = Number(duration);
+  if (Number.isFinite(num) && num >= 0 && num < 3650) {
+    // Excel stores duration as days; multiply by 24 to get hours
+    return Math.round(num * 24 * 10) / 10;
+  }
+  return null;
 }
 
 const RCA_FAMILY_MAP: Record<string, string> = {
@@ -523,15 +527,65 @@ function groupTickets(rows: TicketRecord[]): TicketAggregate[] {
   return Array.from(grouped.values());
 }
 
+function parseSiteOrder(workbook: XLSX.WorkBook): { siteId: string; siteName: string }[] {
+  // The SiteID table lives on the "Dashboard_Data" sheet at columns J-L (indices 9-11),
+  // with the header row containing "#", "Site ID", "Site Name".
+  // We scan the sheet as a 2D array to find the header row, then read data rows below it.
+  const siteSheetName = workbook.SheetNames.find((name) => {
+    const n = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return n === "dashboarddata" || n === "siteid" || n === "sites" || n === "sitelist" || n === "siteids" || n === "sitedata";
+  });
+  if (!siteSheetName) return [];
+  const sheet = workbook.Sheets[siteSheetName];
+  // Read as 2D array (no header inference)
+  const raw2d = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null }) as unknown[][];
+
+  // Find the header row: look for a row that has "Site ID" somewhere
+  let siteIdCol = -1;
+  let siteNameCol = -1;
+  let headerRowIdx = -1;
+  for (let ri = 0; ri < raw2d.length; ri++) {
+    const row = raw2d[ri];
+    for (let ci = 0; ci < row.length; ci++) {
+      const cell = String(row[ci] ?? "").trim().toLowerCase();
+      if (cell === "site id" || cell === "siteid") {
+        siteIdCol = ci;
+        headerRowIdx = ri;
+      }
+      if (cell === "site name" || cell === "sitename") {
+        siteNameCol = ci;
+      }
+    }
+    if (siteIdCol >= 0 && siteNameCol >= 0) break;
+  }
+
+  if (headerRowIdx < 0 || siteIdCol < 0) return [];
+
+  const seen = new Set<string>();
+  const result: { siteId: string; siteName: string }[] = [];
+
+  for (let ri = headerRowIdx + 1; ri < raw2d.length; ri++) {
+    const row = raw2d[ri];
+    const id = clean(String(row[siteIdCol] ?? ""));
+    const name = siteNameCol >= 0 ? clean(String(row[siteNameCol] ?? "")) : "";
+    // Stop if we hit an empty Site ID cell (end of table)
+    if (!id) break;
+    if (!seen.has(id)) {
+      seen.add(id);
+      result.push({ siteId: id, siteName: name });
+    }
+  }
+
+  return result;
+}
+
 function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
   const preferred = workbook.SheetNames.find((name) => name.toLowerCase().includes("tickets_data"));
   const sheetName = preferred ?? workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
-  // Use raw:true so date cells come in as Excel serial numbers (reliable for parseDateValue).
-  // We immediately convert date fields to dd/mm/yyyy strings so display remains readable.
   const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: true });
+  const siteOrder = parseSiteOrder(workbook);
 
-  // Helper: convert a raw cell value (serial number, Date, or string) to dd/mm/yyyy string
   function toDateStr(val: unknown): string {
     if (val === null || val === undefined || val === "") return "";
     const parsed = parseDateValue(val);
@@ -541,16 +595,13 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
     return `${d}/${m}/${parsed.getFullYear()}`;
   }
 
-  // Helper: convert a raw cell value (Excel time fraction, Date object, or string) to hh:mm string
   function toTimeStr(val: unknown): string {
     if (val === null || val === undefined || val === "") return "";
-    // SheetJS raw:true returns time-only cells as Date objects (epoch 1899-12-30, time in UTC)
     if (val instanceof Date) {
       const hh = String(val.getUTCHours()).padStart(2, "0");
       const mm = String(val.getUTCMinutes()).padStart(2, "0");
       return `${hh}:${mm}`;
     }
-    // Excel stores time as a fractional day (0.0 = midnight, 0.5 = noon)
     if (typeof val === "number") {
       const totalMinutes = Math.round(val * 24 * 60);
       const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0");
@@ -558,10 +609,8 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
       return `${hh}:${mm}`;
     }
     const text = String(val).trim();
-    // Already hh:mm or hh:mm:ss -- strip seconds
     const hhmmss = text.match(/^(\d{1,2}):(\d{2})(:\d{2})?$/);
     if (hhmmss) return `${hhmmss[1].padStart(2, "0")}:${hhmmss[2]}`;
-    // Fallback: return as-is
     return text;
   }
 
@@ -613,6 +662,7 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
     generatedAt: new Date().toLocaleString(),
     rows,
     uniqueTickets: groupTickets(rows),
+    siteOrder,
   };
 }
 
@@ -662,6 +712,296 @@ const DISTINCT_REPORT_HEADERS = [
   "Action",
 ];
 
+// Monthly Performance table columns (report order)
+const PERF_REPORT_HEADERS = [
+  "S No",
+  "Site ID",
+  "Site Name",
+  "Site Availability, Hrs",
+  "Site Availability, days",
+  "Channel Busy Count",
+  "MW link Performance, Hrs",
+  "DMR Reliability",
+  "Sites Down, hrs",
+];
+
+type PerfRow = {
+  siteId: string;      // e.g. "RF Site 1"
+  siteName: string;    // e.g. "Karma S_S (EOA)"
+  sitesDownHours: number;
+  availHours: number;
+  availDay: string;
+  reliability: string;
+  channelBusy: number;
+  mwLinkPerf: number;
+  ticketCount: number; // used for fallback sorting
+};
+
+/**
+ * Compute Monthly Performance rows.
+ * Sites Down (Hour) = SUMPRODUCT of duration hours for rows where:
+ *   - Site ID matches
+ *   - Opening Month is within the selected month
+ *   - Service Impaction Status = "Service Impact"
+ *   - Managed Resource = "Complete site" OR "Link Down"
+ * Sorted by the SiteID sheet order (siteOrder). Falls back to ticket-count descending if no SiteID sheet.
+ */
+function computePerfRows(allRows: TicketRecord[], monthKey: string, siteOrder: { siteId: string; siteName: string }[] = []): PerfRow[] {
+  const range = monthKey !== "all" ? selectedMonthRange(monthKey) : null;
+  const monthHours = monthKey !== "all" ? totalHoursInMonth(monthKey) : 24 * 30; // fallback 30d
+
+  // Build site map: siteId -> siteName (first seen)
+  const siteNameMap = new Map<string, string>();
+  // Build site -> ticket count (for sorting)
+  const siteTicketCount = new Map<string, number>();
+  // Build site -> down hours
+  const siteDownHours = new Map<string, number>();
+
+  allRows.forEach((row) => {
+    if (!row.siteId) return;
+    if (!siteNameMap.has(row.siteId) && row.siteName) {
+      siteNameMap.set(row.siteId, row.siteName);
+    }
+  });
+
+  // Count tickets per site (for SORTBY equivalent)
+  allRows.forEach((row) => {
+    if (!row.siteId) return;
+    siteTicketCount.set(row.siteId, (siteTicketCount.get(row.siteId) ?? 0) + 1);
+  });
+
+  // Compute down hours per site
+  allRows.forEach((row) => {
+    if (!row.siteId) return;
+
+    // Filter: opening month within selected month (using date range, same as before)
+    if (range) {
+      const obsDate = parseDateValue(row.observationDate);
+      if (!obsDate || obsDate < range.start || obsDate > range.end) return;
+    }
+
+    // Filter: Service Impact
+    if (clean(row.impact).toLowerCase() !== "service impact") return;
+
+    // Filter: Managed Resource = "Complete site" OR "Link Down"
+    const mr = clean(row.managedResource).toLowerCase();
+    if (mr !== "complete site" && mr !== "link down") return;
+
+    const hours = parseDurationHours(row.duration) ?? 0;
+    siteDownHours.set(row.siteId, Math.round(((siteDownHours.get(row.siteId) ?? 0) + hours) * 10) / 10);
+  });
+
+  // Build site list from SiteID sheet order (only sites in that sheet).
+  // If no SiteID sheet, fall back to all sites sorted by ticket count descending.
+  let siteEntries: { siteId: string; siteName: string }[];
+  if (siteOrder.length > 0) {
+    // Only show sites that are in the SiteID sheet, in that exact order.
+    // Use the SiteID sheet's own site name (not from tickets data).
+    siteEntries = siteOrder;
+  } else {
+    const allSiteIds = Array.from(siteNameMap.keys()).filter((id) => id !== "");
+    allSiteIds.sort((a, b) => (siteTicketCount.get(b) ?? 0) - (siteTicketCount.get(a) ?? 0));
+    siteEntries = allSiteIds.map((id) => ({ siteId: id, siteName: siteNameMap.get(id) ?? "" }));
+  }
+
+  return siteEntries.map(({ siteId, siteName }) => {
+    const downHours = siteDownHours.get(siteId) ?? 0;
+    const availHours = Math.max(0, monthHours - downHours);
+    const totalHours = availHours + downHours;
+    const reliability = totalHours > 0 ? availHours / totalHours : 1;
+
+    // Format availability as "X d, Y h, Z m"
+    const totalMins = Math.round(availHours * 60);
+    const dDays = Math.floor(totalMins / (60 * 24));
+    const dHrs = Math.floor((totalMins % (60 * 24)) / 60);
+    const dMins = Math.round(totalMins % 60);
+    const availDay = `${dDays} d, ${dHrs} h, ${dMins} m`;
+
+    return {
+      siteId,
+      siteName,
+      sitesDownHours: downHours,
+      availHours: Math.round(availHours * 10) / 10,
+      availDay,
+      reliability: `${(reliability * 100).toFixed(2)}%`,
+      channelBusy: 0,
+      mwLinkPerf: 0,
+      ticketCount: siteTicketCount.get(siteId) ?? 0,
+    };
+  });
+}
+
+
+function perfReportRows(rows: PerfRow[]): string[][] {
+  // Column order: S No, Site ID, Site Name, Site Availability Hrs, Site Availability days,
+  //               Channel Busy Count, MW link Performance Hrs, DMR Reliability, Sites Down hrs
+  return rows.map((r, i) => [
+    String(i + 1),
+    r.siteId,
+    r.siteName,
+    r.availHours > 0 ? String(r.availHours) : "",
+    r.availDay,
+    "",  // Channel Busy Count placeholder
+    "",  // MW link Performance placeholder
+    r.reliability,
+    r.sitesDownHours > 0 ? String(r.sitesDownHours) : "",
+  ]);
+}
+
+/**
+ * Compute the 4 KPI metrics from perfRows.
+ * % Availability = SUM(availHours) / (SUM(availHours) + SUM(downHours))
+ * MTTR           = SUM(downHours) / COUNT(sites where downHours > 0)
+ * MTBF           = SUM(availHours + downHours) / SUM(downHours)
+ * MTTF           = MTBF + MTTR
+ */
+function computePerfKPIs(rows: PerfRow[]): {
+  pctAvailability: string;
+  mttr: string;
+  mtbf: string;
+  mttf: string;
+  totalDown: number;
+  totalAvail: number;
+} {
+  const totalAvail = rows.reduce((s, r) => s + r.availHours, 0);
+  const totalDown  = rows.reduce((s, r) => s + r.sitesDownHours, 0);
+  const sitesWithDown = rows.filter((r) => r.sitesDownHours > 0).length;
+  const totalHrs = totalAvail + totalDown;
+
+  const pctAvailability = totalHrs > 0
+    ? `${((totalAvail / totalHrs) * 100).toFixed(2)}%`
+    : "";
+  const mttr = sitesWithDown > 0
+    ? `${(totalDown / sitesWithDown).toFixed(2)} hrs`
+    : "";
+  const mtbf = totalDown > 0
+    ? `${(totalHrs / totalDown).toFixed(2)} hrs`
+    : "";
+  const mtbfNum = totalDown > 0 ? totalHrs / totalDown : null;
+  const mttrNum = sitesWithDown > 0 ? totalDown / sitesWithDown : null;
+  const mttf = mtbfNum !== null && mttrNum !== null
+    ? `${(mtbfNum + mttrNum).toFixed(2)} hrs`
+    : "";
+
+  return { pctAvailability, mttr, mtbf, mttf, totalDown: Math.round(totalDown * 10) / 10, totalAvail: Math.round(totalAvail * 10) / 10 };
+}
+
+function exportPerfCsv(rows: PerfRow[], monthKey: string) {
+  const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
+  const kpi = computePerfKPIs(rows);
+  const kpiRows: string[][] = [
+    [],
+    ["KPI Summary"],
+    ["% Availability", kpi.pctAvailability],
+    ["MTTR", kpi.mttr],
+    ["MTBF", kpi.mtbf],
+    ["MTTF", kpi.mttf],
+  ];
+  const csv = [PERF_REPORT_HEADERS, ...perfReportRows(rows), ...kpiRows]
+    .map((line) => line.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `DMR-Monthly-Performance-${monthLabel}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportPerfExcel(rows: PerfRow[], monthKey: string) {
+  const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
+  const kpi = computePerfKPIs(rows);
+  const kpiRows: string[][] = [
+    [],
+    ["KPI Summary"],
+    ["% Availability", kpi.pctAvailability],
+    ["MTTR", kpi.mttr],
+    ["MTBF", kpi.mtbf],
+    ["MTTF", kpi.mttf],
+  ];
+  const worksheet = XLSX.utils.aoa_to_sheet([PERF_REPORT_HEADERS, ...perfReportRows(rows), ...kpiRows]);
+  worksheet["!cols"] = [
+    { wch: 6 },  // S No
+    { wch: 14 }, // Site ID
+    { wch: 30 }, // Site Name
+    { wch: 24 }, // Site Availability, Hrs
+    { wch: 26 }, // Site Availability, days
+    { wch: 20 }, // Channel Busy Count
+    { wch: 26 }, // MW link Performance, Hrs
+    { wch: 18 }, // DMR Reliability
+    { wch: 18 }, // Sites Down, hrs
+  ];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Monthly Performance");
+  XLSX.writeFile(workbook, `DMR-Monthly-Performance-${monthLabel}.xlsx`);
+}
+
+function exportPerfPdf(rows: PerfRow[], monthKey: string) {
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
+  const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
+  doc.setFontSize(14);
+  doc.setTextColor(10, 30, 60);
+  doc.text(`DMR Monthly Performance Report -- ${monthLabel}`, 14, 16);
+  doc.setFontSize(9);
+  doc.setTextColor(100);
+  doc.text(`Generated: ${new Date().toLocaleString()} | Total Sites: ${rows.length}`, 14, 22);
+
+  const kpi = computePerfKPIs(rows);
+  const kpiSummaryY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable?.finalY;
+  autoTable(doc, {
+    startY: 26,
+    head: [PERF_REPORT_HEADERS],
+    body: perfReportRows(rows),
+    styles: { fontSize: 8, cellPadding: 2, overflow: "linebreak", valign: "middle" },
+    headStyles: { fillColor: [4, 60, 100], textColor: 255, fontStyle: "bold", fontSize: 8.5 },
+    alternateRowStyles: { fillColor: [240, 246, 255] },
+    columnStyles: {
+      0: { cellWidth: 10 },  // S No
+      1: { cellWidth: 22 },  // Site ID
+      2: { cellWidth: 38 },  // Site Name
+      3: { cellWidth: 28 },  // Site Availability, Hrs
+      4: { cellWidth: 36 },  // Site Availability, days
+      5: { cellWidth: 24 },  // Channel Busy Count
+      6: { cellWidth: 32 },  // MW link Performance, Hrs
+      7: { cellWidth: 22 },  // DMR Reliability
+      8: { cellWidth: 22 },  // Sites Down, hrs
+    },
+    margin: { left: 10, right: 10 },
+    didDrawPage: (data) => {
+      const pageCount = (doc as jsPDF & { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages();
+      doc.setFontSize(7);
+      doc.setTextColor(150);
+      doc.text(`Page ${data.pageNumber} of ${pageCount}`, doc.internal.pageSize.getWidth() - 30, doc.internal.pageSize.getHeight() - 6);
+    },
+  });
+
+  const finalY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable?.finalY ?? 26;
+  void kpiSummaryY; // used above
+  const kpiStartY = finalY + 8;
+  doc.setFontSize(10);
+  doc.setTextColor(10, 30, 60);
+  doc.text("KPI Summary", 14, kpiStartY);
+  const kpiTableData = [
+    ["% Availability", kpi.pctAvailability],
+    ["MTTR", kpi.mttr],
+    ["MTBF", kpi.mtbf],
+    ["MTTF", kpi.mttf],
+  ];
+  autoTable(doc, {
+    startY: kpiStartY + 4,
+    head: [["Metric", "Value"]],
+    body: kpiTableData,
+    styles: { fontSize: 9, cellPadding: 2 },
+    headStyles: { fillColor: [4, 60, 100], textColor: 255, fontStyle: "bold" },
+    columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 40 } },
+    margin: { left: 14 },
+    tableWidth: "wrap",
+  });
+
+  doc.save(`DMR-Monthly-Performance-${monthLabel.replace(" ", "-")}.pdf`);
+}
+
 function uniqueTicketValues(ticket: TicketAggregate, field: keyof TicketRecord): string {
   return Array.from(new Set(ticket.rows.map((row) => clean(row[field])).filter(Boolean))).join(", ");
 }
@@ -709,27 +1049,9 @@ function exportCsv(rows: TicketAggregate[]) {
 function exportExcel(rows: TicketAggregate[]) {
   const worksheet = XLSX.utils.aoa_to_sheet([DISTINCT_REPORT_HEADERS, ...distinctReportRows(rows)]);
   worksheet["!cols"] = [
-    { wch: 6 },
-    { wch: 24 },
-    { wch: 28 },
-    { wch: 30 },
-    { wch: 12 },
-    { wch: 32 },
-    { wch: 16 },
-    { wch: 16 },
-    { wch: 16 },
-    { wch: 16 },
-    { wch: 26 },
-    { wch: 26 },
-    { wch: 24 },
-    { wch: 18 },
-    { wch: 14 },
-    { wch: 20 },
-    { wch: 34 },
-    { wch: 26 },
-    { wch: 28 },
-    { wch: 30 },
-    { wch: 58 },
+    { wch: 6 }, { wch: 24 }, { wch: 28 }, { wch: 30 }, { wch: 12 }, { wch: 32 },
+    { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 26 }, { wch: 26 },
+    { wch: 24 }, { wch: 18 }, { wch: 14 }, { wch: 20 }, { wch: 34 },
   ];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Distinct TT Report");
@@ -738,8 +1060,6 @@ function exportExcel(rows: TicketAggregate[]) {
 
 function exportPdf(rows: TicketAggregate[], monthKey: string) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
-
-  // Title
   const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
   doc.setFontSize(14);
   doc.setTextColor(10, 30, 60);
@@ -748,55 +1068,38 @@ function exportPdf(rows: TicketAggregate[], monthKey: string) {
   doc.setTextColor(100);
   doc.text(`Generated: ${new Date().toLocaleString()} | Total Tickets: ${rows.length}`, 14, 22);
 
-  const headers = DISTINCT_REPORT_HEADERS;
-  const body = distinctReportRows(rows);
-
   autoTable(doc, {
     startY: 26,
-    head: [headers],
-    body,
-    styles: {
-      fontSize: 7,
-      cellPadding: 1.5,
-      overflow: "linebreak",
-      valign: "middle",
-    },
-    headStyles: {
-      fillColor: [4, 60, 100],
-      textColor: 255,
-      fontStyle: "bold",
-      fontSize: 7.5,
-    },
+    head: [DISTINCT_REPORT_HEADERS],
+    body: distinctReportRows(rows),
+    styles: { fontSize: 7, cellPadding: 1.5, overflow: "linebreak", valign: "middle" },
+    headStyles: { fillColor: [4, 60, 100], textColor: 255, fontStyle: "bold", fontSize: 7.5 },
     alternateRowStyles: { fillColor: [240, 246, 255] },
     columnStyles: {
-      0:  { cellWidth: 8 },   // #
-      1:  { cellWidth: 18 },  // Site ID
-      2:  { cellWidth: 22 },  // Site Name
-      3:  { cellWidth: 26 },  // Managed Resource
-      4:  { cellWidth: 14 },  // Severity
-      5:  { cellWidth: 30 },  // Issues
-      6:  { cellWidth: 18 },  // Observation Date
-      7:  { cellWidth: 16 },  // Observation Time
-      8:  { cellWidth: 18 },  // Recovery Date
-      9:  { cellWidth: 16 },  // Recovery Time
-      10: { cellWidth: 22 },  // L3 Support Date
-      11: { cellWidth: 20 },  // L3 Support Time
-      12: { cellWidth: 22 },  // Duration
-      13: { cellWidth: 14 },  // TT
-      14: { cellWidth: 14 },  // Status
-      15: { cellWidth: 18 },  // Escalated to
-      16: { cellWidth: 36 },  // RCA
+      0:  { cellWidth: 8 },
+      1:  { cellWidth: 18 },
+      2:  { cellWidth: 22 },
+      3:  { cellWidth: 26 },
+      4:  { cellWidth: 14 },
+      5:  { cellWidth: 30 },
+      6:  { cellWidth: 18 },
+      7:  { cellWidth: 16 },
+      8:  { cellWidth: 18 },
+      9:  { cellWidth: 16 },
+      10: { cellWidth: 22 },
+      11: { cellWidth: 20 },
+      12: { cellWidth: 22 },
+      13: { cellWidth: 14 },
+      14: { cellWidth: 14 },
+      15: { cellWidth: 18 },
+      16: { cellWidth: 36 },
     },
     margin: { left: 10, right: 10 },
     didDrawPage: (data) => {
       const pageCount = (doc as jsPDF & { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages();
       doc.setFontSize(7);
       doc.setTextColor(150);
-      doc.text(
-        `Page ${data.pageNumber} of ${pageCount}`,
-        doc.internal.pageSize.getWidth() - 30,
-        doc.internal.pageSize.getHeight() - 6,
-      );
+      doc.text(`Page ${data.pageNumber} of ${pageCount}`, doc.internal.pageSize.getWidth() - 30, doc.internal.pageSize.getHeight() - 6);
     },
   });
 
@@ -825,6 +1128,10 @@ function PartnerLogoStrip() {
   );
 }
 
+/**
+ * SelectFilter using a portal-based dropdown so it is never clipped
+ * by overflow:hidden containers (hero panel, export card).
+ */
 function SelectFilter({ label, value, options, optionLabels, onChange }: {
   label: string;
   value: string;
@@ -832,19 +1139,84 @@ function SelectFilter({ label, value, options, optionLabels, onChange }: {
   optionLabels?: Record<string, string>;
   onChange: (value: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+      if (!wrapRef.current?.contains(target) && !dropdownRef.current?.contains(target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function computePosition() {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const dropW = Math.max(rect.width, 200);
+    const left = Math.min(rect.left, window.innerWidth - dropW - 8);
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow >= 160) {
+      setDropdownStyle({ position: "fixed", top: rect.bottom + 4, left, width: dropW, zIndex: 99999 });
+    } else {
+      setDropdownStyle({ position: "fixed", bottom: window.innerHeight - rect.top + 4, left, width: dropW, zIndex: 99999 });
+    }
+  }
+
+  function handleOpen() {
+    if (!open) computePosition();
+    setOpen((o) => !o);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    const update = () => computePosition();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const displayLabel = value === "all" || value === "ALL"
+    ? "All"
+    : (optionLabels?.[value] ?? value);
+
+  const dropdown = open ? createPortal(
+    <div
+      ref={dropdownRef}
+      className="multi-select-dropdown"
+      style={dropdownStyle}
+    >
+      <label className="multi-select-option" onClick={() => { onChange("all"); setOpen(false); }}>
+        <input type="radio" readOnly checked={value === "all" || value === "ALL"} />
+        <span>All</span>
+      </label>
+      {options.map((opt) => (
+        <label key={opt} className="multi-select-option" onClick={() => { onChange(opt); setOpen(false); }}>
+          <input type="radio" readOnly checked={value === opt} />
+          <span>{optionLabels?.[opt] ?? opt}</span>
+        </label>
+      ))}
+    </div>,
+    document.body
+  ) : null;
+
   return (
-    <label className="filter-field">
+    <div className="filter-field multi-select-filter" ref={wrapRef}>
       <span>{label}</span>
-      <div className="select-wrap">
-        <select value={value} onChange={(event) => onChange(event.target.value)}>
-          <option value="all">All</option>
-          {options.map((option) => (
-            <option key={option} value={option}>{optionLabels?.[option] ?? option}</option>
-          ))}
-        </select>
-        <ChevronDown size={14} />
-      </div>
-    </label>
+      <button type="button" className="multi-select-trigger" ref={triggerRef} onClick={handleOpen}>
+        <span className="multi-select-value">{displayLabel}</span>
+        <ChevronDown size={14} style={{ transform: open ? "rotate(180deg)" : undefined, transition: "transform .15s" }} />
+      </button>
+      {dropdown}
+    </div>
   );
 }
 
@@ -891,7 +1263,6 @@ function MultiSelectFilter({ label, value, options, optionLabels, onChange }: {
     setOpen((o) => !o);
   }
 
-  // Reposition on scroll/resize while open
   useEffect(() => {
     if (!open) return;
     const update = () => computePosition();
@@ -913,7 +1284,7 @@ function MultiSelectFilter({ label, value, options, optionLabels, onChange }: {
   const dropdown = open ? createPortal(
     <div className="multi-select-dropdown" style={dropdownStyle} ref={dropdownRef}>
       {value.length > 0 && (
-        <button type="button" className="multi-select-clear" onClick={() => onChange([])}>× Clear</button>
+        <button type="button" className="multi-select-clear" onClick={() => onChange([])}>x Clear</button>
       )}
       {options.map((opt) => (
         <label key={opt} className="multi-select-option">
@@ -950,6 +1321,9 @@ export default function Home() {
   const [tablePage, setTablePage] = useState(1);
   const TABLE_PAGE_SIZE = 50;
 
+  const [perfMonth, setPerfMonth] = useState("all");
+  const [perfRegion, setPerfRegion] = useState("ALL");
+
   async function handleFile(file?: File) {
     if (!file) return;
     setError("");
@@ -983,7 +1357,6 @@ export default function Home() {
       }
       setRegions((prev) => {
         const updated = [...prev, parsed];
-        // Merge all regions into a combined DashboardData
         const allRows = updated.flatMap((r) => r.rows);
         const ttMap = new Map<string, TicketAggregate>();
         for (const row of allRows) {
@@ -997,12 +1370,19 @@ export default function Home() {
             if (row.siteName) existing.siteNames.add(row.siteName);
           }
         }
+        // Merge site orders: use first region's order, append any new entries from additional regions
+        const mergedSiteOrder = [...updated[0].siteOrder];
+        const mergedIds = new Set(mergedSiteOrder.map((s) => s.siteId));
+        updated.slice(1).forEach((r) => {
+          r.siteOrder.forEach((s) => { if (!mergedIds.has(s.siteId)) { mergedIds.add(s.siteId); mergedSiteOrder.push(s); } });
+        });
         const merged: DashboardData = {
           fileName: updated.map((r) => r.fileName).join(" + "),
           sheetName: updated[0].sheetName,
           generatedAt: new Date().toLocaleString(),
           rows: allRows,
           uniqueTickets: Array.from(ttMap.values()),
+          siteOrder: mergedSiteOrder,
         };
         setData(merged);
         return updated;
@@ -1015,6 +1395,8 @@ export default function Home() {
   }
 
   const uniqueRows = data?.uniqueTickets ?? [];
+  const allDataRows = data?.rows ?? [];
+
   const filterOptions = useMemo(() => {
     const primaryRows = uniqueRows.map((ticket) => ticket.primary);
     const uniq = (field: keyof TicketRecord) => Array.from(new Set(primaryRows.map((row) => clean(row[field])).filter(Boolean))).sort();
@@ -1051,27 +1433,13 @@ export default function Home() {
       const allSites = Array.from(ticket.siteIds).join(" ");
       const allSiteNames = Array.from(ticket.siteNames).join(" ");
       const haystack = [
-        ticket.tt,
-        row.siteId,
-        row.siteName,
-        allSites,
-        allSiteNames,
-        row.managedResource,
-        row.issue,
-        row.status,
-        row.severity,
-        row.region,
-        row.impact,
-        row.escalationLevel,
-        row.escalatedTo,
-        row.rca,
+        ticket.tt, row.siteId, row.siteName, allSites, allSiteNames,
+        row.managedResource, row.issue, row.status, row.severity, row.region,
+        row.impact, row.escalationLevel, row.escalatedTo, row.rca,
         row.rcaFamily || getRcaFamily(row.rca),
         row.responsibleTeam || getResponsibleTeam(row.rcaFamily || getRcaFamily(row.rca)),
-        row.escalatedForL3SupportDate,
-        row.escalatedForL3SupportTime,
-      ]
-        .join(" ")
-        .toLowerCase();
+        row.escalatedForL3SupportDate, row.escalatedForL3SupportTime,
+      ].join(" ").toLowerCase();
       return (
         (!q || haystack.includes(q)) &&
         (!filters.status.length || filters.status.includes(row.status)) &&
@@ -1092,30 +1460,13 @@ export default function Home() {
       const allSites = Array.from(ticket.siteIds).join(" ");
       const allSiteNames = Array.from(ticket.siteNames).join(" ");
       const haystack = [
-        ticket.tt,
-        row.siteId,
-        row.siteName,
-        allSites,
-        allSiteNames,
-        row.managedResource,
-        row.issue,
-        row.status,
-        row.severity,
-        row.region,
-        row.impact,
-        row.escalationLevel,
-        row.escalatedTo,
-        row.rca,
+        ticket.tt, row.siteId, row.siteName, allSites, allSiteNames,
+        row.managedResource, row.issue, row.status, row.severity, row.region,
+        row.impact, row.escalationLevel, row.escalatedTo, row.rca,
         row.rcaFamily || getRcaFamily(row.rca),
         row.responsibleTeam || getResponsibleTeam(row.rcaFamily || getRcaFamily(row.rca)),
-        row.escalatedForL3SupportDate,
-        row.escalatedForL3SupportTime,
-      ]
-        .join(" ")
-        .toLowerCase();
-      // NOTE: Status filter is intentionally excluded here.
-      // ticketMatchesMonthlyExport applies its own Pending criterion,
-      // so filtering by status here would incorrectly exclude Pending tickets.
+        row.escalatedForL3SupportDate, row.escalatedForL3SupportTime,
+      ].join(" ").toLowerCase();
       return (
         (!q || haystack.includes(q)) &&
         (!filters.severity.length || filters.severity.includes(row.severity)) &&
@@ -1130,6 +1481,16 @@ export default function Home() {
   const monthlyExportTickets = useMemo(() => monthlyExportBaseTickets.filter((ticket) => ticketMatchesMonthlyExport(ticket, exportMonth)), [exportMonth, monthlyExportBaseTickets]);
 
   const selectedExportMonthLabel = exportMonth === "all" ? "All export-eligible TT" : openingMonthLabel(exportMonth);
+
+  // Monthly Performance rows -- computed from raw rows (not aggregated tickets)
+  const siteOrder = data?.siteOrder ?? [];
+  const perfRows = useMemo(() => {
+    // Filter by region if not ALL
+    const sourceRows = perfRegion === "ALL"
+      ? allDataRows
+      : allDataRows.filter((r) => r.region === perfRegion);
+    return computePerfRows(sourceRows, perfMonth, siteOrder);
+  }, [allDataRows, perfMonth, perfRegion, siteOrder]);
 
   const analytics = useMemo(() => {
     const primaryRows = filteredTickets.map((ticket) => ticket.primary);
@@ -1212,7 +1573,6 @@ export default function Home() {
       { name: "Non-preventable", value: primaryRows.length - preventableCount },
     ].filter((item) => item.value > 0);
 
-    // Monthly RCA Family stacked bar data
     const RCA_FAMILIES = ["Power & Environment", "Fiber & Physical", "Transmission & Link", "Hardware & Device", "Configuration / Software", "Human / Process / Planned", "Other / Review"];
     const monthlyRcaFamilyMap = new Map<string, Record<string, string | number>>();
     primaryRows.forEach((row) => {
@@ -1235,32 +1595,15 @@ export default function Home() {
     const topManagedResources = managedResourceByCount.slice(0, 12);
 
     return {
-      totalUnique,
-      status,
-      severity,
-      region,
-      impact,
-      escalation,
-      monthly,
-      avgHours,
-      uniqueSites,
-      rootCauseUpdated,
-      totalSiteAffected,
-      topSites,
-      rcaByCount,
-      rcaFamily,
+      totalUnique, status, severity, region, impact, escalation, monthly, avgHours,
+      uniqueSites, rootCauseUpdated, totalSiteAffected, topSites, rcaByCount, rcaFamily,
       topRcaByCount,
       topRcaByDowntime: downtimeByRca[0] ?? { name: "", value: 0, count: 0 },
       highestMttrRca: mttrByRca[0] ?? { name: "", value: 0, count: 0 },
-      repeatedRcaSites,
-      rcaNotProvidedCount,
-      preventableCount,
+      repeatedRcaSites, rcaNotProvidedCount, preventableCount,
       rcaByDowntime: downtimeByRca.map((item) => ({ name: item.name, value: Math.round(item.value * 10) / 10 })),
       rcaByMttr: mttrByRca.map((item) => ({ name: item.name, value: Math.round(item.value * 10) / 10 })),
-      preventableBreakdown,
-      monthlyRcaFamily,
-      rcaFamilyKeys: RCA_FAMILIES,
-      topManagedResources,
+      preventableBreakdown, monthlyRcaFamily, rcaFamilyKeys: RCA_FAMILIES, topManagedResources,
     };
   }, [filteredTickets]);
 
@@ -1272,21 +1615,20 @@ export default function Home() {
   const minor = metricValue(analytics.severity, "Minor");
   const serviceImpact = metricValue(analytics.impact, "Service Impact");
   const nonServiceImpact = metricValue(analytics.impact, "Non-Service Impact");
-  const filteredSourceRowCount = filteredTickets.reduce((sum, ticket) => sum + ticket.rows.length, 0);
   const rcaNotProvidedPct = pct(analytics.rcaNotProvidedCount, analytics.totalUnique);
   const preventableRcaPct = pct(analytics.preventableCount, analytics.totalUnique);
 
   return (
     <main className="dashboard-shell">
-<section
-  className="hero-panel"
-  style={{
-    backgroundImage: `linear-gradient(90deg, rgba(3,7,18,.96) 0%, rgba(3,7,18,.78) 42%, rgba(3,7,18,.26) 100%), url(${HERO_IMAGE})`,
-    backgroundSize: "contain",        // 👈 fills everything
-    backgroundPosition: "top",      // 👈 keeps top visible
-    backgroundRepeat: "no-repeat",
-  }}
->
+      <section
+        className="hero-panel"
+        style={{
+          backgroundImage: `linear-gradient(90deg, rgba(3,7,18,.96) 0%, rgba(3,7,18,.78) 42%, rgba(3,7,18,.26) 100%), url(${HERO_IMAGE})`,
+          backgroundSize: "contain",
+          backgroundPosition: "top",
+          backgroundRepeat: "no-repeat",
+        }}
+      >
         <nav className="topbar no-print">
           <div className="brand-cluster">
             <div className="brand-mark"><Network size={18} /> DMR Ticketing Dashboard</div>
@@ -1301,7 +1643,7 @@ export default function Home() {
             {data && <button className="primary-button" onClick={() => window.print()}><Printer size={16} /> Dashboard PDF</button>}
           </div>
         </nav>
-          <div className="hero-layout">
+        <div className="hero-layout">
           <div className="hero-content">
             <div>
               <h1>DMR Ticketing Dashboard</h1>
@@ -1316,20 +1658,66 @@ export default function Home() {
           </div>
         )}
         {data && (
-          <div className="hero-export-row no-print">
-            <aside className="hero-export-card" aria-label="Monthly TT export filter">
-              <div className="hero-export-copy">
-                <span>Monthly Tickets export filter</span>
-                <strong><span className="export-badge">{monthlyExportTickets.length}</span> tickets for {selectedExportMonthLabel}</strong>
-              </div>
-              <SelectFilter label="Report Month" value={exportMonth} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setExportMonth} />
-              <div className="hero-export-actions">
-                <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> Export CSV</button>
-                <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={16} /> Export Excel</button>
-                <button className="ghost-button" onClick={() => exportPdf(monthlyExportTickets, exportMonth)}><Printer size={16} /> Export PDF</button>
-              </div>
-            </aside>
-          </div>
+          <>
+            {/* Monthly Tickets Export Card */}
+            <div className="hero-export-row no-print">
+              <aside className="hero-export-card" aria-label="Monthly TT export filter">
+                <div className="hero-export-copy">
+                  <span>Monthly Tickets export filter</span>
+                  <strong><span className="export-badge">{monthlyExportTickets.length}</span> tickets for {selectedExportMonthLabel}</strong>
+                </div>
+                <SelectFilter label="Report Month" value={exportMonth} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setExportMonth} />
+                <div className="hero-export-actions">
+                  <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> Export CSV</button>
+                  <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={16} /> Export Excel</button>
+                  <button className="ghost-button" onClick={() => exportPdf(monthlyExportTickets, exportMonth)}><Printer size={16} /> Export PDF</button>
+                </div>
+              </aside>
+            </div>
+
+            {/* Monthly Performance Export Card */}
+            <div className="hero-export-row no-print">
+              <aside className="hero-export-card" aria-label="Monthly Performance filter">
+                <div className="hero-export-copy">
+                  <span>Monthly Performance</span>
+                  <strong>
+                    <span className="export-badge">{perfRows.length}</span>
+                    {" "}sites for {perfMonth === "all" ? "All Months" : formatMonthMMMMYYYY(perfMonth)}
+                    {perfRegion !== "ALL" ? ` -- ${perfRegion}` : ""}
+                  </strong>
+                </div>
+                <SelectFilter label="Report Month" value={perfMonth} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setPerfMonth} />
+                <SelectFilter label="Region" value={perfRegion} options={["ALL", ...filterOptions.region]} onChange={setPerfRegion} />
+                <div className="hero-export-actions">
+                  <button className="ghost-button" onClick={() => exportPerfCsv(perfRows, perfMonth)}><Download size={16} /> Export CSV</button>
+                  <button className="ghost-button" onClick={() => exportPerfExcel(perfRows, perfMonth)}><FileSpreadsheet size={16} /> Export Excel</button>
+                  <button className="ghost-button" onClick={() => exportPerfPdf(perfRows, perfMonth)}><Printer size={16} /> Export PDF</button>
+                </div>
+              </aside>
+            </div>
+
+            {/* KPI Summary tiles -- live with selected perfMonth */}
+            {perfRows.length > 0 && (() => {
+              const kpi = computePerfKPIs(perfRows);
+              return (
+                <div className="hero-export-row no-print" style={{ paddingBottom: 0 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, width: "100%", maxWidth: 900 }}>
+                    {([
+                      { label: "% Availability", value: kpi.pctAvailability, color: "#22c55e" },
+                      { label: "MTTR", value: kpi.mttr, color: "#f59e0b" },
+                      { label: "MTBF", value: kpi.mtbf, color: "#3b82f6" },
+                      { label: "MTTF", value: kpi.mttf, color: "#a78bfa" },
+                    ] as { label: string; value: string; color: string }[]).map(({ label, value, color }) => (
+                      <div key={label} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 10, padding: "12px 16px", backdropFilter: "blur(8px)" }}>
+                        <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
+                        <div style={{ fontSize: 22, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{value || "--"}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </>
         )}
       </section>
 
@@ -1347,7 +1735,6 @@ export default function Home() {
             <div className="upload-copy">
               <span className="section-kicker"><UploadCloud size={14} /> Workbooks upload</span>
               <h2>Please Upload the Tickets Data.</h2>
-  
               {error && <div className="error-banner"><AlertTriangle size={16} /> {error}</div>}
               <button className="primary-button large" onClick={() => inputRef.current?.click()}><FileSpreadsheet size={18} /> Select Excel workbook</button>
             </div>
@@ -1355,7 +1742,7 @@ export default function Home() {
           </div>
         </section>
       ) : (
-         <>
+        <>
           <section className="filters-panel no-print">
             <label className="search-box">
               <Search size={16} />
@@ -1389,8 +1776,6 @@ export default function Home() {
             <StatCard label="Repeated RCA Sites" value={analytics.repeatedRcaSites.toLocaleString()} note="Site + RCA pairs repeated" icon={Network} tone="#a78bfa" />
             <StatCard label="RCA not Provided %" value={rcaNotProvidedPct} note={`${analytics.rcaNotProvidedCount.toLocaleString()} Tickets missing RCA`} icon={ShieldAlert} tone="#f97316" />
           </section>
-
-
 
           <section className="chart-mosaic">
             <article className="glass-card wide">
@@ -1594,11 +1979,70 @@ export default function Home() {
                 </BarChart>
               </ResponsiveContainer>
             </article>
-
           </section>
 
+          {/* Monthly Performance Table */}
+          {perfRows.length > 0 && (
+            <section className="table-card">
+              {/* KPI tiles */}
+              {(() => {
+                const kpi = computePerfKPIs(perfRows);
+                return (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, padding: "16px 20px 0" }}>
+                    {([
+                      { label: "% Availability", value: kpi.pctAvailability, color: "#22c55e" },
+                      { label: "MTTR", value: kpi.mttr, color: "#f59e0b" },
+                      { label: "MTBF", value: kpi.mtbf, color: "#3b82f6" },
+                      { label: "MTTF", value: kpi.mttf, color: "#a78bfa" },
+                    ] as { label: string; value: string; color: string }[]).map(({ label, value, color }) => (
+                      <div key={label} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "12px 16px" }}>
+                        <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
+                        <div style={{ fontSize: 22, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{value || "--"}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+              <div className="table-heading">
+                <div>
+                  <h2>Monthly Performance -- {perfMonth === "all" ? "All Months" : formatMonthMMMMYYYY(perfMonth)}{perfRegion !== "ALL" ? ` -- ${perfRegion}` : ""}</h2>
+                  <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 4 }}>
+                    {perfRows.length.toLocaleString()} sites &nbsp;|&nbsp;
+                    Total hours in month: {perfMonth !== "all" ? totalHoursInMonth(perfMonth).toLocaleString() : "N/A"} hrs
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button className="ghost-button" onClick={() => exportPerfCsv(perfRows, perfMonth)}><Download size={16} /> CSV</button>
+                  <button className="ghost-button" onClick={() => exportPerfExcel(perfRows, perfMonth)}><FileSpreadsheet size={16} /> Excel</button>
+                  <button className="ghost-button" onClick={() => exportPerfPdf(perfRows, perfMonth)}><Printer size={16} /> PDF</button>
+                </div>
+              </div>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>{PERF_REPORT_HEADERS.map((h) => <th key={h}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {perfRows.map((row, i) => (
+                      <tr key={row.siteId}>
+                        <td className="mono">{i + 1}</td>
+                        <td className="mono">{row.siteId}</td>
+                        <td>{row.siteName}</td>
+                        <td className="mono">{row.availHours > 0 ? row.availHours : ""}</td>
+                        <td>{row.availDay}</td>
+                        <td className="mono"></td>
+                        <td className="mono"></td>
+                        <td className="mono">{row.reliability}</td>
+                        <td className="mono">{row.sitesDownHours > 0 ? row.sitesDownHours : ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
 
-
+          {/* Tickets Table */}
           <section className="table-card">
             <div className="table-heading">
               <div><h2>{filteredTickets.length.toLocaleString()} distinct Ticket records</h2></div>
@@ -1655,7 +2099,7 @@ export default function Home() {
                     return acc;
                   }, [])
                   .map((p, idx) =>
-                    p === "..." ? <span key={`ellipsis-${idx}`} style={{ color: "#94a3b8", padding: "0 4px" }}>…</span> :
+                    p === "..." ? <span key={`ellipsis-${idx}`} style={{ color: "#94a3b8", padding: "0 4px" }}>...</span> :
                     <button key={p} className={`ghost-button${p === tablePage ? " active-page" : ""}`} onClick={() => setTablePage(p as number)}>{p}</button>
                   )}
                 <button className="ghost-button" disabled={tablePage >= Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE)} onClick={() => setTablePage((p) => p + 1)}>Next ›</button>
