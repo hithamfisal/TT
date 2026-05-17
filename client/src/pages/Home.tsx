@@ -44,8 +44,6 @@ import {
   YAxis,
 } from "recharts";
 
-
-
 import nascoLogoSrc from "/nascologo.png";
 import ngLogoSrc from "/nglogo.png";
 const HERO_IMAGE = "/h.png";
@@ -407,11 +405,12 @@ function parseDurationHours(duration: string): number | null {
     const total = days * 24 + hrs + mins / 60;
     return Number.isFinite(total) ? total : null;
   }
-  // Handle Excel numeric fraction (timedelta stored as fraction of a day, e.g. 0.09791...)
+  // Numeric value: Duration column stores hours directly (e.g. 6.32 = 6.32 hrs)
+  // Small fractions < 1 may be Excel day-fractions from some workbook versions -- convert those
   const num = Number(duration);
-  if (Number.isFinite(num) && num >= 0 && num < 3650) {
-    // Excel stores duration as days; multiply by 24 to get hours
-    return Math.round(num * 24 * 10) / 10;
+  if (Number.isFinite(num) && num >= 0) {
+    if (num > 0 && num < 1) return Math.round(num * 24 * 10) / 10; // day-fraction edge case
+    return Math.round(num * 10) / 10; // already in hours
   }
   return null;
 }
@@ -616,7 +615,7 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
 
   const rows: TicketRecord[] = raw
     .map((row, index) => {
-      const observationDate = toDateStr(getField(row, ["Observation Date", "Observed Date"]) || "");
+      const observationDate = toDateStr(getRawField(row, ["Observation Date", "Observed Date"]) || "");
       const monthKey = resolveOpeningMonthKey(
         getField(row, ["Opening Month Key", "OpeningMonthKey"]),
         getField(row, ["Opening Month", "OpeningMonth"]),
@@ -627,7 +626,7 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
       return {
         rowNo: index + 2,
         tt: getField(row, ["TT", "Ticket", "Ticket Number"]),
-        siteId: getField(row, ["Site ID", "SiteID"]),
+        siteId: getField(row, ["Site ID", "SiteID", "Site Name", "SiteName"]),
         siteName: getField(row, ["Site Name", "SiteName"]),
         managedResource: getField(row, ["Managed Resource", "ManagedResource", "Managed Resources", "Resource", "NE Name", "Network Element"]),
         issue: getField(row, ["Issues", "Issue"]),
@@ -637,9 +636,9 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
         observationTime: toTimeStr(getRawField(row, ["Observation Time", "Observed Time", "ObservationTime"])),
         openingMonthKey: monthKey,
         openingMonthLabel: openingMonthLabel(monthKey),
-        recoveryDate: toDateStr(getField(row, ["Recovery Date"]) || ""),
+        recoveryDate: toDateStr(getRawField(row, ["Recovery Date"]) || ""),
         recoveryTime: toTimeStr(getRawField(row, ["Recovery Time", "RecoveryTime"])),
-        duration: getField(row, ["Total Duration Days/Hours", "Total Durration Days/Hours", "Duration"]),
+        duration: String(getRawField(row, ["Total Duration Days/Hours", "Total Durration Days/Hours", "Duration"]) ?? ""),
         impact: getField(row, ["Service Impaction Status", "Service Impact Status"]),
         escalatedTo: getField(row, ["Escalated to", "Escalated To", "Escalated to "]),
         escalationLevel: getField(row, ["Escalation Level", "Esclation Level"]),
@@ -746,15 +745,26 @@ type PerfRow = {
  *   - Managed Resource = "Complete site" OR "Link Down"
  * Sorted by the SiteID sheet order (siteOrder). Falls back to ticket-count descending if no SiteID sheet.
  */
+/** Normalize site ID: strip leading zeros and normalize case to match SiteID table.
+ * "RF Site 01" -> "RF Site 1", "Rf Site 09" -> "RF Site 9" */
+function normalizeSiteId(id: string): string {
+  return id
+    .replace(/(\D+)(\d+)$/, (_, prefix, num) => prefix.toUpperCase() + String(parseInt(num, 10)))
+    .trim();
+}
+
 function computePerfRows(allRows: TicketRecord[], monthKey: string, siteOrder: { siteId: string; siteName: string }[] = []): PerfRow[] {
   const range = monthKey !== "all" ? selectedMonthRange(monthKey) : null;
   const monthHours = monthKey !== "all" ? totalHoursInMonth(monthKey) : 24 * 30; // fallback 30d
 
   // Build site map: siteId -> siteName (first seen)
   const siteNameMap = new Map<string, string>();
-  // Build site -> ticket count (for sorting)
+  // Build site -> ticket count (for sorting fallback)
   const siteTicketCount = new Map<string, number>();
-  // Build site -> down hours
+  // Build site -> down hours.
+  // KEY: normalizeSiteId(row.siteId).toLowerCase() from TicketsData "Site ID" column (e.g. "RF Site 1")
+  // LOOKUP: normalizeSiteId(siteId).toLowerCase() from SiteID table "Site ID" column (e.g. "RF Site 1")
+  // Both sides hold the RF Site ID — join is Site ID to Site ID.
   const siteDownHours = new Map<string, number>();
 
   allRows.forEach((row) => {
@@ -762,23 +772,25 @@ function computePerfRows(allRows: TicketRecord[], monthKey: string, siteOrder: {
     if (!siteNameMap.has(row.siteId) && row.siteName) {
       siteNameMap.set(row.siteId, row.siteName);
     }
-  });
-
-  // Count tickets per site (for SORTBY equivalent)
-  allRows.forEach((row) => {
-    if (!row.siteId) return;
     siteTicketCount.set(row.siteId, (siteTicketCount.get(row.siteId) ?? 0) + 1);
   });
 
-  // Compute down hours per site
+  // Helper: combine a date string (dd/mm/yyyy) and time string (HH:MM) into a Date object
+  function combineDatetime(dateStr: string, timeStr: string): Date | null {
+    const d = parseDateValue(dateStr);
+    if (!d) return null;
+    if (timeStr) {
+      const tm = timeStr.match(/^(\d{1,2}):(\d{2})/);
+      if (tm) {
+        d.setHours(Number(tm[1]), Number(tm[2]), 0, 0);
+      }
+    }
+    return d;
+  }
+
+  // Compute down hours per site using overlap between ticket outage window and selected month
   allRows.forEach((row) => {
     if (!row.siteId) return;
-
-    // Filter: opening month within selected month (using date range, same as before)
-    if (range) {
-      const obsDate = parseDateValue(row.observationDate);
-      if (!obsDate || obsDate < range.start || obsDate > range.end) return;
-    }
 
     // Filter: Service Impact
     if (clean(row.impact).toLowerCase() !== "service impact") return;
@@ -787,16 +799,50 @@ function computePerfRows(allRows: TicketRecord[], monthKey: string, siteOrder: {
     const mr = clean(row.managedResource).toLowerCase();
     if (mr !== "complete site" && mr !== "link down") return;
 
-    const hours = parseDurationHours(row.duration) ?? 0;
-    siteDownHours.set(row.siteId, Math.round(((siteDownHours.get(row.siteId) ?? 0) + hours) * 10) / 10);
+    // Determine the ticket's outage start and end datetimes
+    const outageStart = combineDatetime(row.observationDate, row.observationTime);
+    if (!outageStart) return; // can't calculate without a start
+
+    // outageEnd: use recovery date/time if available, otherwise treat as still open (use month end or now)
+    let outageEnd: Date | null = combineDatetime(row.recoveryDate, row.recoveryTime);
+
+    if (monthKey === "all") {
+      // For "all" months: use the stored duration value directly (no clipping needed)
+      const hours = parseDurationHours(row.duration) ?? 0;
+      const key = normalizeSiteId(clean(row.siteId)).toLowerCase();
+      siteDownHours.set(key, Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10);
+      return;
+    }
+
+    // For a specific month: clip the outage window to [monthStart, monthEnd]
+    const monthRange = selectedMonthRange(monthKey);
+    if (!monthRange) return;
+    const { start: monthStart, end: monthEnd } = monthRange;
+
+    // If ticket has no recovery date (still open), treat end as the end of the selected month
+    if (!outageEnd) {
+      outageEnd = monthEnd;
+    }
+
+    // Skip if outage ended before the month started, or started after the month ended
+    if (outageEnd <= monthStart || outageStart > monthEnd) return;
+
+    // Clip to month boundaries
+    const effectiveStart = outageStart < monthStart ? monthStart : outageStart;
+    const effectiveEnd = outageEnd > monthEnd ? monthEnd : outageEnd;
+
+    const overlapMs = effectiveEnd.getTime() - effectiveStart.getTime();
+    if (overlapMs <= 0) return;
+
+    const hours = Math.round((overlapMs / (1000 * 60 * 60)) * 10) / 10;
+    const key = normalizeSiteId(clean(row.siteId)).toLowerCase();
+    siteDownHours.set(key, Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10);
   });
 
   // Build site list from SiteID sheet order (only sites in that sheet).
   // If no SiteID sheet, fall back to all sites sorted by ticket count descending.
   let siteEntries: { siteId: string; siteName: string }[];
   if (siteOrder.length > 0) {
-    // Only show sites that are in the SiteID sheet, in that exact order.
-    // Use the SiteID sheet's own site name (not from tickets data).
     siteEntries = siteOrder;
   } else {
     const allSiteIds = Array.from(siteNameMap.keys()).filter((id) => id !== "");
@@ -805,7 +851,9 @@ function computePerfRows(allRows: TicketRecord[], monthKey: string, siteOrder: {
   }
 
   return siteEntries.map(({ siteId, siteName }) => {
-    const downHours = siteDownHours.get(siteId) ?? 0;
+    // Join: Site ID from SiteID table (normalized, lowercase) matches Site ID from TicketsData.
+    const key = normalizeSiteId(clean(siteId)).toLowerCase();
+    const downHours = siteDownHours.get(key) ?? 0;
     const availHours = Math.max(0, monthHours - downHours);
     const totalHours = availHours + downHours;
     const reliability = totalHours > 0 ? availHours / totalHours : 1;
@@ -839,12 +887,12 @@ function perfReportRows(rows: PerfRow[]): string[][] {
     String(i + 1),
     r.siteId,
     r.siteName,
-    r.availHours > 0 ? String(r.availHours) : "",
+    String(r.availHours),
     r.availDay,
     "",  // Channel Busy Count placeholder
     "",  // MW link Performance placeholder
     r.reliability,
-    r.sitesDownHours > 0 ? String(r.sitesDownHours) : "",
+    String(r.sitesDownHours),
   ]);
 }
 
@@ -862,6 +910,8 @@ function computePerfKPIs(rows: PerfRow[]): {
   mttf: string;
   totalDown: number;
   totalAvail: number;
+  affectedSites: number;
+  totalDownHrs: string;
 } {
   const totalAvail = rows.reduce((s, r) => s + r.availHours, 0);
   const totalDown  = rows.reduce((s, r) => s + r.sitesDownHours, 0);
@@ -883,7 +933,15 @@ function computePerfKPIs(rows: PerfRow[]): {
     ? `${(mtbfNum + mttrNum).toFixed(2)} hrs`
     : "";
 
-  return { pctAvailability, mttr, mtbf, mttf, totalDown: Math.round(totalDown * 10) / 10, totalAvail: Math.round(totalAvail * 10) / 10 };
+  // Format total down hours as "X d, Y h, Z m"
+  const totalDownRounded = Math.round(totalDown * 10) / 10;
+  const tdMins = Math.round(totalDown * 60);
+  const tdDays = Math.floor(tdMins / (60 * 24));
+  const tdHrs = Math.floor((tdMins % (60 * 24)) / 60);
+  const tdMin = Math.round(tdMins % 60);
+  const totalDownHrs = `${tdDays}d ${tdHrs}h ${tdMin}m`;
+
+  return { pctAvailability, mttr, mtbf, mttf, totalDown: totalDownRounded, totalAvail: Math.round(totalAvail * 10) / 10, affectedSites: sitesWithDown, totalDownHrs };
 }
 
 function exportPerfCsv(rows: PerfRow[], monthKey: string) {
@@ -896,6 +954,8 @@ function exportPerfCsv(rows: PerfRow[], monthKey: string) {
     ["MTTR", kpi.mttr],
     ["MTBF", kpi.mtbf],
     ["MTTF", kpi.mttf],
+    ["No. of Affected Sites", String(kpi.affectedSites)],
+    ["Total Down Duration", kpi.totalDownHrs],
   ];
   const csv = [PERF_REPORT_HEADERS, ...perfReportRows(rows), ...kpiRows]
     .map((line) => line.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
@@ -919,6 +979,8 @@ function exportPerfExcel(rows: PerfRow[], monthKey: string) {
     ["MTTR", kpi.mttr],
     ["MTBF", kpi.mtbf],
     ["MTTF", kpi.mttf],
+    ["No. of Affected Sites", String(kpi.affectedSites)],
+    ["Total Down Duration", kpi.totalDownHrs],
   ];
   const worksheet = XLSX.utils.aoa_to_sheet([PERF_REPORT_HEADERS, ...perfReportRows(rows), ...kpiRows]);
   worksheet["!cols"] = [
@@ -987,6 +1049,8 @@ function exportPerfPdf(rows: PerfRow[], monthKey: string) {
     ["MTTR", kpi.mttr],
     ["MTBF", kpi.mtbf],
     ["MTTF", kpi.mttf],
+    ["No. of Affected Sites", String(kpi.affectedSites)],
+    ["Total Down Duration", kpi.totalDownHrs],
   ];
   autoTable(doc, {
     startY: kpiStartY + 4,
@@ -1220,12 +1284,13 @@ function SelectFilter({ label, value, options, optionLabels, onChange }: {
   );
 }
 
-function MultiSelectFilter({ label, value, options, optionLabels, onChange }: {
+function MultiSelectFilter({ label, value, options, optionLabels, onChange, showAllOption }: {
   label: string;
   value: string[];
   options: string[];
   optionLabels?: Record<string, string>;
   onChange: (value: string[]) => void;
+  showAllOption?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
@@ -1275,16 +1340,30 @@ function MultiSelectFilter({ label, value, options, optionLabels, onChange }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  const allSelected = value.length === 0;
   const toggle = (opt: string) => {
-    if (value.includes(opt)) onChange(value.filter((v) => v !== opt));
-    else onChange([...value, opt]);
+    // If All is currently active, selecting an option means: pick just that option
+    if (allSelected) { onChange([opt]); return; }
+    if (value.includes(opt)) {
+      const next = value.filter((v) => v !== opt);
+      // If deselecting last item, revert to All
+      onChange(next);
+    } else {
+      onChange([...value, opt]);
+    }
   };
-  const displayLabel = value.length === 0 ? "All" : value.length === 1 ? (optionLabels?.[value[0]] ?? value[0]) : `${value.length} selected`;
+  const displayLabel = allSelected ? "All" : value.length === 1 ? (optionLabels?.[value[0]] ?? value[0]) : `${value.length} selected`;
 
   const dropdown = open ? createPortal(
     <div className="multi-select-dropdown" style={dropdownStyle} ref={dropdownRef}>
-      {value.length > 0 && (
-        <button type="button" className="multi-select-clear" onClick={() => onChange([])}>x Clear</button>
+      {showAllOption && (
+        <label className="multi-select-option multi-select-option-all" onClick={() => { onChange([]); }}>
+          <input type="checkbox" readOnly checked={allSelected} />
+          <span style={{ fontWeight: allSelected ? 700 : undefined, color: allSelected ? "#22d3ee" : undefined }}>All</span>
+        </label>
+      )}
+      {!showAllOption && value.length > 0 && (
+        <button type="button" className="multi-select-clear" onClick={() => onChange([])}>✕ Clear</button>
       )}
       {options.map((opt) => (
         <label key={opt} className="multi-select-option">
@@ -1316,13 +1395,14 @@ export default function Home() {
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
 
-  const [exportMonth, setExportMonth] = useState("all");
+  const [exportMonths, setExportMonths] = useState<string[]>([]);
+  const [exportRegions, setExportRegions] = useState<string[]>([]);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [tablePage, setTablePage] = useState(1);
   const TABLE_PAGE_SIZE = 50;
 
-  const [perfMonth, setPerfMonth] = useState("all");
-  const [perfRegion, setPerfRegion] = useState("ALL");
+  const [perfMonths, setPerfMonths] = useState<string[]>([]);
+  const [perfRegions, setPerfRegions] = useState<string[]>([]);
 
   async function handleFile(file?: File) {
     if (!file) return;
@@ -1336,7 +1416,10 @@ export default function Home() {
       }
       setData(parsed);
       setRegions([parsed]);
-      setExportMonth("all");
+      setExportMonths([]);
+      setExportRegions([]);
+      setPerfMonths([]);
+      setPerfRegions([]);
       setFilters(EMPTY_FILTERS);
       setTablePage(1);
       if (inputRef.current) inputRef.current.value = "";
@@ -1478,19 +1561,65 @@ export default function Home() {
     });
   }, [filters.impact, filters.rcaFamily, filters.region, filters.search, filters.severity, filters.site, uniqueRows]);
 
-  const monthlyExportTickets = useMemo(() => monthlyExportBaseTickets.filter((ticket) => ticketMatchesMonthlyExport(ticket, exportMonth)), [exportMonth, monthlyExportBaseTickets]);
+  const monthlyExportTickets = useMemo(() => {
+    // Apply export region filter
+    const regionFiltered = exportRegions.length === 0
+      ? monthlyExportBaseTickets
+      : monthlyExportBaseTickets.filter((ticket) => exportRegions.includes(ticket.primary.region));
+    // Apply export month filter
+    if (exportMonths.length === 0) return regionFiltered;
+    return regionFiltered.filter((ticket) => exportMonths.some((m) => ticketMatchesMonthlyExport(ticket, m)));
+  }, [exportMonths, exportRegions, monthlyExportBaseTickets]);
 
-  const selectedExportMonthLabel = exportMonth === "all" ? "All export-eligible TT" : openingMonthLabel(exportMonth);
+  const selectedExportMonthLabel = exportMonths.length === 0 ? "All export-eligible TT" : exportMonths.length === 1 ? openingMonthLabel(exportMonths[0]) : `${exportMonths.length} months`;
 
   // Monthly Performance rows -- computed from raw rows (not aggregated tickets)
   const siteOrder = data?.siteOrder ?? [];
   const perfRows = useMemo(() => {
-    // Filter by region if not ALL
-    const sourceRows = perfRegion === "ALL"
+    // Filter by region
+    const sourceRows = perfRegions.length === 0
       ? allDataRows
-      : allDataRows.filter((r) => r.region === perfRegion);
-    return computePerfRows(sourceRows, perfMonth, siteOrder);
-  }, [allDataRows, perfMonth, perfRegion, siteOrder]);
+      : allDataRows.filter((r) => perfRegions.includes(r.region));
+    // For multi-month: pass "all" if none selected, or the first month if one selected,
+    // or compute combined rows for multiple months
+    if (perfMonths.length === 0) {
+      return computePerfRows(sourceRows, "all", siteOrder);
+    } else if (perfMonths.length === 1) {
+      return computePerfRows(sourceRows, perfMonths[0], siteOrder);
+    } else {
+      // Sum down hours across all selected months per site
+      const combined = new Map<string, PerfRow>();
+      perfMonths.forEach((mk) => {
+        const rows = computePerfRows(sourceRows, mk, siteOrder);
+        rows.forEach((r) => {
+          const existing = combined.get(r.siteId);
+          if (!existing) {
+            combined.set(r.siteId, { ...r });
+          } else {
+            existing.sitesDownHours = Math.round((existing.sitesDownHours + r.sitesDownHours) * 10) / 10;
+            // availHours: recalculate based on total month hours across selected months
+          }
+        });
+      });
+      // Recalculate availHours for combined rows
+      const totalMonthHours = perfMonths.reduce((s, mk) => s + totalHoursInMonth(mk), 0);
+      return Array.from(combined.values()).map((r) => {
+        const availHours = Math.max(0, totalMonthHours - r.sitesDownHours);
+        const totalHrs = availHours + r.sitesDownHours;
+        const reliability = totalHrs > 0 ? availHours / totalHrs : 1;
+        const totalMins = Math.round(availHours * 60);
+        const dDays = Math.floor(totalMins / (60 * 24));
+        const dHrs = Math.floor((totalMins % (60 * 24)) / 60);
+        const dMins = Math.round(totalMins % 60);
+        return {
+          ...r,
+          availHours: Math.round(availHours * 10) / 10,
+          availDay: `${dDays} d, ${dHrs} h, ${dMins} m`,
+          reliability: `${(reliability * 100).toFixed(2)}%`,
+        };
+      });
+    }
+  }, [allDataRows, perfMonths, perfRegions, siteOrder]);
 
   const analytics = useMemo(() => {
     const primaryRows = filteredTickets.map((ticket) => ticket.primary);
@@ -1615,6 +1744,7 @@ export default function Home() {
   const minor = metricValue(analytics.severity, "Minor");
   const serviceImpact = metricValue(analytics.impact, "Service Impact");
   const nonServiceImpact = metricValue(analytics.impact, "Non-Service Impact");
+
   const rcaNotProvidedPct = pct(analytics.rcaNotProvidedCount, analytics.totalUnique);
   const preventableRcaPct = pct(analytics.preventableCount, analytics.totalUnique);
 
@@ -1639,7 +1769,7 @@ export default function Home() {
             {data && <button className="ghost-button" onClick={() => inputRef.current?.click()}><RefreshCw size={16} /> New workbook</button>}
             {data && <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> CSV</button>}
             {data && <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={16} /> Excel</button>}
-            {data && <button className="ghost-button" onClick={() => exportPdf(monthlyExportTickets, exportMonth)}><Printer size={16} /> PDF</button>}
+            {data && <button className="ghost-button" onClick={() => exportPdf(monthlyExportTickets, exportMonths[0] ?? "all")}><Printer size={16} /> PDF</button>}
             {data && <button className="primary-button" onClick={() => window.print()}><Printer size={16} /> Dashboard PDF</button>}
           </div>
         </nav>
@@ -1661,56 +1791,60 @@ export default function Home() {
           <>
             {/* Monthly Tickets Export Card */}
             <div className="hero-export-row no-print">
-              <aside className="hero-export-card" aria-label="Monthly TT export filter">
+              <aside className="hero-export-card hero-export-card--5col" aria-label="Monthly TT export filter">
                 <div className="hero-export-copy">
                   <span>Monthly Tickets export filter</span>
-                  <strong><span className="export-badge">{monthlyExportTickets.length}</span> tickets for {selectedExportMonthLabel}</strong>
+                  <div className="export-count-center"><span className="export-badge-mini">{monthlyExportTickets.length}</span></div>
+                  <strong>tickets &mdash; {selectedExportMonthLabel}</strong>
                 </div>
-                <SelectFilter label="Report Month" value={exportMonth} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setExportMonth} />
+                <MultiSelectFilter label="Report Month" value={exportMonths} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setExportMonths} showAllOption />
+                <MultiSelectFilter label="Region" value={exportRegions} options={filterOptions.region} onChange={setExportRegions} showAllOption />
                 <div className="hero-export-actions">
-                  <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> Export CSV</button>
-                  <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={16} /> Export Excel</button>
-                  <button className="ghost-button" onClick={() => exportPdf(monthlyExportTickets, exportMonth)}><Printer size={16} /> Export PDF</button>
+                  <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> CSV</button>
+                  <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={16} /> Excel</button>
+                  <button className="ghost-button" onClick={() => exportPdf(monthlyExportTickets, exportMonths[0] ?? "all")}><Printer size={16} /> PDF</button>
                 </div>
               </aside>
             </div>
 
             {/* Monthly Performance Export Card */}
             <div className="hero-export-row no-print">
-              <aside className="hero-export-card" aria-label="Monthly Performance filter">
+              <aside className="hero-export-card hero-export-card--5col" aria-label="Monthly Performance filter">
                 <div className="hero-export-copy">
                   <span>Monthly Performance</span>
+                  <div className="export-count-center"><span className="export-badge-mini">{perfRows.filter(r => r.sitesDownHours > 0).length}</span></div>
                   <strong>
-                    <span className="export-badge">{perfRows.length}</span>
-                    {" "}sites for {perfMonth === "all" ? "All Months" : formatMonthMMMMYYYY(perfMonth)}
-                    {perfRegion !== "ALL" ? ` -- ${perfRegion}` : ""}
+                    affected sites &mdash; {perfMonths.length === 0 ? "All Months" : perfMonths.length === 1 ? formatMonthMMMMYYYY(perfMonths[0]) : `${perfMonths.length} months`}
+                    {perfRegions.length > 0 ? ` — ${perfRegions.join(", ")}` : ""}
                   </strong>
                 </div>
-                <SelectFilter label="Report Month" value={perfMonth} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setPerfMonth} />
-                <SelectFilter label="Region" value={perfRegion} options={["ALL", ...filterOptions.region]} onChange={setPerfRegion} />
+                <MultiSelectFilter label="Report Month" value={perfMonths} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setPerfMonths} showAllOption />
+                <MultiSelectFilter label="Region" value={perfRegions} options={filterOptions.region} onChange={setPerfRegions} showAllOption />
                 <div className="hero-export-actions">
-                  <button className="ghost-button" onClick={() => exportPerfCsv(perfRows, perfMonth)}><Download size={16} /> Export CSV</button>
-                  <button className="ghost-button" onClick={() => exportPerfExcel(perfRows, perfMonth)}><FileSpreadsheet size={16} /> Export Excel</button>
-                  <button className="ghost-button" onClick={() => exportPerfPdf(perfRows, perfMonth)}><Printer size={16} /> Export PDF</button>
+                  <button className="ghost-button" onClick={() => exportPerfCsv(perfRows, perfMonths[0] ?? "all")}><Download size={16} /> CSV</button>
+                  <button className="ghost-button" onClick={() => exportPerfExcel(perfRows, perfMonths[0] ?? "all")}><FileSpreadsheet size={16} /> Excel</button>
+                  <button className="ghost-button" onClick={() => exportPerfPdf(perfRows, perfMonths[0] ?? "all")}><Printer size={16} /> PDF</button>
                 </div>
               </aside>
             </div>
 
-            {/* KPI Summary tiles -- live with selected perfMonth */}
+            {/* KPI Summary tiles -- live with selected perfMonths */}
             {perfRows.length > 0 && (() => {
               const kpi = computePerfKPIs(perfRows);
               return (
                 <div className="hero-export-row no-print" style={{ paddingBottom: 0 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, width: "100%", maxWidth: 900 }}>
+                  <div className="perf-kpi-row">
                     {([
                       { label: "% Availability", value: kpi.pctAvailability, color: "#22c55e" },
                       { label: "MTTR", value: kpi.mttr, color: "#f59e0b" },
                       { label: "MTBF", value: kpi.mtbf, color: "#3b82f6" },
                       { label: "MTTF", value: kpi.mttf, color: "#a78bfa" },
+                      { label: "Affected Sites", value: String(kpi.affectedSites), color: "#f43f5e" },
+                      { label: "Total Down", value: kpi.totalDownHrs, color: "#fb923c" },
                     ] as { label: string; value: string; color: string }[]).map(({ label, value, color }) => (
-                      <div key={label} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 10, padding: "12px 16px", backdropFilter: "blur(8px)" }}>
-                        <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
-                        <div style={{ fontSize: 22, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{value || "--"}</div>
+                      <div key={label} className="perf-kpi-tile">
+                        <div className="perf-kpi-label">{label}</div>
+                        <div className="perf-kpi-value" style={{ color }}>{value || "--"}</div>
                       </div>
                     ))}
                   </div>
@@ -1759,7 +1893,7 @@ export default function Home() {
           </section>
 
           <section className="stats-grid workbook-cards" style={{ backgroundImage: `linear-gradient(90deg, rgba(4,13,31,.88), rgba(4,13,31,.70)), url(${RIBBON_IMAGE})` }}>
-            <StatCard label="Total Tickets" value={analytics.totalUnique.toLocaleString()} note="Core Ticket Volume" icon={Layers3} tone="#22d3ee" onClick={() => { setFilters(EMPTY_FILTERS); setTablePage(1); }} />
+            <StatCard label="Total Tickets" value={analytics.totalUnique.toLocaleString()} note="Total Tickets Opened" icon={Layers3} tone="#22d3ee" onClick={() => { setFilters(EMPTY_FILTERS); setTablePage(1); }} />
             <StatCard label="Closed Tickets" value={closed.toLocaleString()} note={`${pct(closed, analytics.totalUnique)} closed`} icon={CheckCircle2} tone="#34d399" onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Closed"] }); setTablePage(1); }} />
             <StatCard label="Pending Tickets" value={pending.toLocaleString()} note="Needs Follow-Up" icon={ShieldAlert} tone="#f59e0b" onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Pending"] }); setTablePage(1); }} />
             <StatCard label="Resolved Tickets" value={resolved.toLocaleString()} note="Tickets Resolved" icon={CheckCircle2} tone="#60a5fa" onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Resolved"] }); setTablePage(1); }} />
@@ -1768,7 +1902,8 @@ export default function Home() {
             <StatCard label="Minor Tickets" value={minor ? minor.toLocaleString() : ""} note="Low Priority Severity" icon={CircleDot} tone="#22d3ee" onClick={() => { setFilters({ ...EMPTY_FILTERS, severity: ["Minor"] }); setTablePage(1); }} />
             <StatCard label="Service Impact" value={serviceImpact.toLocaleString()} note="Exact Service Impact" icon={Network} tone="#a78bfa" onClick={() => { setFilters({ ...EMPTY_FILTERS, impact: ["Service Impact"] }); setTablePage(1); }} />
             <StatCard label="Non-Service Impact" value={nonServiceImpact.toLocaleString()} note="No Service Impact" icon={XCircle} tone="#94a3b8" onClick={() => { setFilters({ ...EMPTY_FILTERS, impact: ["Non-Service Impact"] }); setTablePage(1); }} />
-            <StatCard label="Unique Sites" value={analytics.uniqueSites.toLocaleString()} note="Unique Site ID" icon={BarChart3} tone="#60a5fa" />
+            <StatCard label="Regions" value={analytics.region.length.toLocaleString()} note="Total Regions" icon={CircleDot} tone="#60a5fa" />
+			<StatCard label="Unique Sites" value={analytics.uniqueSites.toLocaleString()} note="Unique Site ID" icon={BarChart3} tone="#60a5fa" />
             <StatCard label="Root Cause Updated" value={analytics.rootCauseUpdated.toLocaleString()} note="Tickets with Alarm Root Cause" icon={FileSpreadsheet} tone="#34d399" />
             <StatCard label="Top RCA by Tickets Count" value={analytics.topRcaByCount.name || ""} note={analytics.topRcaByCount.value ? `${analytics.topRcaByCount.value.toLocaleString()} Tickets` : ""} icon={BarChart3} tone="#22d3ee" />
             <StatCard label="Top RCA by Downtime" value={analytics.topRcaByDowntime.name || ""} note={formatHours(analytics.topRcaByDowntime.value)} icon={Activity} tone="#f59e0b" />
@@ -1896,7 +2031,7 @@ export default function Home() {
               </ResponsiveContainer>
             </article>
 
-            <article className="glass-card wide">
+            <article className="glass-card full">
               <div className="card-heading"><div><h3>Operational families -- Tickets distribution</h3></div></div>
               <div className="rca-family-layout">
                 <ResponsiveContainer width="100%" height={280}>
@@ -1919,7 +2054,7 @@ export default function Home() {
               </div>
             </article>
 
-            <article className="glass-card wide">
+            <article className="glass-card full">
               <div className="card-heading"><div><h3>Top Managed Resources by Ticket Count</h3></div></div>
               <ResponsiveContainer width="100%" height={Math.max(200, analytics.topManagedResources.length * 32 + 24)}>
                 <BarChart data={analytics.topManagedResources} layout="vertical" margin={{ left: 18, right: 72, top: 8, bottom: 8 }}>
@@ -1988,16 +2123,18 @@ export default function Home() {
               {(() => {
                 const kpi = computePerfKPIs(perfRows);
                 return (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, padding: "16px 20px 0" }}>
+                  <div className="perf-kpi-row perf-kpi-row--table">
                     {([
                       { label: "% Availability", value: kpi.pctAvailability, color: "#22c55e" },
                       { label: "MTTR", value: kpi.mttr, color: "#f59e0b" },
                       { label: "MTBF", value: kpi.mtbf, color: "#3b82f6" },
                       { label: "MTTF", value: kpi.mttf, color: "#a78bfa" },
+                      { label: "Affected Sites", value: String(kpi.affectedSites), color: "#f43f5e" },
+                      { label: "Total Down", value: kpi.totalDownHrs, color: "#fb923c" },
                     ] as { label: string; value: string; color: string }[]).map(({ label, value, color }) => (
-                      <div key={label} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "12px 16px" }}>
-                        <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
-                        <div style={{ fontSize: 22, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{value || "--"}</div>
+                      <div key={label} className="perf-kpi-tile">
+                        <div className="perf-kpi-label">{label}</div>
+                        <div className="perf-kpi-value" style={{ color }}>{value || "--"}</div>
                       </div>
                     ))}
                   </div>
@@ -2005,16 +2142,16 @@ export default function Home() {
               })()}
               <div className="table-heading">
                 <div>
-                  <h2>Monthly Performance -- {perfMonth === "all" ? "All Months" : formatMonthMMMMYYYY(perfMonth)}{perfRegion !== "ALL" ? ` -- ${perfRegion}` : ""}</h2>
+                  <h2>Monthly Performance -- {perfMonths.length === 0 ? "All Months" : perfMonths.length === 1 ? formatMonthMMMMYYYY(perfMonths[0]) : `${perfMonths.length} months`}{perfRegions.length > 0 ? ` — ${perfRegions.join(", ")}` : ""}</h2>
                   <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 4 }}>
                     {perfRows.length.toLocaleString()} sites &nbsp;|&nbsp;
-                    Total hours in month: {perfMonth !== "all" ? totalHoursInMonth(perfMonth).toLocaleString() : "N/A"} hrs
+                    Total hours in month: {perfMonths.length === 1 ? totalHoursInMonth(perfMonths[0]).toLocaleString() : perfMonths.length > 1 ? perfMonths.reduce((s, m) => s + totalHoursInMonth(m), 0).toLocaleString() : "N/A"} hrs
                   </p>
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button className="ghost-button" onClick={() => exportPerfCsv(perfRows, perfMonth)}><Download size={16} /> CSV</button>
-                  <button className="ghost-button" onClick={() => exportPerfExcel(perfRows, perfMonth)}><FileSpreadsheet size={16} /> Excel</button>
-                  <button className="ghost-button" onClick={() => exportPerfPdf(perfRows, perfMonth)}><Printer size={16} /> PDF</button>
+                  <button className="ghost-button" onClick={() => exportPerfCsv(perfRows, perfMonths[0] ?? "all")}><Download size={16} /> CSV</button>
+                  <button className="ghost-button" onClick={() => exportPerfExcel(perfRows, perfMonths[0] ?? "all")}><FileSpreadsheet size={16} /> Excel</button>
+                  <button className="ghost-button" onClick={() => exportPerfPdf(perfRows, perfMonths[0] ?? "all")}><Printer size={16} /> PDF</button>
                 </div>
               </div>
               <div className="table-scroll">
@@ -2023,19 +2160,50 @@ export default function Home() {
                     <tr>{PERF_REPORT_HEADERS.map((h) => <th key={h}>{h}</th>)}</tr>
                   </thead>
                   <tbody>
-                    {perfRows.map((row, i) => (
-                      <tr key={row.siteId}>
-                        <td className="mono">{i + 1}</td>
-                        <td className="mono">{row.siteId}</td>
-                        <td>{row.siteName}</td>
-                        <td className="mono">{row.availHours > 0 ? row.availHours : ""}</td>
-                        <td>{row.availDay}</td>
-                        <td className="mono"></td>
-                        <td className="mono"></td>
-                        <td className="mono">{row.reliability}</td>
-                        <td className="mono">{row.sitesDownHours > 0 ? row.sitesDownHours : ""}</td>
-                      </tr>
-                    ))}
+                    {perfRows.map((row, i) => {
+                      // Parse reliability % for color-coding
+                      const relNum = parseFloat(row.reliability);
+                      const relColor = !row.sitesDownHours ? undefined
+                        : relNum < 95 ? "#ef4444"   // red below 95%
+                        : relNum < 99 ? "#f59e0b"   // amber below 99%
+                        : undefined;                 // no highlight at/above 99%
+                      return (
+                        <tr key={row.siteId}>
+                          <td className="mono">{i + 1}</td>
+                          <td className="mono">{row.siteId}</td>
+                          <td>{row.siteName}</td>
+                          <td className="mono">{row.availHours}</td>
+                          <td>{row.availDay}</td>
+                          <td className="mono"></td>
+                          <td className="mono"></td>
+                          <td className="mono" style={relColor ? { color: relColor, fontWeight: 700 } : undefined}>{row.reliability}</td>
+                          <td className="mono">{row.sitesDownHours}</td>
+                        </tr>
+                      );
+                    })}
+                    {/* Total summary row */}
+                    {perfRows.length > 0 && (() => {
+                      const totalDown = Math.round(perfRows.reduce((s, r) => s + r.sitesDownHours, 0) * 10) / 10;
+                      const totalAvail = Math.round(perfRows.reduce((s, r) => s + r.availHours, 0) * 10) / 10;
+                      const totalHrs = totalAvail + totalDown;
+                      const overallRel = totalHrs > 0 ? ((totalAvail / totalHrs) * 100).toFixed(2) + "%" : "";
+                      const relNum = parseFloat(overallRel);
+                      const relColor = totalDown === 0 ? undefined
+                        : relNum < 95 ? "#ef4444"
+                        : relNum < 99 ? "#f59e0b"
+                        : "#22c55e";
+                      return (
+                        <tr style={{ fontWeight: 700, borderTop: "2px solid rgba(148,163,184,0.3)", background: "rgba(255,255,255,0.04)" }}>
+                          <td className="mono" colSpan={3} style={{ textAlign: "right", paddingRight: 16, color: "#94a3b8" }}>TOTAL</td>
+                          <td className="mono">{totalAvail}</td>
+                          <td></td>
+                          <td className="mono"></td>
+                          <td className="mono"></td>
+                          <td className="mono" style={relColor ? { color: relColor, fontWeight: 700 } : undefined}>{overallRel}</td>
+                          <td className="mono">{totalDown}</td>
+                        </tr>
+                      );
+                    })()}
                   </tbody>
                 </table>
               </div>
