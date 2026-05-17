@@ -112,15 +112,12 @@ Does this choice reinforce or dilute our design philosophy?
 .hero-panel { position: relative; overflow: hidden; min-height: 520px; border: 1px solid rgba(34, 211, 238, .18); border-radius: 34px; background-size: cover; background-position: center; box-shadow: 0 28px 90px rgba(0,0,0,.42), inset 0 1px rgba(255,255,255,.08); }
 .hero-panel::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent 60%, rgba(3,7,18,.74)), radial-gradient(circle at 60% 60%, rgba(34,211,238,.14), transparent 26rem); }
 .topbar { position: relative; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 22px 24px 12px; }
-.brand-cluster { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-width: 0; }
+.brand-cluster { display: flex; align-items: center; gap: 14px; flex-wrap: nowrap; min-width: max-content; }
 .brand-mark, .hero-meta span, .section-kicker, .eyebrow { display: inline-flex; align-items: center; gap: 8px; color: #a5f3fc; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
-.brand-mark { padding: 10px 14px; border: 1px solid rgba(34, 211, 238, .24); border-radius: 999px; background: rgba(2, 6, 23, .42); backdrop-filter: blur(14px); color: #e0f2fe; }
-.partner-logo-strip { display: inline-flex; align-items: center; gap: 12px; padding: 6px 14px 6px 8px; border: 1px solid rgba(148, 163, 184, .18); border-radius: 999px; background: rgba(2, 6, 23, .50); box-shadow: inset 0 1px rgba(255,255,255,.06), 0 18px 45px rgba(2,6,23,.25); backdrop-filter: blur(16px); }
-.partner-logo-img { display: block; object-fit: contain; }
-.partner-logo-img.ng-logo { height: 38px; max-width: 160px; }
-.partner-logo-img.nasco-logo { height: 38px; max-width: 160px; filter: brightness(1.08); }
+.brand-mark { padding: 10px 14px; border: 1px solid rgba(34, 211, 238, .24); border-radius: 999px; background: rgba(2, 6, 23, .42); backdrop-filter: blur(14px); color: #e0f2fe;white-space: nowrap;flex-shrink: 0; }
+.partner-logo-strip { display: inline-flex; align-items: center; gap: 12px; padding: 6px 14px 6px 8px; border: 1px solid rgba(148, 163, 184, .18); border-radius: 999px; background: rgba(2, 6, 23, .28); backdrop-filter: blur(12px); }
 .logo-divider { width: 1px; height: 32px; background: linear-gradient(180deg, transparent, rgba(148,163,184,.45), transparent); }
-.topbar-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+.topbar-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; flex-shrink: 1; min-width: 0; }
 .hero-layout { position: relative; z-index: 2; display: block; padding: 32px 44px 48px; }
 .hero-export-row { position: relative; z-index: 2; padding: 0 44px 32px; }
 .hero-content { display: grid; align-items: end; min-height: 260px; max-width: 900px; padding: 0; }
@@ -192,9 +189,19 @@ Does this choice reinforce or dilute our design philosophy?
 .monthly-export-panel { display: grid; grid-template-columns: minmax(280px, 1.4fr) minmax(230px, 280px) minmax(150px, auto) minmax(150px, auto); align-items: end; gap: 14px; width: min(100%, 1080px); padding: 16px; border: 1px solid rgba(34, 211, 238, .2); border-radius: 20px; background: linear-gradient(135deg, rgba(2, 6, 23, .62), rgba(14, 116, 144, .12)); }
 .monthly-export-panel strong { display: block; color: #f8fafc; font-family: "Sora", system-ui, sans-serif; font-size: 14px; letter-spacing: -.01em; }
 .monthly-export-panel span { display: block; margin-top: 5px; color: #a5b4c6; font-size: 12px; line-height: 1.55; }
-.hero-export-card { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(220px, 300px) auto auto; align-items: end; gap: 20px; padding: 22px 28px; border: 1px solid rgba(34, 211, 238, .22); border-radius: 22px; background: linear-gradient(135deg, rgba(2, 6, 23, .78), rgba(8, 47, 73, .46)); box-shadow: 0 26px 80px rgba(2,6,23,.42), inset 0 1px rgba(255,255,255,.07); backdrop-filter: blur(18px); min-width: 0; overflow: hidden; }
+.hero-export-card { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(180px, 260px) auto auto; align-items: end; gap: 16px; padding: 18px 24px; border: 1px solid rgba(34, 211, 238, .22); border-radius: 22px; background: linear-gradient(135deg, rgba(2, 6, 23, .78), rgba(8, 47, 73, .46)); box-shadow: 0 26px 80px rgba(2,6,23,.42), inset 0 1px rgba(255,255,255,.07); backdrop-filter: blur(18px); min-width: 0; overflow: hidden; }
+.hero-export-card--5col { grid-template-columns: minmax(180px, 1fr) minmax(160px, 220px) minmax(140px, 200px) auto; }
+.export-badge-mini { display: inline-flex; align-items: center; justify-content: center; width: fit-content; min-width: 0; height: auto; padding: 0; background: transparent; border: none; font-size: 32px; font-weight: 900; color: #22d3ee; font-family: var(--font-mono, monospace); vertical-align: middle; line-height: 1; white-space: nowrap; letter-spacing: -0.03em; }
+.perf-kpi-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 100%; padding: 0 4px; }
+.perf-kpi-row--table { padding: 16px 20px 0; }
+.perf-kpi-tile { flex: 1 1 130px; max-width: 180px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(8px); }
+.perf-kpi-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 5px; }
+.perf-kpi-value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.multi-select-option-all { border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 4px; padding-bottom: 4px; }
+.hero-export-copy { display: flex; flex-direction: column; align-items: flex-start; }
 .hero-export-copy span { display: block; color: #a5f3fc; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
-.hero-export-copy strong { display: block; margin-top: 7px; color: #f8fafc; font-family: "Sora", system-ui, sans-serif; font-size: 14px; letter-spacing: -.01em; }
+.export-count-center { width: 100%; display: flex; justify-content: center; margin: 4px 0 2px; }
+.hero-export-copy strong { display: block; margin-top: 0; color: #f8fafc; font-family: "Sora", system-ui, sans-serif; font-size: 13px; letter-spacing: -.01em; }
 .hero-export-card .filter-field { min-width: 0; }
 .hero-export-actions { display: flex; align-items: center; gap: 10px; }
 .table-scroll { overflow: auto; border: 1px solid rgba(148, 163, 184, .16); border-radius: 20px; }
@@ -238,6 +245,28 @@ td small { display: block; margin-top: 3px; color: #94a3b8; }
   .hero-export-actions { flex-direction: column; width: 100%; }
   .hero-export-actions .ghost-button { width: 100%; justify-content: center; }
 }
+
+.brand-mark {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.brand-cluster {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.topbar-actions {
+  flex-shrink: 0;
+}
+
+.partner-logo-img {
+  height: 28px;
+  max-width: 120px;
+  object-fit: contain;
+}
+
+
 
 /* Multi-select filter dropdown */
 .export-badge {
