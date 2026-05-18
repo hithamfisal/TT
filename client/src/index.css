@@ -125,10 +125,21 @@ Does this choice reinforce or dilute our design philosophy?
 .hero-copy { max-width: 720px; color: #cbd5e1; font-size: 17px; line-height: 1.7; }
 .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
 .hero-meta span { padding: 9px 12px; border: 1px solid rgba(148, 163, 184, .22); border-radius: 999px; background: rgba(15, 23, 42, .54); color: #cbd5e1; letter-spacing: .08em; }
-.primary-button, .ghost-button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; border: 1px solid rgba(34, 211, 238, .24); border-radius: 999px; padding: 10px 15px; color: #dffafe; font-weight: 750; transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease; }
-.primary-button { background: linear-gradient(135deg, #22d3ee, #60a5fa); color: #031225; box-shadow: 0 16px 42px rgba(34, 211, 238, .28); }
+.primary-button,
+.ghost-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-radius: 999px;
+  padding: 10px 15px;
+  font-weight: 750;
+  transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
+  color: #dffafe;
+}.primary-button { background: linear-gradient(135deg, #22d3ee, #60a5fa); color: #031225; box-shadow: 0 16px 42px rgba(34, 211, 238, .28); }
 .primary-button.large { padding: 14px 20px; font-size: 15px; }
-.ghost-button { background: rgba(15, 23, 42, .55); backdrop-filter: blur(14px); }
+.ghost-button { background: rgba(15, 23, 42, .55); backdrop-filter: blur(14px);color: #dffafe; }
+.ghost-button svg,.primary-button svg {  color: currentColor;  flex-shrink: 0;}
 .primary-button:hover, .ghost-button:hover { transform: translateY(-2px); border-color: rgba(165, 243, 252, .65); box-shadow: 0 18px 46px rgba(15, 23, 42, .34); }
 .upload-stage { margin: -84px auto 48px; max-width: 1180px; position: relative; z-index: 3; }
 .upload-card { display: grid; grid-template-columns: 1.15fr .85fr; align-items: center; gap: 28px; min-height: 430px; padding: 36px; border: 1px solid rgba(34, 211, 238, .24); border-radius: 32px; background: linear-gradient(135deg, rgba(8, 18, 38, .94), rgba(15, 23, 42, .74)); box-shadow: 0 28px 90px rgba(0,0,0,.38); backdrop-filter: blur(20px); }
@@ -147,6 +158,14 @@ Does this choice reinforce or dilute our design philosophy?
 .stat-card span { display: block; margin-top: 16px; color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
 .stat-card strong { display: block; margin-top: 6px; color: #f8fafc; font-family: "IBM Plex Mono", monospace; font-size: clamp(20px, 2.4vw, 34px); line-height: 1.05; overflow-wrap: anywhere; }
 .stat-card small { display: block; margin-top: 10px; color: #b6c6d9; }
+/* .stat-icon {transition: transform .2s ease;} */
+
+.stat-card:hover .stat-icon {transform: scale(1.15);}
+
+.stat-card {transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;}
+
+.stat-card:hover {transform: translateY(-4px);box-shadow: 0 20px 50px rgba(0,0,0,.35);border-color: var(--tone);}
+
 .filters-panel { display: grid; grid-template-columns: minmax(240px, 1.4fr) repeat(5, minmax(130px, .75fr)) auto; gap: 12px; align-items: end; max-width: 1320px; margin: 0 auto 22px; padding: 18px; border-radius: 24px; }
 .search-box, .filter-field { display: grid; gap: 7px; color: #94a3b8; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
 .search-box { position: relative; }
@@ -204,6 +223,24 @@ Does this choice reinforce or dilute our design philosophy?
 .hero-export-copy strong { display: block; margin-top: 0; color: #f8fafc; font-family: "Sora", system-ui, sans-serif; font-size: 13px; letter-spacing: -.01em; }
 .hero-export-card .filter-field { min-width: 0; }
 .hero-export-actions { display: flex; align-items: center; gap: 10px; }
+
+.hero-export-row { 
+  position: relative; 
+  z-index: 2; 
+  padding: 0 44px 32px; 
+}
+
+/* ADD THIS BELOW */
+.export-row-dual {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+
+
+
 .table-scroll { overflow: auto; border: 1px solid rgba(148, 163, 184, .16); border-radius: 20px; }
 table { width: 100%; border-collapse: collapse; min-width: 2280px; }
 th { position: sticky; top: 0; z-index: 1; background: rgba(3, 7, 18, .94); color: #a5f3fc; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; text-align: left; }
@@ -223,6 +260,7 @@ td small { display: block; margin-top: 3px; color: #94a3b8; }
   .filters-panel { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .glass-card, .glass-card.wide, .glass-card.tall, .glass-card.full { grid-column: span 6; }
   .rca-family-layout { grid-template-columns: 1fr; }
+  .export-row-dual {grid-template-columns: 1fr;}
 }
 @media (max-width: 760px) {
   .dashboard-shell { padding: 12px; }
@@ -494,9 +532,14 @@ Design philosophy: Calm Enterprise Glass for a premium telecom network-observabi
 Workbook Dashboard matching additions: dense executive KPI strip plus original top-sites table treatment.
 Does this choice reinforce or dilute our design philosophy?
 */
-.workbook-cards {
+
+/* .workbook-cards {
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 0.9rem;
+} */
+
+.workbook-cards {
+  grid-template-columns: repeat(9, minmax(0, 1fr));
 }
 
 .workbook-cards .stat-card {
