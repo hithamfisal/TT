@@ -3,6 +3,7 @@ Design philosophy: Calm Enterprise Glass for a premium telecom network-observabi
 Use deep ink backgrounds, translucent panels, cyan focus accents, tabular TT numerals, and restrained motion.
 Does this choice reinforce or dilute our design philosophy?
 */
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
@@ -44,8 +45,8 @@ import {
   YAxis,
 } from "recharts";
 
-import nascoLogoSrc from "/nascologo.png";
-import ngLogoSrc from "/nglogo.png";
+import nascoLogoSrc from "../assets/nascologo.png";
+import ngLogoSrc from "../assets/nglogo.png";
 const HERO_IMAGE = "/h.png";
 const UPLOAD_IMAGE = "/h.png";
 const RIBBON_IMAGE = "/h.png";
@@ -725,8 +726,8 @@ const PERF_REPORT_HEADERS = [
 ];
 
 type PerfRow = {
-  siteId: string;      // e.g. "RF Site 1"
-  siteName: string;    // e.g. "Karma S_S (EOA)"
+  siteId: string;      
+  siteName: string;    
   sitesDownHours: number;
   availHours: number;
   availDay: string;
@@ -1174,7 +1175,7 @@ function exportPdf(rows: TicketAggregate[], monthKey: string) {
 function StatCard({ label, value, note, icon: Icon, tone, onClick }: { label: string; value: string | number; note: string; icon: typeof Activity; tone: string; onClick?: () => void }) {
   return (
     <div className="stat-card" style={{ ["--tone" as string]: tone, cursor: onClick ? "pointer" : undefined }} onClick={onClick} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined} onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") onClick(); } : undefined}>
-      <div className="stat-icon"><Icon size={18} /></div>
+      <div className="stat-icon"><Icon size={28} /></div>
       <span>{label}</span>
       <strong>{value}</strong>
       <small>{note}</small>
@@ -1394,12 +1395,13 @@ export default function Home() {
   const [regions, setRegions] = useState<DashboardData[]>([]);
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
-
+  const statsRef = useRef<HTMLDivElement | null>(null);
+  const tableRef = useRef<HTMLDivElement | null>(null);
   const [exportMonths, setExportMonths] = useState<string[]>([]);
   const [exportRegions, setExportRegions] = useState<string[]>([]);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [tablePage, setTablePage] = useState(1);
-  const TABLE_PAGE_SIZE = 50;
+  const TABLE_PAGE_SIZE = 20;
 
   const [perfMonths, setPerfMonths] = useState<string[]>([]);
   const [perfRegions, setPerfRegions] = useState<string[]>([]);
@@ -1748,6 +1750,10 @@ export default function Home() {
   const rcaNotProvidedPct = pct(analytics.rcaNotProvidedCount, analytics.totalUnique);
   const preventableRcaPct = pct(analytics.preventableCount, analytics.totalUnique);
 
+  function scrollToTopCards() {
+    throw new Error("Function not implemented.");
+  }
+
   return (
     <main className="dashboard-shell">
       <section
@@ -1789,44 +1795,100 @@ export default function Home() {
         )}
         {data && (
           <>
-            {/* Monthly Tickets Export Card */}
-            <div className="hero-export-row no-print">
-              <aside className="hero-export-card hero-export-card--5col" aria-label="Monthly TT export filter">
-                <div className="hero-export-copy">
-                  <span>Monthly Tickets export filter</span>
-                  <div className="export-count-center"><span className="export-badge-mini">{monthlyExportTickets.length}</span></div>
-                  <strong>tickets &mdash; {selectedExportMonthLabel}</strong>
-                </div>
-                <MultiSelectFilter label="Report Month" value={exportMonths} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setExportMonths} showAllOption />
-                <MultiSelectFilter label="Region" value={exportRegions} options={filterOptions.region} onChange={setExportRegions} showAllOption />
-                <div className="hero-export-actions">
-                  <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> CSV</button>
-                  <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={16} /> Excel</button>
-                  <button className="ghost-button" onClick={() => exportPdf(monthlyExportTickets, exportMonths[0] ?? "all")}><Printer size={16} /> PDF</button>
-                </div>
-              </aside>
-            </div>
+            
 
-            {/* Monthly Performance Export Card */}
-            <div className="hero-export-row no-print">
-              <aside className="hero-export-card hero-export-card--5col" aria-label="Monthly Performance filter">
-                <div className="hero-export-copy">
-                  <span>Monthly Performance</span>
-                  <div className="export-count-center"><span className="export-badge-mini">{perfRows.filter(r => r.sitesDownHours > 0).length}</span></div>
-                  <strong>
-                    affected sites &mdash; {perfMonths.length === 0 ? "All Months" : perfMonths.length === 1 ? formatMonthMMMMYYYY(perfMonths[0]) : `${perfMonths.length} months`}
-                    {perfRegions.length > 0 ? ` — ${perfRegions.join(", ")}` : ""}
-                  </strong>
-                </div>
-                <MultiSelectFilter label="Report Month" value={perfMonths} options={filterOptions.exportMonth} optionLabels={filterOptions.exportMonthLabels} onChange={setPerfMonths} showAllOption />
-                <MultiSelectFilter label="Region" value={perfRegions} options={filterOptions.region} onChange={setPerfRegions} showAllOption />
-                <div className="hero-export-actions">
-                  <button className="ghost-button" onClick={() => exportPerfCsv(perfRows, perfMonths[0] ?? "all")}><Download size={16} /> CSV</button>
-                  <button className="ghost-button" onClick={() => exportPerfExcel(perfRows, perfMonths[0] ?? "all")}><FileSpreadsheet size={16} /> Excel</button>
-                  <button className="ghost-button" onClick={() => exportPerfPdf(perfRows, perfMonths[0] ?? "all")}><Printer size={16} /> PDF</button>
-                </div>
-              </aside>
-            </div>
+<div className="hero-export-row no-print export-row-dual">
+
+  {/* ===== CARD 1: Monthly Tickets ===== */}
+  <aside className="hero-export-card hero-export-card--5col">
+    <div className="hero-export-copy">
+      <span>Monthly Tickets Export</span>
+      <div className="export-count-center">
+        <span className="export-badge-mini">{monthlyExportTickets.length}</span>
+      </div>
+      <strong>
+        tickets — {exportMonths.length === 0
+          ? "All Months"
+          : exportMonths.length === 1
+          ? filterOptions.exportMonthLabels?.[exportMonths[0]] ?? exportMonths[0]
+          : `${exportMonths.length} months`}
+      </strong>
+    </div>
+
+    {/* Month filter */}
+    <MultiSelectFilter
+      label="Report Month"
+      value={exportMonths}
+      options={filterOptions.exportMonth}
+      optionLabels={filterOptions.exportMonthLabels}
+      onChange={setExportMonths}
+      showAllOption
+    />
+
+    {/* Region filter */}
+    <MultiSelectFilter
+      label="Region"
+      value={exportRegions}
+      options={filterOptions.region}
+      onChange={setExportRegions}
+      showAllOption
+    />
+
+    <div className="hero-export-actions">
+      <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={16} /> CSV</button>
+      <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={16} /> Excel</button>
+      <button className="ghost-button" onClick={() => exportPdf(monthlyExportTickets, exportMonths[0] ?? "all")}><Printer size={16} /> PDF</button>
+    </div>
+  </aside>
+
+
+  {/* ===== CARD 2: Monthly Performance ===== */}
+  <aside className="hero-export-card hero-export-card--5col">
+    <div className="hero-export-copy">
+      <span>Monthly Performance</span>
+      <div className="export-count-center">
+        <span className="export-badge-mini">
+          {perfRows.filter(r => r.sitesDownHours > 0).length}
+        </span>
+      </div>
+      <strong>
+        performance — {perfMonths.length === 0
+          ? "All Months"
+          : perfMonths.length === 1
+          ? filterOptions.exportMonthLabels?.[perfMonths[0]] ?? perfMonths[0]
+          : `${perfMonths.length} months`}
+      </strong>
+    </div>
+
+    {/* Month filter */}
+    <MultiSelectFilter
+      label="Report Month"
+      value={perfMonths}
+      options={filterOptions.exportMonth}
+      optionLabels={filterOptions.exportMonthLabels}
+      onChange={setPerfMonths}
+      showAllOption
+    />
+
+    {/* Region filter */}
+    <MultiSelectFilter
+      label="Region"
+      value={perfRegions}
+      options={filterOptions.region}
+      onChange={setPerfRegions}
+      showAllOption
+    />
+
+    <div className="hero-export-actions">
+      <button className="ghost-button" onClick={() => exportPerfCsv(perfRows, perfMonths[0] ?? "all")}><Download size={16} /> CSV</button>
+      <button className="ghost-button" onClick={() => exportPerfExcel(perfRows, perfMonths[0] ?? "all")}><FileSpreadsheet size={16} /> Excel</button>
+      <button className="ghost-button" onClick={() => exportPerfPdf(perfRows, perfMonths[0] ?? "all")}><Printer size={16} /> PDF</button>
+    </div>
+  </aside>
+
+</div>
+
+
 
             {/* KPI Summary tiles -- live with selected perfMonths */}
             {perfRows.length > 0 && (() => {
@@ -1872,7 +1934,7 @@ export default function Home() {
               {error && <div className="error-banner"><AlertTriangle size={16} /> {error}</div>}
               <button className="primary-button large" onClick={() => inputRef.current?.click()}><FileSpreadsheet size={18} /> Select Excel workbook</button>
             </div>
-            <img src={UPLOAD_IMAGE} alt="Abstract workbook upload visualization" />
+            <img src={UPLOAD_IMAGE} alt="Abstract Workbook Upload Visualization" />
           </div>
         </section>
       ) : (
@@ -1889,10 +1951,10 @@ export default function Home() {
             <MultiSelectFilter label="Opening Month" value={filters.openingMonth} options={filterOptions.openingMonth} optionLabels={filterOptions.openingMonthLabels} onChange={(value) => setFilters((prev) => ({ ...prev, openingMonth: value }))} />
             <MultiSelectFilter label="Site" value={filters.site} options={filterOptions.site} onChange={(value) => setFilters((prev) => ({ ...prev, site: value }))} />
             <MultiSelectFilter label="RCA Family" value={filters.rcaFamily} options={filterOptions.rcaFamily} onChange={(value) => setFilters((prev) => ({ ...prev, rcaFamily: value }))} />
-            <button className="ghost-button" onClick={() => { setFilters(EMPTY_FILTERS); setTablePage(1); }}><Filter size={16} /> Clear</button>
+           <button  className="ghost-button" onClick={() => {  setFilters(EMPTY_FILTERS); setTablePage(1); }} > <Filter size={16} /> Clear </button>
           </section>
 
-          <section className="stats-grid workbook-cards" style={{ backgroundImage: `linear-gradient(90deg, rgba(4,13,31,.88), rgba(4,13,31,.70)), url(${RIBBON_IMAGE})` }}>
+          <section ref={statsRef} className="stats-grid workbook-cards" style={{ backgroundImage: `linear-gradient(90deg, rgba(4,13,31,.88), rgba(4,13,31,.70)), url(${RIBBON_IMAGE})` }}>
             <StatCard label="Total Tickets" value={analytics.totalUnique.toLocaleString()} note="Total Tickets Opened" icon={Layers3} tone="#22d3ee" onClick={() => { setFilters(EMPTY_FILTERS); setTablePage(1); }} />
             <StatCard label="Closed Tickets" value={closed.toLocaleString()} note={`${pct(closed, analytics.totalUnique)} closed`} icon={CheckCircle2} tone="#34d399" onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Closed"] }); setTablePage(1); }} />
             <StatCard label="Pending Tickets" value={pending.toLocaleString()} note="Needs Follow-Up" icon={ShieldAlert} tone="#f59e0b" onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Pending"] }); setTablePage(1); }} />
@@ -1903,7 +1965,7 @@ export default function Home() {
             <StatCard label="Service Impact" value={serviceImpact.toLocaleString()} note="Exact Service Impact" icon={Network} tone="#a78bfa" onClick={() => { setFilters({ ...EMPTY_FILTERS, impact: ["Service Impact"] }); setTablePage(1); }} />
             <StatCard label="Non-Service Impact" value={nonServiceImpact.toLocaleString()} note="No Service Impact" icon={XCircle} tone="#94a3b8" onClick={() => { setFilters({ ...EMPTY_FILTERS, impact: ["Non-Service Impact"] }); setTablePage(1); }} />
             <StatCard label="Regions" value={analytics.region.length.toLocaleString()} note="Total Regions" icon={CircleDot} tone="#60a5fa" />
-			<StatCard label="Unique Sites" value={analytics.uniqueSites.toLocaleString()} note="Unique Site ID" icon={BarChart3} tone="#60a5fa" />
+			      <StatCard label="Unique Sites" value={analytics.uniqueSites.toLocaleString()} note="Unique Site ID" icon={BarChart3} tone="#60a5fa" />
             <StatCard label="Root Cause Updated" value={analytics.rootCauseUpdated.toLocaleString()} note="Tickets with Alarm Root Cause" icon={FileSpreadsheet} tone="#34d399" />
             <StatCard label="Top RCA by Tickets Count" value={analytics.topRcaByCount.name || ""} note={analytics.topRcaByCount.value ? `${analytics.topRcaByCount.value.toLocaleString()} Tickets` : ""} icon={BarChart3} tone="#22d3ee" />
             <StatCard label="Top RCA by Downtime" value={analytics.topRcaByDowntime.name || ""} note={formatHours(analytics.topRcaByDowntime.value)} icon={Activity} tone="#f59e0b" />
@@ -2142,7 +2204,7 @@ export default function Home() {
               })()}
               <div className="table-heading">
                 <div>
-                  <h2>Monthly Performance -- {perfMonths.length === 0 ? "All Months" : perfMonths.length === 1 ? formatMonthMMMMYYYY(perfMonths[0]) : `${perfMonths.length} months`}{perfRegions.length > 0 ? ` — ${perfRegions.join(", ")}` : ""}</h2>
+                  <h2>Monthly Performance - {perfMonths.length === 0 ? "All Months" : perfMonths.length === 1 ? formatMonthMMMMYYYY(perfMonths[0]) : `${perfMonths.length} months`}{perfRegions.length > 0 ? ` — ${perfRegions.join(", ")}` : ""}</h2>
                   <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 4 }}>
                     {perfRows.length.toLocaleString()} sites &nbsp;|&nbsp;
                     Total hours in month: {perfMonths.length === 1 ? totalHoursInMonth(perfMonths[0]).toLocaleString() : perfMonths.length > 1 ? perfMonths.reduce((s, m) => s + totalHoursInMonth(m), 0).toLocaleString() : "N/A"} hrs
@@ -2219,41 +2281,50 @@ export default function Home() {
               </div>
             </div>
             <div className="table-scroll" id="ticket-table-wrapper">
-              <table>
-                <thead>
-                  <tr>{DISTINCT_REPORT_HEADERS.map((header) => <th key={header}>{header}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {filteredTickets.slice((tablePage - 1) * TABLE_PAGE_SIZE, tablePage * TABLE_PAGE_SIZE).map((ticket, index) => {
-                    const row = ticket.primary;
-                    const reportRow = distinctReportRow(ticket, index);
-                    const siteIds = Array.from(ticket.siteIds).filter(Boolean);
-                    const siteNames = Array.from(ticket.siteNames).filter(Boolean);
-                    return (
-                      <tr key={ticket.tt}>
-                        {reportRow.map((cell, cellIndex) => {
-                          const header = DISTINCT_REPORT_HEADERS[cellIndex];
-                          if (header === "#" || header === "TT") return <td key={header} className="mono">{cell}</td>;
-                          if (header === "Site ID") return (
-                            <td key={header} className="mono" style={{ whiteSpace: "pre-line", lineHeight: 1.9 }}>
-                              {siteIds.length ? siteIds.map((id, i) => <span key={id}>{id}{i < siteIds.length - 1 ? "\n" : ""}</span>) : cell}
-                            </td>
-                          );
-                          if (header === "Site Name") return (
-                            <td key={header} style={{ whiteSpace: "pre-line", lineHeight: 1.9 }}>
-                              {siteNames.length ? siteNames.map((name, i) => <span key={name}>{name}{i < siteNames.length - 1 ? "\n" : ""}</span>) : cell}
-                            </td>
-                          );
-                          if (header === "Severity") return <td key={header}><span className="pill" style={{ ["--pill" as string]: SEVERITY_COLORS[row.severity] ?? "#64748b" }}>{cell}</span></td>;
-                          if (header === "Status") return <td key={header}><span className="pill" style={{ ["--pill" as string]: STATUS_COLORS[row.status] ?? "#64748b" }}>{cell}</span></td>;
-                          if (["Issues", "RCA", "Recommended Action", "Responsible Team"].includes(header)) return <td key={header} className="issue-cell">{cell}</td>;
-                          return <td key={header}>{cell}</td>;
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+             <div ref={tableRef}>
+  <div style={{ marginBottom: "12px" }}>
+  <button className="ghost-button" onClick={scrollToTopCards}>
+  
+    ↑ Back to Summary
+  </button>
+</div>
+  
+  <table>
+    <thead>
+      <tr>{DISTINCT_REPORT_HEADERS.map((header) => <th key={header}>{header}</th>)}</tr>
+    </thead>
+    <tbody>
+      {filteredTickets.slice((tablePage - 1) * TABLE_PAGE_SIZE, tablePage * TABLE_PAGE_SIZE).map((ticket, index) => {
+        const row = ticket.primary;
+        const reportRow = distinctReportRow(ticket, index);
+        const siteIds = Array.from(ticket.siteIds).filter(Boolean);
+        const siteNames = Array.from(ticket.siteNames).filter(Boolean);
+        return (
+          <tr key={ticket.tt}>
+            {reportRow.map((cell, cellIndex) => {
+              const header = DISTINCT_REPORT_HEADERS[cellIndex];
+              if (header === "#" || header === "TT") return <td key={header} className="mono">{cell}</td>;
+              if (header === "Site ID") return (
+                <td key={header} className="mono" style={{ whiteSpace: "pre-line", lineHeight: 1.9 }}>
+                  {siteIds.length ? siteIds.map((id, i) => <span key={id}>{id}{i < siteIds.length - 1 ? "\n" : ""}</span>) : cell}
+                </td>
+              );
+              if (header === "Site Name") return (
+                <td key={header} style={{ whiteSpace: "pre-line", lineHeight: 1.9 }}>
+                  {siteNames.length ? siteNames.map((name, i) => <span key={name}>{name}{i < siteNames.length - 1 ? "\n" : ""}</span>) : cell}
+                </td>
+              );
+              if (header === "Severity") return <td key={header}><span className="pill" style={{ ["--pill" as string]: SEVERITY_COLORS[row.severity] ?? "#64748b" }}>{cell}</span></td>;
+              if (header === "Status") return <td key={header}><span className="pill" style={{ ["--pill" as string]: STATUS_COLORS[row.status] ?? "#64748b" }}>{cell}</span></td>;
+              if (["Issues", "RCA", "Recommended Action", "Responsible Team"].includes(header)) return <td key={header} className="issue-cell">{cell}</td>;
+              return <td key={header}>{cell}</td>;
+            })}
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+</div>
             </div>
             {Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE) > 1 && (
               <div className="pagination-bar no-print">
