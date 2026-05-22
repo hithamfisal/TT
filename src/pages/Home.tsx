@@ -1,5 +1,5 @@
 import PptxGenJS from "pptxgenjs";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -20,7 +20,9 @@ import {
   Download,
   FileSpreadsheet,
   Filter,
+  CloudOff,
   Layers3,
+  type LucideIcon,
   Network,
   Presentation,
   Printer,
@@ -28,7 +30,6 @@ import {
   Search,
   ShieldAlert,
   UploadCloud,
-  XCircle,
 } from "lucide-react";
 
 import {
@@ -398,6 +399,9 @@ type TicketRecord = {
   escalationLevel: string;
   escalatedForL3SupportDate: string;
   escalatedForL3SupportTime: string;
+  frtHours: number | null;
+  responseHours: number | null;
+  resolutionHours: number | null;
   status: string;
   rca: string;
   rcaFamily: string;
@@ -527,6 +531,33 @@ function openingMonthLabel(key: string): string {
   return parsed.toLocaleDateString("en", { month: "short", year: "numeric" });
 }
 
+function startOfWeek(date: Date): Date {
+  const copy = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = copy.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  copy.setDate(copy.getDate() + diff);
+  return copy;
+}
+
+function weekKey(value: unknown): string {
+  const parsed = parseDateValue(value);
+  if (!parsed) return "Unknown";
+  const start = startOfWeek(parsed);
+  return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`;
+}
+
+function weekLabel(key: string): string {
+  if (!key || key === "Unknown") return "Unknown";
+  const parsed = new Date(`${key}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return key;
+  const end = new Date(parsed);
+  end.setDate(end.getDate() + 6);
+  const sameMonth = parsed.getMonth() === end.getMonth() && parsed.getFullYear() === end.getFullYear();
+  const startLabel = parsed.toLocaleDateString("en", { day: "2-digit", month: "short" });
+  const endLabel = end.toLocaleDateString("en", sameMonth ? { day: "2-digit" } : { day: "2-digit", month: "short" });
+  return `${startLabel}-${endLabel}`;
+}
+
 function recordDateMonthKey(value: string): string {
   const parsed = parseDateValue(value);
   if (!parsed) return "Unknown";
@@ -653,6 +684,25 @@ function parseDurationHours(duration: string): number | null {
     return Math.round(num * 10) / 10; // already in hours
   }
   return null;
+}
+
+function combineDateTime(dateStr: string, timeStr: string): Date | null {
+  const parsed = parseDateValue(dateStr);
+  if (!parsed) return null;
+  const time = clean(timeStr);
+  const match = time.match(/^(\d{1,2}):(\d{2})/);
+  if (match) parsed.setHours(Number(match[1]), Number(match[2]), 0, 0);
+  return parsed;
+}
+
+function hoursBetween(start: Date | null, end: Date | null): number | null {
+  if (!start || !end || end < start) return null;
+  return Math.round(((end.getTime() - start.getTime()) / 36e5) * 10) / 10;
+}
+
+function average(values: Array<number | null | undefined>): number {
+  const valid = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  return valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : 0;
 }
 
 const RCA_FAMILY_MAP: Record<string, string> = {
@@ -860,6 +910,18 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
         getField(row, ["Opening Month", "OpeningMonth"]),
         observationDate,
       );
+      const observationTime = toTimeStr(getRawField(row, ["Observation Time", "Observed Time", "ObservationTime"]));
+      const recoveryDate = toDateStr(getRawField(row, ["Recovery Date"]) || "");
+      const recoveryTime = toTimeStr(getRawField(row, ["Recovery Time", "RecoveryTime"]));
+      const duration = String(getRawField(row, ["Total Duration Days/Hours", "Total Durration Days/Hours", "Duration"]) ?? "");
+      const l3Date = toDateStr(getField(row, ["Escalated for L3 Support Date", "Escalated For L3 Support Date", "L3 Support Date", "L3 Escalation Date", "Escalation L3 Date", "Escalated L3 Date"]) || "");
+      const l3Time = toTimeStr(getRawField(row, ["Escalated for L3 Support Time", "Escalated For L3 Support Time", "L3 Support Time", "L3 Escalation Time", "Escalation L3 Time", "Escalated L3 Time"]));
+      const observedAt = combineDateTime(observationDate, observationTime);
+      const l3At = combineDateTime(l3Date, l3Time);
+      const recoveredAt = combineDateTime(recoveryDate, recoveryTime);
+      const explicitFrt = parseDurationHours(String(getRawField(row, ["FRT", "Avg FRT", "First Reply Time", "First Response Time"]) ?? ""));
+      const explicitResponse = parseDurationHours(String(getRawField(row, ["Response Time", "Avg Response Time", "Ticket Response Time"]) ?? ""));
+      const explicitResolution = parseDurationHours(String(getRawField(row, ["Resolution Time", "Avg Resolution Time", "Ticket Resolution Time"]) ?? ""));
       const rca = getField(row, ["RCA", "Root Cause Analysis", "Root Cause", "Action Taken/RCA"]);
       const rcaFamily = getRcaFamily(rca);
       return {
@@ -872,17 +934,20 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
         severity: getField(row, ["Severity"]),
         region: getField(row, ["Region"]),
         observationDate,
-        observationTime: toTimeStr(getRawField(row, ["Observation Time", "Observed Time", "ObservationTime"])),
+        observationTime,
         openingMonthKey: monthKey,
         openingMonthLabel: openingMonthLabel(monthKey),
-        recoveryDate: toDateStr(getRawField(row, ["Recovery Date"]) || ""),
-        recoveryTime: toTimeStr(getRawField(row, ["Recovery Time", "RecoveryTime"])),
-        duration: String(getRawField(row, ["Total Duration Days/Hours", "Total Durration Days/Hours", "Duration"]) ?? ""),
+        recoveryDate,
+        recoveryTime,
+        duration,
         impact: getField(row, ["Service Impaction Status", "Service Impact Status"]),
         escalatedTo: getField(row, ["Escalated to", "Escalated To", "Escalated to "]),
         escalationLevel: getField(row, ["Escalation Level", "Esclation Level"]),
-        escalatedForL3SupportDate: toDateStr(getField(row, ["Escalated for L3 Support Date", "Escalated For L3 Support Date", "L3 Support Date", "L3 Escalation Date", "Escalation L3 Date", "Escalated L3 Date"]) || ""),
-        escalatedForL3SupportTime: toTimeStr(getRawField(row, ["Escalated for L3 Support Time", "Escalated For L3 Support Time", "L3 Support Time", "L3 Escalation Time", "Escalation L3 Time", "Escalated L3 Time"])),
+        escalatedForL3SupportDate: l3Date,
+        escalatedForL3SupportTime: l3Time,
+        frtHours: explicitFrt ?? hoursBetween(observedAt, l3At),
+        responseHours: explicitResponse ?? hoursBetween(observedAt, l3At),
+        resolutionHours: explicitResolution ?? parseDurationHours(duration) ?? hoursBetween(observedAt, recoveredAt),
         status: getField(row, ["Status"]),
         rca,
         rcaFamily,
@@ -962,6 +1027,114 @@ const PERF_REPORT_HEADERS = [
   "DMR Reliability",
   "Sites Down, hrs",
 ];
+
+const PERF_TEMPLATE_PDF_HEADERS = [
+  "S No",
+  "Site No",
+  "Site ID",
+  "Site Availability, Hrs",
+  "Site Availability, days",
+  "Channel Busy Count",
+  "MW link Performance, Hrs",
+  "DMR Reliability",
+  "Sites Down, hrs",
+];
+
+const TICKET_TEMPLATE_PDF_HEAD = [
+  [
+    "No",
+    "Equipment/ site",
+    "Site Name",
+    "Effected Managed Resource",
+    "Severity",
+    "Alarm Type",
+    "Escalation",
+    "",
+    "Recovery",
+    "",
+    "Escalated for L3 Support",
+    "",
+    "Outage Duration",
+    "TT Number",
+    "TT Status",
+    "TT Owner",
+    "Comments",
+  ],
+  [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Date",
+    "Time",
+    "Date",
+    "Time",
+    "Date",
+    "Time",
+    "",
+    "",
+    "",
+    "",
+    "",
+  ],
+];
+
+const TEMPLATE_PDF_COLORS = {
+  title: [192, 0, 0] as [number, number, number],
+  band: [192, 0, 0] as [number, number, number],
+  bandText: [255, 255, 255] as [number, number, number],
+  header: [217, 217, 217] as [number, number, number],
+  subHeader: [242, 242, 242] as [number, number, number],
+  text: [0, 0, 0] as [number, number, number],
+  muted: [89, 89, 89] as [number, number, number],
+  border: [128, 128, 128] as [number, number, number],
+  ok: [0, 128, 0] as [number, number, number],
+  warn: [192, 0, 0] as [number, number, number],
+};
+
+type ReportLogos = {
+  ng: HTMLImageElement;
+  nasco: HTMLImageElement;
+};
+
+let reportLogoPromise: Promise<ReportLogos> | null = null;
+
+function loadImageElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function loadReportLogos(): Promise<ReportLogos> {
+  reportLogoPromise ??= Promise.all([loadImageElement(ngLogoSrc), loadImageElement(nascoLogoSrc)])
+    .then(([ng, nasco]) => ({ ng, nasco }));
+  return reportLogoPromise;
+}
+
+function drawPdfReportHeader(
+  doc: jsPDF,
+  pageW: number,
+  title: string,
+  subtitle: string,
+  logos: ReportLogos,
+  titleColor: [number, number, number] = TEMPLATE_PDF_COLORS.title,
+) {
+  doc.addImage(logos.ng, "PNG", 12, 6, 34, 12);
+  doc.addImage(logos.nasco, "PNG", pageW - 46, 6, 34, 12);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.setTextColor(...titleColor);
+  doc.text(title, pageW / 2, 12.2, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...TEMPLATE_PDF_COLORS.muted);
+  doc.text(subtitle, pageW / 2, 17.2, { align: "center" });
+}
 
 type PerfRow = {
   siteId: string;      
@@ -1340,25 +1513,18 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
         src = src.slice(fe + 1);
       } xml = result;
     }
-    // Update formula body row refs for any inserted rows
+    // Update formula body row refs for any inserted rows.
+    // Keep this scoped to <f>...</f> contents only; changing <c r="A41">
+    // cell addresses creates duplicate cells and Excel repairs sheet1.xml.
     if (needed > TEMPLATE_N) {
       const extra2 = needed - TEMPLATE_N;
-      for (let orig = PROTECTED; orig <= PROTECTED + extra2 + 2; orig++) {
-        const shifted = orig + extra2;
-        ['A','B','C','D','E','F','G','H','I','J'].forEach(col => {
-          const oRef = col + orig; const nRef = col + shifted;
-          let out = ''; let i = 0;
-          while (i < xml.length) {
-            const idx = xml.indexOf(oRef, i);
-            if (idx === -1) { out += xml.slice(i); break; }
-            const after = xml[idx + oRef.length];
-            const exact = after === undefined || after < '0' || after > '9';
-            out += xml.slice(i, idx) + (exact ? nRef : oRef);
-            i = idx + (exact ? nRef : oRef).length;
-          }
-          xml = out;
+      xml = xml.replace(/(<f[^>]*>)([\s\S]*?)(<\/f>)/g, (_m, open, body, close) => {
+        const updatedBody = body.replace(/(\$?)([A-J])(\$?)(\d+)/g, (ref, absCol, col, absRow, rowText) => {
+          const rowNum = Number(rowText);
+          return rowNum >= PROTECTED ? `${absCol}${col}${absRow}${rowNum + extra2}` : ref;
         });
-      }
+        return `${open}${updatedBody}${close}`;
+      });
     }
 
     // ── Fill data rows ──────────────────────────────────────────────────
@@ -1375,7 +1541,6 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
       xml = setCell(xml, `H${r}`, row.reliability);
       xml = setCell(xml, `I${r}`, row.sitesDownHours);
     });
-    files[sheetKey] = strToU8(xml);
     files[sheetKey] = strToU8(xml);
 
     // ── Rename sheet in workbook.xml (use string ops — no regex needed) ──
@@ -1524,11 +1689,136 @@ function exportPerfExcel(rows: PerfRow[], monthKey: string) {
   XLSX.writeFile(workbook, `DMR-Monthly-Performance-${monthLabel}.xlsx`);
 }
 
-function exportPerfPdf(rows: PerfRow[], monthKey: string) {
+async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
   const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
+  {
+    const logos = await loadReportLogos();
+    const templateDoc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const templateMonthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
+    const templatePageW = templateDoc.internal.pageSize.getWidth();
+    const templatePageH = templateDoc.internal.pageSize.getHeight();
+    const C = TEMPLATE_PDF_COLORS;
+    const kpi = computePerfKPIs(rows);
+    const perfTableWidth = 251;
+    const perfTableMargin = Math.max(10, (templatePageW - perfTableWidth) / 2);
+    const drawTemplateHeader = (data?: { pageNumber?: number }) => {
+      const pageNumber = data?.pageNumber ?? 1;
+      templateDoc.setFillColor(255, 255, 255);
+      templateDoc.rect(0, 0, templatePageW, templatePageH, "F");
+      drawPdfReportHeader(templateDoc, templatePageW, "Network Performance", `DMR Hytera | ${templateMonthLabel}`, logos, C.title);
+      templateDoc.setFillColor(...C.band);
+      templateDoc.rect(10, 23, templatePageW - 20, 8, "F");
+      templateDoc.setTextColor(...C.bandText);
+      templateDoc.setFontSize(9);
+      templateDoc.text(`Network Performance: ${templateMonthLabel}`, 13, 28.5);
+
+      if (pageNumber !== 1) return;
+      const labels = ["Total Downtime ,hrs", "Total Sites Affected", "% Availability", "MTTR", "MTBF", "MTTF"];
+      const values = [kpi.totalDownHrs, String(kpi.affectedSites), kpi.pctAvailability, kpi.mttr, kpi.mtbf, kpi.mttf];
+      const cellW = (templatePageW - 20) / labels.length;
+      labels.forEach((label, i) => {
+        const x = 10 + i * cellW;
+        templateDoc.setDrawColor(...C.border);
+        templateDoc.setLineWidth(0.15);
+        templateDoc.setFillColor(...C.header);
+        templateDoc.rect(x, 35, cellW, 6, "FD");
+        templateDoc.setFillColor(255, 255, 255);
+        templateDoc.rect(x, 41, cellW, 7, "FD");
+        templateDoc.setFontSize(7);
+        templateDoc.setTextColor(...C.text);
+        templateDoc.setFont("helvetica", "bold");
+        templateDoc.text(label, x + cellW / 2, 39, { align: "center" });
+        templateDoc.setFont("helvetica", "normal");
+        templateDoc.text(values[i], x + cellW / 2, 45.5, { align: "center" });
+      });
+    };
+
+    autoTable(templateDoc, {
+      startY: 54,
+      head: [PERF_TEMPLATE_PDF_HEADERS],
+      body: perfReportRows(rows),
+      theme: "grid",
+      styles: { fontSize: 7, cellPadding: 1.5, overflow: "linebreak", halign: "center", valign: "middle", textColor: C.text, fillColor: [255, 255, 255], lineColor: C.border, lineWidth: 0.15 },
+      headStyles: { fillColor: C.header, textColor: C.text, fontStyle: "bold", fontSize: 7.2, cellPadding: 1.6, halign: "center" },
+      alternateRowStyles: { fillColor: [248, 248, 248] },
+      columnStyles: {
+        0: { cellWidth: 10, halign: "center" },
+        1: { cellWidth: 24, halign: "center" },
+        2: { cellWidth: 44, halign: "center" },
+        3: { cellWidth: 30, halign: "center" },
+        4: { cellWidth: 32, halign: "center" },
+        5: { cellWidth: 25, halign: "center" },
+        6: { cellWidth: 33, halign: "center" },
+        7: { cellWidth: 28, halign: "center", fontStyle: "bold" },
+        8: { cellWidth: 25, halign: "center", fontStyle: "bold" },
+      },
+      margin: { left: perfTableMargin, right: perfTableMargin, top: 54, bottom: 10 },
+      willDrawPage: drawTemplateHeader,
+      didParseCell: (d) => {
+        if (d.section === "body" && d.column.index === 7) {
+          const v = parseFloat(String(d.cell.raw ?? "100"));
+          d.cell.styles.textColor = v < 95 ? C.warn : C.ok;
+        }
+        if (d.section === "body" && d.column.index === 8) {
+          const v = parseFloat(String(d.cell.raw ?? "0"));
+          d.cell.styles.textColor = v > 0 ? C.warn : C.ok;
+        }
+      },
+      didDrawPage: (d) => {
+        templateDoc.setFont("helvetica", "normal");
+        templateDoc.setFontSize(7);
+        templateDoc.setTextColor(...C.muted);
+        templateDoc.text(`Network Performance - ${templateMonthLabel} | Page ${d.pageNumber}`, templatePageW / 2, templatePageH - 5, { align: "center" });
+      },
+    });
+
+    const drawPerfChartPage = (title: string, chartRows: PerfRow[], valueKey: "availHours" | "sitesDownHours", color: [number, number, number]) => {
+      templateDoc.addPage();
+      templateDoc.setFillColor(255, 255, 255);
+      templateDoc.rect(0, 0, templatePageW, templatePageH, "F");
+      drawPdfReportHeader(templateDoc, templatePageW, title, `Network Performance | ${templateMonthLabel}`, logos, C.title);
+      const chartW = 245;
+      const chartH = 115;
+      const chartX = (templatePageW - chartW) / 2;
+      const chartY = 42;
+      const items = chartRows.slice(0, 34);
+      const maxValue = Math.max(...items.map((row) => Number(row[valueKey]) || 0), 1);
+      templateDoc.setDrawColor(...C.border);
+      templateDoc.setLineWidth(0.2);
+      templateDoc.rect(chartX, chartY, chartW, chartH);
+      for (let i = 1; i <= 4; i++) {
+        const y = chartY + (chartH / 5) * i;
+        templateDoc.setDrawColor(220, 220, 220);
+        templateDoc.line(chartX, y, chartX + chartW, y);
+      }
+      const gap = chartW / Math.max(items.length, 1);
+      const barW = Math.min(8, gap * 0.58);
+      items.forEach((row, index) => {
+        const value = Number(row[valueKey]) || 0;
+        const barH = (value / maxValue) * (chartH - 16);
+        const x = chartX + index * gap + (gap - barW) / 2;
+        const y = chartY + chartH - barH - 8;
+        templateDoc.setFillColor(...color);
+        if (barH > 0) templateDoc.rect(x, y, barW, barH, "F");
+        templateDoc.setFontSize(5);
+        templateDoc.setTextColor(...C.muted);
+        const label = row.siteName || row.siteId;
+        templateDoc.text(label.length > 10 ? `${label.slice(0, 9)}...` : label, x + barW / 2, chartY + chartH + 6, { align: "center", angle: 45 });
+      });
+      templateDoc.setFont("helvetica", "normal");
+      templateDoc.setFontSize(7);
+      templateDoc.setTextColor(...C.muted);
+      templateDoc.text(`Network Performance - ${templateMonthLabel} | Page ${templateDoc.getNumberOfPages()}`, templatePageW / 2, templatePageH - 5, { align: "center" });
+    };
+
+    drawPerfChartPage("Site Availability Chart", rows, "availHours", C.ok);
+    drawPerfChartPage("Site Downtime Chart", [...rows].sort((a, b) => b.sitesDownHours - a.sitesDownHours), "sitesDownHours", C.warn);
+    templateDoc.save(`DMR-Monthly-Performance-${templateMonthLabel.replace(/ /g, "-")}.pdf`);
+    return;
+  }
 
   // ── Theme (mirrors PPT palette) ───────────────────────────────────────
   const C = {
@@ -1916,7 +2206,13 @@ async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string
             .replace(/ r="(\d+)"/, ` r="${rn}"`)             // row r attr (first only)
             .replace(/(<c[^>]* r=")([A-Z]+)\d+(")/g,
               (_m2, a, col, b) => `${a}${col}${rn}${b}`)     // all cell refs in row
-            .replace(/<v>[^<]*<\/v>/g, "<v></v>")
+            // Empty cloned cells must not keep stale values, formulas, or shared-string types.
+            // Excel can repair the worksheet with "Removed Records: Cell information"
+            // when blank template rows contain empty <v></v> nodes or invalid shared refs.
+            .replace(/<v>[^<]*<\/v>/g, "")
+            .replace(/<is>[\s\S]*?<\/is>/g, "")
+            .replace(/<f[^>]*\/>/g, "")
+            .replace(/<f[^>]*>[\s\S]*?<\/f>/g, "")
             .replace(/\s+t="[^"]*"/g, "");
         }).join("");
 
@@ -1986,11 +2282,102 @@ async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string
   }
 }
 
-function exportPdf(rows: TicketAggregate[], monthKey: string) {
+async function exportPdf(rows: TicketAggregate[], monthKey: string) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
   const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
+  {
+    const logos = await loadReportLogos();
+    const templateDoc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
+    const templatePageW = templateDoc.internal.pageSize.getWidth();
+    const templatePageH = templateDoc.internal.pageSize.getHeight();
+    const C = TEMPLATE_PDF_COLORS;
+    const ticketTableWidth = 363;
+    const ticketTableMargin = Math.max(12, (templatePageW - ticketTableWidth) / 2);
+    const drawTemplateHeader = () => {
+      templateDoc.setFillColor(255, 255, 255);
+      templateDoc.rect(0, 0, templatePageW, templatePageH, "F");
+      drawPdfReportHeader(templateDoc, templatePageW, "MONTHLY REPORT", "DMR SYSTEM | DMR Hytera", logos, C.title);
+      templateDoc.setFontSize(10);
+      templateDoc.setTextColor(...C.text);
+      templateDoc.setFont("helvetica", "bold");
+      templateDoc.text("DMR SYSTEM", 12, 26);
+
+      const info = [["Region", ""], ["Network", "DMR Hytera"], ["Month", monthLabel]];
+      templateDoc.setFontSize(8);
+      info.forEach((pair, i) => {
+        const x = 12 + i * 60;
+        templateDoc.setDrawColor(...C.border);
+        templateDoc.setFillColor(...C.header);
+        templateDoc.rect(x, 32, 22, 7, "FD");
+        templateDoc.setFillColor(255, 255, 255);
+        templateDoc.rect(x + 22, 32, 36, 7, "FD");
+        templateDoc.setTextColor(...C.text);
+        templateDoc.setFont("helvetica", "bold");
+        templateDoc.text(pair[0], x + 3, 36.8);
+        templateDoc.setFont("helvetica", "normal");
+        templateDoc.text(pair[1], x + 25, 36.8);
+      });
+
+      templateDoc.setFillColor(...C.band);
+      templateDoc.rect(12, 44, templatePageW - 24, 8, "F");
+      templateDoc.setTextColor(...C.bandText);
+      templateDoc.setFont("helvetica", "bold");
+      templateDoc.setFontSize(9);
+      templateDoc.text("Outages in this Month", 15, 49.5);
+    };
+
+    autoTable(templateDoc, {
+      startY: 56,
+      head: TICKET_TEMPLATE_PDF_HEAD,
+      body: distinctReportRows(rows),
+      theme: "grid",
+      styles: { fontSize: 6.6, cellPadding: 1.35, overflow: "linebreak", halign: "center", valign: "middle", textColor: C.text, fillColor: [255, 255, 255], lineColor: C.border, lineWidth: 0.15 },
+      headStyles: { fillColor: C.header, textColor: C.text, fontStyle: "bold", fontSize: 6.8, halign: "center", valign: "middle" },
+      alternateRowStyles: { fillColor: [248, 248, 248] },
+      columnStyles: {
+        0: { cellWidth: 8, halign: "center" },
+        1: { cellWidth: 24, halign: "center" },
+        2: { cellWidth: 28, halign: "center" },
+        3: { cellWidth: 34, halign: "center" },
+        4: { cellWidth: 16, halign: "center", fontStyle: "bold" },
+        5: { cellWidth: 34, halign: "center" },
+        6: { cellWidth: 18, halign: "center" },
+        7: { cellWidth: 15, halign: "center" },
+        8: { cellWidth: 18, halign: "center" },
+        9: { cellWidth: 15, halign: "center" },
+        10: { cellWidth: 24, halign: "center" },
+        11: { cellWidth: 20, halign: "center" },
+        12: { cellWidth: 24, halign: "center" },
+        13: { cellWidth: 18, halign: "center", fontStyle: "bold" },
+        14: { cellWidth: 16, halign: "center", fontStyle: "bold" },
+        15: { cellWidth: 22, halign: "center" },
+        16: { cellWidth: 44, halign: "center" },
+      },
+      margin: { left: ticketTableMargin, right: ticketTableMargin, top: 56, bottom: 10 },
+      willDrawPage: drawTemplateHeader,
+      didParseCell: (d) => {
+        if (d.section === "body" && d.column.index === 4) {
+          const v = String(d.cell.raw ?? "").toLowerCase();
+          d.cell.styles.textColor = v.includes("critical") || v.includes("p1") ? C.warn : C.text;
+        }
+        if (d.section === "body" && d.column.index === 14) {
+          const v = String(d.cell.raw ?? "").toLowerCase();
+          d.cell.styles.textColor = v.includes("closed") || v.includes("resolved") ? C.ok : v ? C.warn : C.text;
+        }
+      },
+      didDrawPage: (d) => {
+        templateDoc.setFont("helvetica", "normal");
+        templateDoc.setFontSize(7);
+        templateDoc.setTextColor(...C.muted);
+        templateDoc.text(`DMR Monthly Report - ${monthLabel} | Page ${d.pageNumber}`, templatePageW / 2, templatePageH - 5, { align: "center" });
+      },
+    });
+    const suffix = monthKey !== "all" ? `-${monthLabel.replace(/ /g, "-")}` : "";
+    templateDoc.save(`DMR-Monthly-Tickets${suffix}.pdf`);
+    return;
+  }
 
   // ── Theme (mirrors PPT palette) ───────────────────────────────────────
   const C = {
@@ -2083,9 +2470,27 @@ function exportPdf(rows: TicketAggregate[], monthKey: string) {
   doc.save(`DMR-Monthly-Tickets${suffix}.pdf`);
 }
 
-function StatCard({ label, value, note, icon: Icon, tone, onClick }: { label: string; value: string | number; note: string; icon: typeof Activity; tone: string; onClick?: () => void }) {
+function StatCard({
+  label,
+  value,
+  note,
+  icon: Icon,
+  tone,
+  onClick,
+  className = "",
+  style,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  note: ReactNode;
+  icon: LucideIcon;
+  tone: string;
+  onClick?: () => void;
+  className?: string;
+  style?: CSSProperties;
+}) {
   return (
-    <div className="stat-card" style={{ ["--tone" as string]: tone, cursor: onClick ? "pointer" : undefined }} onClick={onClick} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined} onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") onClick(); } : undefined}>
+    <div className={`stat-card ${className}`.trim()} style={{ ["--tone" as string]: tone, cursor: onClick ? "pointer" : undefined, ...style }} onClick={onClick} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined} onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") onClick(); } : undefined}>
       <div className="stat-icon"><Icon size={28} /></div>
       <span>{label}</span>
       <strong>{value}</strong>
@@ -2116,7 +2521,7 @@ function SelectFilter({ label, value, options, optionLabels, onChange }: {
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({});
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -2205,7 +2610,7 @@ function MultiSelectFilter({ label, value, options, optionLabels, onChange, show
   showAllOption?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({});
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -2539,20 +2944,91 @@ export default function Home() {
     const region = countBy(primaryRows, (row) => row.region);
     const impact = countBy(primaryRows, (row) => row.impact);
     const escalation = countBy(primaryRows, (row) => row.escalationLevel);
-    const monthlyMap = new Map<string, { name: string; value: number }>();
+    const trendGrain = filters.openingMonth.length === 0 ? "month" : "week";
+    const trendMap = new Map<string, { key: string; name: string; opened: number; resolved: number }>();
+    const ensureTrendBucket = (key: string) => {
+      const fallbackKey = key || "Unknown";
+      if (!trendMap.has(fallbackKey)) {
+        trendMap.set(fallbackKey, {
+          key: fallbackKey,
+          name: trendGrain === "month" ? openingMonthLabel(fallbackKey) : weekLabel(fallbackKey),
+          opened: 0,
+          resolved: 0,
+        });
+      }
+      return trendMap.get(fallbackKey)!;
+    };
     primaryRows.forEach((row) => {
-      const key = row.openingMonthKey || openingMonthKey(row.observationDate);
-      const current = monthlyMap.get(key) ?? { name: openingMonthLabel(key), value: 0 };
-      current.value += 1;
-      monthlyMap.set(key, current);
+      const openedKey = trendGrain === "month"
+        ? (row.openingMonthKey || openingMonthKey(row.observationDate))
+        : weekKey(row.observationDate);
+      ensureTrendBucket(openedKey).opened += 1;
+
+      if (clean(row.status).toLowerCase().includes("resolved")) {
+        const resolvedKey = trendGrain === "month"
+          ? recordDateMonthKey(row.recoveryDate || row.observationDate)
+          : weekKey(row.recoveryDate || row.observationDate);
+        ensureTrendBucket(resolvedKey).resolved += 1;
+      }
     });
-    const monthly = Array.from(monthlyMap.entries())
+    const monthly = Array.from(trendMap.entries())
       .sort(([a], [b]) => {
         if (a === "Unknown") return 1;
         if (b === "Unknown") return -1;
         return a.localeCompare(b);
       })
       .map(([, value]) => value);
+    const replyTimeTrend = monthly.map((bucket) => {
+      const rowsInBucket = primaryRows.filter((row) => {
+        const key = trendGrain === "month"
+          ? (row.openingMonthKey || openingMonthKey(row.observationDate))
+          : weekKey(row.observationDate);
+        return key === bucket.key;
+      });
+      return {
+        name: bucket.name,
+        frt: Math.round(average(rowsInBucket.map((row) => row.frtHours)) * 10) / 10,
+        response: Math.round(average(rowsInBucket.map((row) => row.responseHours)) * 10) / 10,
+        resolution: Math.round(average(rowsInBucket.map((row) => row.resolutionHours)) * 10) / 10,
+      };
+    });
+    // ── Average Ticket Reply / Resolution Time ─────────────────────────────────
+    // Avg. FRT          = average First Reply Time   (Observation → first reply / L3)
+    // Response Time     = average Response Time      (Observation → first technical response / L3)
+    // Resolution Time   = average duration from Observation Date+Time → Recovery Date+Time
+    //                     PRIMARY:  recompute every row directly from the obs/rec timestamps
+    //                               (this is the definition the user specified).
+    //                     FALLBACK: if the row has no usable timestamps, use the pre-computed
+    //                               `resolutionHours` (which itself falls back to the explicit
+    //                               "Resolution Time" workbook column or "Total Duration").
+    //                     Only finite numeric values are averaged; null / NaN are filtered out.
+    const resolutionSamples = primaryRows
+      .map((row) => {
+        const obs = combineDateTime(row.observationDate, row.observationTime);
+        const rec = combineDateTime(row.recoveryDate, row.recoveryTime);
+        const fromTimestamps = hoursBetween(obs, rec);
+        if (fromTimestamps !== null && fromTimestamps > 0) return fromTimestamps;
+        // Fallback to the precomputed value (explicit "Resolution Time" column or duration string)
+        if (typeof row.resolutionHours === "number" && Number.isFinite(row.resolutionHours) && row.resolutionHours > 0) {
+          return row.resolutionHours;
+        }
+        return null;
+      })
+      .filter((value): value is number => value !== null);
+
+    const avgReplyTime = {
+      frt:        average(primaryRows.map((row) => row.frtHours)),
+      response:   average(primaryRows.map((row) => row.responseHours)),
+      resolution: resolutionSamples.length
+        ? resolutionSamples.reduce((sum, v) => sum + v, 0) / resolutionSamples.length
+        : 0,
+    };
+const closedTickets = primaryRows.filter(row => 
+  ['Resolved', 'Closed'].includes(row.status)
+);
+
+const avg = average(closedTickets.map(row => row.resolutionHours));
+
     const avgHoursSource = primaryRows.map((row) => parseDurationHours(row.duration)).filter((value): value is number => value !== null);
     const avgHours = avgHoursSource.length ? avgHoursSource.reduce((sum, value) => sum + value, 0) / avgHoursSource.length : 0;
     const uniqueSites = new Set(primaryRows.map((row) => row.siteId).filter(Boolean)).size;
@@ -2632,7 +3108,7 @@ export default function Home() {
     const topManagedResources = managedResourceByCount.slice(0, 12);
 
     return {
-      totalUnique, status, severity, region, impact, escalation, monthly, avgHours,
+      totalUnique, status, severity, region, impact, escalation, monthly, trendGrain, replyTimeTrend, avgReplyTime, avgHours,
       uniqueSites, rootCauseUpdated, totalSiteAffected, topSites, rcaByCount, rcaFamily,
       topRcaByCount,
       topRcaByDowntime: downtimeByRca[0] ?? { name: "", value: 0, count: 0 },
@@ -2642,7 +3118,7 @@ export default function Home() {
       rcaByMttr: mttrByRca.map((item) => ({ name: item.name, value: Math.round(item.value * 10) / 10 })),
       preventableBreakdown, monthlyRcaFamily, rcaFamilyKeys: RCA_FAMILIES, topManagedResources,
     };
-  }, [filteredTickets]);
+  }, [filteredTickets, filters.openingMonth]);
 
   const closed = metricValue(analytics.status, "Closed");
   const pending = metricValue(analytics.status, "Pending");
@@ -2967,7 +3443,8 @@ export default function Home() {
             style={{
               backgroundImage: `linear-gradient(90deg, rgba(4,13,31,.88), rgba(4,13,31,.70)), url(${RIBBON_IMAGE})`,
               display: "grid",
-              gridTemplateColumns: "repeat(6, 1fr)",
+              // 30 = LCM(6, 5) so row 1 fits 6 cards (span 5) and rows 2/3 fit 5 cards (span 6)
+              gridTemplateColumns: "repeat(30, 1fr)",
               gap: "16px",
               width: "100%",
               boxSizing: "border-box",
@@ -2982,6 +3459,7 @@ export default function Home() {
               note={<span style={{ fontSize: "14px", fontWeight: 500, color: "#00ff15" }}> TT's Opened</span>}
               icon={Layers3} tone="#fff200"
               onClick={() => { setFilters(EMPTY_FILTERS); setTablePage(1); }}
+            style={{ gridColumn: "span 5" }}
             />
 
             <StatCard
@@ -2990,6 +3468,7 @@ export default function Home() {
               note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Closed TT's</span>}
               icon={CheckCircle2} tone="#34d399"
               onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Closed"] }); setTablePage(1); }}
+            style={{ gridColumn: "span 5" }}
             />
 
             <StatCard
@@ -2998,6 +3477,7 @@ export default function Home() {
               note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Pending TT's</span>}
               icon={ShieldAlert} tone="#f59e0b"
               onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Pending"] }); setTablePage(1); }}
+            style={{ gridColumn: "span 5" }}
             />
 
             <StatCard
@@ -3006,6 +3486,7 @@ export default function Home() {
               note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Resolved TT's</span>}
               icon={CheckCircle2} tone="#60a5fa"
               onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Resolved"] }); setTablePage(1); }}
+            style={{ gridColumn: "span 5" }}
             />
 
             <StatCard
@@ -3014,6 +3495,7 @@ export default function Home() {
               note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Critical TT's</span>}
               icon={AlertTriangle} tone="#ef4444"
               onClick={() => { setFilters({ ...EMPTY_FILTERS, severity: ["Critical"] }); setTablePage(1); }}
+            style={{ gridColumn: "span 5" }}
             />
 
             <StatCard
@@ -3022,14 +3504,32 @@ export default function Home() {
               note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Major TT's</span>}
               icon={Activity} tone="#f59e0b"
               onClick={() => { setFilters({ ...EMPTY_FILTERS, severity: ["Major"] }); setTablePage(1); }}
+            style={{ gridColumn: "span 5" }}
             />
 
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Minor TT's`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: "bold", color: "#ff0000" }}>{minor !== undefined && minor !== null ? minor.toLocaleString() : "0"}</span>}
-              note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Minor TT's</span>}
-              icon={CircleDot} tone="#22d3ee"
-              onClick={() => { setFilters({ ...EMPTY_FILTERS, severity: ["Minor"] }); setTablePage(1); }}
+              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`No. of Sites`}</span>}
+              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000" }}>{analytics.uniqueSites.toLocaleString()}</span>}
+              note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Unique Site ID</span>}
+              icon={BarChart3} tone="#60a5fa"
+            style={{ gridColumn: "span 6" }}
+            />
+
+            <StatCard
+              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Regions`}</span>}
+              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000" }}>{analytics.region.length.toLocaleString()}</span>}
+              note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Total Regions</span>}
+              icon={CircleDot} tone="#60a5fa"
+            style={{ gridColumn: "span 6" }}
+            />
+
+            <StatCard
+              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Non-Service Impact`}</span>}
+              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000" }}>{nonServiceImpact.toLocaleString()}</span>}
+              note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>No Service Impact</span>}
+              icon={CloudOff} tone="#94a3b8"
+              onClick={() => { setFilters({ ...EMPTY_FILTERS, impact: ["Non-Service Impact"] }); setTablePage(1); }}
+            style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
@@ -3038,28 +3538,16 @@ export default function Home() {
               note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Exact Service Impact</span>}
               icon={Network} tone="#a78bfa"
               onClick={() => { setFilters({ ...EMPTY_FILTERS, impact: ["Service Impact"] }); setTablePage(1); }}
+            style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Non-Service Impact`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000" }}>{nonServiceImpact.toLocaleString()}</span>}
-              note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>No Service Impact</span>}
-              icon={XCircle} tone="#94a3b8"
-              onClick={() => { setFilters({ ...EMPTY_FILTERS, impact: ["Non-Service Impact"] }); setTablePage(1); }}
-            />
-
-            <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Regions`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000" }}>{analytics.region.length.toLocaleString()}</span>}
-              note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Total Regions</span>}
-              icon={CircleDot} tone="#60a5fa"
-            />
-
-            <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`No. of Sites`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000" }}>{analytics.uniqueSites.toLocaleString()}</span>}
-              note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Unique Site ID</span>}
-              icon={BarChart3} tone="#60a5fa"
+              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Minor TT's`}</span>}
+              value={<span style={{ fontSize: "30px", fontWeight: "bold", color: "#ff0000" }}>{minor !== undefined && minor !== null ? minor.toLocaleString() : "0"}</span>}
+              note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Minor TT's</span>}
+              icon={CircleDot} tone="#22d3ee"
+              onClick={() => { setFilters({ ...EMPTY_FILTERS, severity: ["Minor"] }); setTablePage(1); }}
+            style={{ gridColumn: "span 6" }}
             />
 
             {/* Top RCA by Tickets Count — direct grid child so it stretches to the same height as siblings */}
@@ -3068,6 +3556,8 @@ export default function Home() {
               value={<span style={{ fontSize: "18px", fontWeight: 1000, color: "#ff0000", display: "block", wordBreak: "keep-all", whiteSpace: "normal", lineHeight: "1.3" }}>{analytics.topRcaByCount.name || "N/A"}</span>}
               note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15", marginTop: "4px", display: "block" }}>{analytics.topRcaByCount.value ? `${analytics.topRcaByCount.value.toLocaleString()} Tickets` : ""}</span>}
               icon={BarChart3} tone="#22d3ee"
+              className="rca-inline-fix"
+              style={{ gridColumn: "span 6", alignSelf: "stretch", height: "auto" }}
             />
 
             {/* Top RCA by Downtime */}
@@ -3076,6 +3566,7 @@ export default function Home() {
               value={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#ff0000", display: "block", wordBreak: "keep-all", whiteSpace: "normal", lineHeight: "1.3" }}>{analytics.topRcaByDowntime.name || "N/A"}</span>}
               note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15", marginTop: "4px", display: "block" }}>{formatHours(analytics.topRcaByDowntime.value)}</span>}
               icon={Activity} tone="#f59e0b"
+            style={{ gridColumn: "span 6" }}
             />
 
             {/* Highest MTTR RCA */}
@@ -3084,6 +3575,7 @@ export default function Home() {
               value={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#ff0000", display: "block", wordBreak: "keep-all", whiteSpace: "normal", lineHeight: "1.3" }}>{analytics.highestMttrRca.name || "N/A"}</span>}
               note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15", marginTop: "4px", display: "block" }}>{formatHours(analytics.highestMttrRca.value)}</span>}
               icon={AlertTriangle} tone="#ef4444"
+            style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
@@ -3091,6 +3583,7 @@ export default function Home() {
               value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000", display: "block", wordBreak: "keep-all", whiteSpace: "normal", lineHeight: "1.3" }}>{analytics.repeatedRcaSites.toLocaleString()}</span>}
               note={<span />}
               icon={Network} tone="#a78bfa"
+            style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
@@ -3098,37 +3591,27 @@ export default function Home() {
               value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000", display: "block", wordBreak: "keep-all", whiteSpace: "normal", lineHeight: "1.3" }}>{analytics.rcaNotProvidedCount.toLocaleString()}</span>}
               note={<span />}
               icon={ShieldAlert} tone="#ff0000"
+            style={{ gridColumn: "span 6" }}
             />
           </section>
 
           {/* ══ Charts ══ */}
           <div className="chart-2col">
 
+            {/* ── Column 1 — five charts, one per row ─────────────────────────── */}
             <article className="glass-card" style={{ gridColumn: 1, gridRow: 1 }}>
-              <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Unique Tickets by month</h3> <BarChart3 size={18} /></div>
+              <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>{analytics.trendGrain === "month" ? "Tickets per month" : "Tickets per week"}</h3> <BarChart3 size={18} /></div>
               <ResponsiveContainer width="100%" height={290}>
                 <LineChart data={analytics.monthly} margin={{ left: 0, right: 22, top: 16, bottom: 8 }}>
                   <CartesianGrid stroke="rgba(148,163,184,.16)" vertical={false} />
                   <XAxis dataKey="name" stroke="#94a3b8" tickLine={false} axisLine={false} />
                   <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
-                  <Line type="monotone" dataKey="value" stroke="#22d3ee" strokeWidth={3} dot={{ r: 4, fill: "#071426", strokeWidth: 2 }}>
-                    <LabelList dataKey="value" position="top" fill="#e2e8f0" fontSize={12} />
+                  <Legend />
+                  <Line type="monotone" name="Opened" dataKey="opened" stroke="#22d3ee" strokeWidth={3} dot={{ r: 4, fill: "#071426", strokeWidth: 2 }}>
+                    <LabelList dataKey="opened" position="top" fill="#e2e8f0" fontSize={12} />
                   </Line>
                 </LineChart>
-              </ResponsiveContainer>
-            </article>
-
-            <article className="glass-card" style={{ gridColumn: 2, gridRow: 1 }}>
-              <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Status</h3> <BarChart3 size={18} /></div>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie data={analytics.status} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
-                    {analytics.status.map((entry, index) => <Cell key={entry.name} fill={STATUS_COLORS[entry.name] ?? COLORS[index % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
-                  <Legend />
-                </PieChart>
               </ResponsiveContainer>
             </article>
 
@@ -3145,24 +3628,6 @@ export default function Home() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-              {/* <div className="top-site-mini-table">
-                {analytics.topSites.slice(0, 10).map((site, index) => (
-                  <div key={`${site.name}-${index}`}><span>{index + 1}</span><strong>{site.name}</strong><em>{site.value}</em><small>{pct(site.value, analytics.totalSiteAffected || analytics.totalUnique)}</small></div>
-                ))}
-              </div> */}
-            </article>
-
-            <article className="glass-card" style={{ gridColumn: 2, gridRow: 2 }}>
-              <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Severity</h3> <BarChart3 size={18} /></div>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie data={analytics.severity} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
-                    {analytics.severity.map((entry, index) => <Cell key={entry.name} fill={SEVERITY_COLORS[entry.name] ?? COLORS[index % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
             </article>
 
             <article className="glass-card" style={{ gridColumn: 1, gridRow: 3 }}>
@@ -3177,19 +3642,6 @@ export default function Home() {
                     <LabelList dataKey="value" position="right" fill="#e2e8f0" fontSize={13} />
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>
-            </article>
-
-            <article className="glass-card" style={{ gridColumn: 2, gridRow: 3 }}>
-              <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Region</h3> <BarChart3 size={18} /></div>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie data={analytics.region} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
-                    {analytics.region.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
-                  <Legend />
-                </PieChart>
               </ResponsiveContainer>
             </article>
 
@@ -3216,35 +3668,6 @@ export default function Home() {
               </div>
             </article>
 
-            <article className="glass-card" style={{ gridColumn: 2, gridRow: 4 }}>
-              <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Escalation level</h3> <BarChart3 size={18} /></div>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie data={analytics.escalation} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={3} labelLine={false} label={renderPieLabel}>
-                    {analytics.escalation.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </article>
-
-            <article className="glass-card" style={{ gridColumn: 2, gridRow: 5 }}>
-              <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Service impact</h3> <BarChart3 size={18} /></div>
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={analytics.impact} margin={{ left: 0, right: 24, top: 18, bottom: 42 }}>
-                  <CartesianGrid stroke="rgba(148,163,184,.12)" vertical={false} />
-                  <XAxis dataKey="name" stroke="#cbd5e1" tickLine={false} axisLine={false} interval={0} angle={-18} textAnchor="end" height={58} tick={{ fontSize: 11 }} />
-                  <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} allowDecimals={false} />
-                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
-                  <Bar dataKey="value" radius={[10, 10, 0, 0]} fill="#a78bfa">
-                    <LabelList dataKey="value" position="top" fill="#e2e8f0" fontSize={12} />
-                    {analytics.impact.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </article>
-
             <article className="glass-card full" style={{ gridColumn: 1, gridRow: 5 }}>
               <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Top Managed Resources by Ticket Count</h3> <BarChart3 size={18} /></div>
               <ResponsiveContainer width="100%" height={280}>
@@ -3259,6 +3682,107 @@ export default function Home() {
                 </BarChart>
               </ResponsiveContainer>
             </article>
+
+            {/* ── Column 2 — six charts stacked vertically, spans column 1's full height ── */}
+            <div
+              style={{
+                gridColumn: 2,
+                gridRow: "1 / span 5",
+                display: "flex",
+                flexDirection: "column",
+                gap: "16px",
+                minHeight: 0,
+              }}
+            >
+              <article className="glass-card" style={{ flex: 1, minHeight: 0 }}>
+                <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Status</h3> <BarChart3 size={18} /></div>
+                <ResponsiveContainer width="100%" height={210}>
+                  <PieChart>
+                    <Pie data={analytics.status} dataKey="value" nameKey="name" innerRadius={42} outerRadius={66} paddingAngle={3} labelLine={false} label={renderPieLabel}>
+                      {analytics.status.map((entry, index) => <Cell key={entry.name} fill={STATUS_COLORS[entry.name] ?? COLORS[index % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </article>
+
+              <article className="glass-card" style={{ flex: 1, minHeight: 0 }}>
+                <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Severity</h3> <BarChart3 size={18} /></div>
+                <ResponsiveContainer width="100%" height={210}>
+                  <PieChart>
+                    <Pie data={analytics.severity} dataKey="value" nameKey="name" innerRadius={42} outerRadius={66} paddingAngle={3} labelLine={false} label={renderPieLabel}>
+                      {analytics.severity.map((entry, index) => <Cell key={entry.name} fill={SEVERITY_COLORS[entry.name] ?? COLORS[index % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </article>
+
+              <article className="glass-card" style={{ flex: 1, minHeight: 0 }}>
+                <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Region</h3> <BarChart3 size={18} /></div>
+                <ResponsiveContainer width="100%" height={210}>
+                  <PieChart>
+                    <Pie data={analytics.region} dataKey="value" nameKey="name" innerRadius={42} outerRadius={66} paddingAngle={3} labelLine={false} label={renderPieLabel}>
+                      {analytics.region.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </article>
+
+              <article className="glass-card" style={{ flex: 1, minHeight: 0 }}>
+                <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Escalation level</h3> <BarChart3 size={18} /></div>
+                <ResponsiveContainer width="100%" height={210}>
+                  <PieChart>
+                    <Pie data={analytics.escalation} dataKey="value" nameKey="name" innerRadius={42} outerRadius={66} paddingAngle={3} labelLine={false} label={renderPieLabel}>
+                      {analytics.escalation.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </article>
+
+              <article className="glass-card" style={{ flex: 1, minHeight: 0 }}>
+                <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Service impact</h3> <BarChart3 size={18} /></div>
+                <ResponsiveContainer width="100%" height={210}>
+                  <BarChart data={analytics.impact} margin={{ left: 0, right: 24, top: 18, bottom: 42 }}>
+                    <CartesianGrid stroke="rgba(148,163,184,.12)" vertical={false} />
+                    <XAxis dataKey="name" stroke="#cbd5e1" tickLine={false} axisLine={false} interval={0} angle={-18} textAnchor="end" height={58} tick={{ fontSize: 11 }} />
+                    <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} allowDecimals={false} />
+                    <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                    <Bar dataKey="value" radius={[10, 10, 0, 0]} fill="#a78bfa">
+                      <LabelList dataKey="value" position="top" fill="#e2e8f0" fontSize={12} />
+                      {analytics.impact.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </article>
+
+              <article className="glass-card" style={{ flex: 1, minHeight: 0 }}>
+                <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Average Ticket Resolution Time</h3> <Activity size={18} /></div>
+                <div style={{ display: "grid", gap: "8px", padding: "0 8px 8px" }}>
+                  {([
+                    // { label: "Avg. FRT",        value: analytics.avgReplyTime.frt,        key: "frt",        color: "#60a5fa" },
+                    // { label: "Response Time",   value: analytics.avgReplyTime.response,   key: "response",   color: "#7dd3fc" },
+                    { label: "Resolution Time", value: analytics.avgReplyTime.resolution, key: "resolution", color: "#93c5fd" },
+                  ] as { label: string; value: number; key: "frt" | "response" | "resolution"; color: string }[]).map((metric) => (
+                    <div key={metric.key} style={{ display: "grid", gap: "2px", textAlign: "center" }}>
+                      <strong style={{ color: "#cbd5e1", fontSize: "12px" }}>{metric.label}</strong>
+                      <span style={{ color: "#e2e8f0", fontSize: "12px", fontWeight: 800 }}>{Number.isFinite(metric.value) && metric.value > 0 ? `${metric.value.toFixed(2)} Hour(s)` : "N/A"}</span>
+                      <ResponsiveContainer width="100%" height={42}>
+                        <LineChart data={analytics.replyTimeTrend} margin={{ left: 4, right: 4, top: 4, bottom: 4 }}>
+                          <Line type="monotone" dataKey={metric.key} stroke={metric.color} strokeWidth={2.5} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            </div>
 
           </div>{/* /chart-2col */}
 
