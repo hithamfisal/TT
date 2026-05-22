@@ -2992,29 +2992,92 @@ export default function Home() {
         resolution: Math.round(average(rowsInBucket.map((row) => row.resolutionHours)) * 10) / 10,
       };
     });
-    // ── Average Ticket Reply / Resolution Time ─────────────────────────────────
-    // Avg. FRT          = average First Reply Time   (Observation → first reply / L3)
-    // Response Time     = average Response Time      (Observation → first technical response / L3)
-    // Resolution Time   = average duration from Observation Date+Time → Recovery Date+Time
-    //                     PRIMARY:  recompute every row directly from the obs/rec timestamps
-    //                               (this is the definition the user specified).
-    //                     FALLBACK: if the row has no usable timestamps, use the pre-computed
-    //                               `resolutionHours` (which itself falls back to the explicit
-    //                               "Resolution Time" workbook column or "Total Duration").
-    //                     Only finite numeric values are averaged; null / NaN are filtered out.
-    const resolutionSamples = primaryRows
+
+
+
+    
+    // ── Average Ticket Resolution Time ─────────────────────────────────────────
+    // Per-month resolution time for the "Average Ticket Resolution Time" card.
+    //  • Resolution bar  — one bucket per opening month (e.g. "2025-04" → "Apr 2025").
+    //                      Sample = parseDurationHours(row.duration) for unique TT's
+    //                      where status ∈ {Closed, Resolved}.
+    //  • Pending bar     — ALL Pending tickets (status === "Pending" exactly) collapse
+    //                      into ONE bucket: the current calendar month.
+    //                      Sample = now − observationDate, in hours.
+    //                      avgHours = arithmetic mean, totalHours = sum.
+    //  • Sorted chronologically (oldest → newest); "Unknown" buckets dropped.
+    const monthlyResolutionMap = new Map<string, { sum: number; count: number; label: string }>();
+    primaryRows.forEach((row) => {
+      const s = String(row.status ?? "").toLowerCase().trim();
+      if (s !== "closed" && s !== "resolved") return;
+      const hours = parseDurationHours(row.duration);
+      if (hours === null || !Number.isFinite(hours) || hours <= 0) return;
+      const key = row.openingMonthKey || openingMonthKey(row.observationDate);
+      if (!key || key === "Unknown") return;
+      const label = openingMonthLabel(key);
+      const bucket = monthlyResolutionMap.get(key) ?? { sum: 0, count: 0, label };
+      bucket.sum += hours;
+      bucket.count += 1;
+      monthlyResolutionMap.set(key, bucket);
+    });
+
+    // Pending-age aggregate — all Pending tickets land in current calendar month.
+    const nowDate = new Date();
+    const currentMonthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, "0")}`;
+    const pendingSamples = primaryRows
+      .filter((row) => isPendingStatus(row.status))
       .map((row) => {
         const obs = combineDateTime(row.observationDate, row.observationTime);
-        const rec = combineDateTime(row.recoveryDate, row.recoveryTime);
-        const fromTimestamps = hoursBetween(obs, rec);
-        if (fromTimestamps !== null && fromTimestamps > 0) return fromTimestamps;
-        // Fallback to the precomputed value (explicit "Resolution Time" column or duration string)
-        if (typeof row.resolutionHours === "number" && Number.isFinite(row.resolutionHours) && row.resolutionHours > 0) {
-          return row.resolutionHours;
-        }
-        return null;
+        if (!obs) return null;
+        const hours = (nowDate.getTime() - obs.getTime()) / (1000 * 60 * 60);
+        return Number.isFinite(hours) && hours > 0 ? hours : null;
       })
-      .filter((value): value is number => value !== null);
+      .filter((v): v is number => v !== null);
+
+    const pendingTotal = pendingSamples.reduce((s, v) => s + v, 0);
+    const pendingAvg   = pendingSamples.length ? pendingTotal / pendingSamples.length : 0;
+
+    // Merge both series into a single chart-ready array (one row per month).
+    const monthlyResolutionTime = (() => {
+      const arr = Array.from(monthlyResolutionMap.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, b]) => ({
+          key,
+          name:        b.label,
+          avgHours:    Math.round((b.sum / b.count) * 100) / 100,
+          totalHours:  Math.round(b.sum * 100) / 100,
+          count:       b.count,
+          pendingAvg:   0,
+          pendingTotal: 0,
+          pendingCount: 0,
+        }));
+      if (pendingSamples.length) {
+        let idx = arr.findIndex((m) => m.key === currentMonthKey);
+        if (idx === -1) {
+          arr.push({
+            key: currentMonthKey,
+            name: openingMonthLabel(currentMonthKey),
+            avgHours: 0, totalHours: 0, count: 0,
+            pendingAvg: 0, pendingTotal: 0, pendingCount: 0,
+          });
+          arr.sort((a, b) => a.key.localeCompare(b.key));
+          idx = arr.findIndex((m) => m.key === currentMonthKey);
+        }
+        arr[idx].pendingAvg   = Math.round(pendingAvg * 100) / 100;
+        arr[idx].pendingTotal = Math.round(pendingTotal * 100) / 100;
+        arr[idx].pendingCount = pendingSamples.length;
+      }
+      return arr;
+    })();
+
+    // Grand mean retained for any consumer that still wants a single number.
+    const resolutionSamples = primaryRows
+      .filter((row) => {
+        const s = String(row.status ?? "").toLowerCase().trim();
+        return s === "closed" || s === "resolved";
+      })
+      .map((row) => parseDurationHours(row.duration))
+      .filter((v): v is number => v !== null && Number.isFinite(v) && v > 0);
 
     const avgReplyTime = {
       frt:        average(primaryRows.map((row) => row.frtHours)),
@@ -3023,11 +3086,7 @@ export default function Home() {
         ? resolutionSamples.reduce((sum, v) => sum + v, 0) / resolutionSamples.length
         : 0,
     };
-const closedTickets = primaryRows.filter(row => 
-  ['Resolved', 'Closed'].includes(row.status)
-);
 
-const avg = average(closedTickets.map(row => row.resolutionHours));
 
     const avgHoursSource = primaryRows.map((row) => parseDurationHours(row.duration)).filter((value): value is number => value !== null);
     const avgHours = avgHoursSource.length ? avgHoursSource.reduce((sum, value) => sum + value, 0) / avgHoursSource.length : 0;
@@ -3108,7 +3167,7 @@ const avg = average(closedTickets.map(row => row.resolutionHours));
     const topManagedResources = managedResourceByCount.slice(0, 12);
 
     return {
-      totalUnique, status, severity, region, impact, escalation, monthly, trendGrain, replyTimeTrend, avgReplyTime, avgHours,
+      totalUnique, status, severity, region, impact, escalation, monthly, trendGrain, replyTimeTrend, avgReplyTime, monthlyResolutionTime, avgHours,
       uniqueSites, rootCauseUpdated, totalSiteAffected, topSites, rcaByCount, rcaFamily,
       topRcaByCount,
       topRcaByDowntime: downtimeByRca[0] ?? { name: "", value: 0, count: 0 },
@@ -3163,6 +3222,7 @@ const avg = average(closedTickets.map(row => row.resolutionHours));
           <div className="topbar-actions">
             {data && <button className="ghost-button" onClick={() => addRegionRef.current?.click()}><UploadCloud size={30} /> Add region</button>}
             {data && <button className="ghost-button" onClick={() => inputRef.current?.click()}><RefreshCw size={30} /> New workbook</button>}
+            {data && <button className="primary-button" onClick={() => window.print()}><Printer size={30} /> Dashboard PDF</button>} 
             {/* {data && <button className="ghost-button" onClick={() => exportCsv(monthlyExportTickets)}><Download size={30} /> CSV</button>}
             {data && <button className="ghost-button" onClick={() => exportExcel(monthlyExportTickets)}><FileSpreadsheet size={30} /> Excel</button>}
             {data && <button className="ghost-button" onClick={() => exportTicketTemplate(monthlyExportTickets, exportMonths[0] ?? "all")}><FileSpreadsheet size={30} /> Template</button>}
@@ -3764,22 +3824,79 @@ const avg = average(closedTickets.map(row => row.resolutionHours));
 
               <article className="glass-card" style={{ flex: 1, minHeight: 0 }}>
                 <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Average Ticket Resolution Time</h3> <Activity size={18} /></div>
-                <div style={{ display: "grid", gap: "8px", padding: "0 8px 8px" }}>
-                  {([
-                    // { label: "Avg. FRT",        value: analytics.avgReplyTime.frt,        key: "frt",        color: "#60a5fa" },
-                    // { label: "Response Time",   value: analytics.avgReplyTime.response,   key: "response",   color: "#7dd3fc" },
-                    { label: "Resolution Time", value: analytics.avgReplyTime.resolution, key: "resolution", color: "#93c5fd" },
-                  ] as { label: string; value: number; key: "frt" | "response" | "resolution"; color: string }[]).map((metric) => (
-                    <div key={metric.key} style={{ display: "grid", gap: "2px", textAlign: "center" }}>
-                      <strong style={{ color: "#cbd5e1", fontSize: "12px" }}>{metric.label}</strong>
-                      <span style={{ color: "#e2e8f0", fontSize: "12px", fontWeight: 800 }}>{Number.isFinite(metric.value) && metric.value > 0 ? `${metric.value.toFixed(2)} Hour(s)` : "N/A"}</span>
-                      <ResponsiveContainer width="100%" height={42}>
-                        <LineChart data={analytics.replyTimeTrend} margin={{ left: 4, right: 4, top: 4, bottom: 4 }}>
-                          <Line type="monotone" dataKey={metric.key} stroke={metric.color} strokeWidth={2.5} dot={false} />
-                        </LineChart>
-                      </ResponsiveContainer>
+                <div style={{ padding: "0 8px 8px", display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+                  {/* Resolution Time per month-year — closed/resolved unique TT's only.
+                      Each bar = average duration (hours) for that opening month.
+                      Tooltip shows the precise mean, count of tickets, and total hours. */}
+                  {(analytics.monthlyResolutionTime ?? []).length === 0 ? (
+                    <div style={{ color: "#94a3b8", fontSize: "12px", textAlign: "center", padding: "12px" }}>
+                      No closed / resolved tickets with a duration in the current selection.
                     </div>
-                  ))}
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%" minHeight={210}>
+  <LineChart
+    data={analytics.monthlyResolutionTime}
+    margin={{ top: 4, right: 12, left: 0, bottom: 36 }}
+  >
+    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+    <XAxis
+      dataKey="name"
+      tick={{ fill: "#cbd5e1", fontSize: 10 }}
+      angle={-40}
+      textAnchor="end"
+      interval={0}
+      height={40}
+    />
+    <YAxis
+      tick={{ fill: "#cbd5e1", fontSize: 10 }}
+      tickFormatter={(v: number) => `${v}h`}
+      width={42}
+    />
+    <Tooltip
+      contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, fontSize: 12 }}
+      labelStyle={{ color: "#e2e8f0", fontWeight: 700 }}
+      formatter={(value: number, name: string, props: { payload?: { count?: number; totalHours?: number; pendingCount?: number; pendingTotal?: number } }) => {
+        const p = props.payload ?? {};
+        if (name === "Resolution (avg h)") {
+          return [`${value.toFixed(2)} h (n=${p.count ?? 0}, total ${p.totalHours ?? 0} h)`, name];
+        }
+        if (name === "Pending age (avg h)") {
+          return value > 0 ? [`${value.toFixed(2)} h (n=${p.pendingCount ?? 0}, total ${p.pendingTotal ?? 0} h)`, name] : ["—", name];
+        }
+        return [value, name];
+      }}
+    />
+    <Legend
+      verticalAlign="top"
+      height={22}
+      wrapperStyle={{ fontSize: "10px", color: "#cbd5e1", paddingBottom: 2 }}
+      iconType="circle"
+      iconSize={8}
+    />
+    <Line 
+      type="monotone" 
+      dataKey="avgHours" 
+      name="Resolution (avg h)" 
+      stroke="#93c5fd" 
+      strokeWidth={2.5} 
+      dot={{ r: 4 }} 
+      activeDot={{ r: 6 }}
+      isAnimationActive={false} 
+    />
+    <Line 
+      type="monotone" 
+      dataKey="pendingAvg" 
+      name="Pending age (avg h)" 
+      stroke="#f59e0b" 
+      strokeWidth={2.5} 
+      dot={{ r: 4 }} 
+      activeDot={{ r: 6 }}
+      isAnimationActive={false} 
+    />
+  </LineChart>
+</ResponsiveContainer>
+
+                  )}
                 </div>
               </article>
             </div>
