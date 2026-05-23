@@ -237,6 +237,7 @@ type TicketRecord = {
   escalatedForL3SupportDate: string; escalatedForL3SupportTime: string;
   frtHours: number | null; responseHours: number | null; resolutionHours: number | null;
   status: string; rca: string; rcaFamily: string; preventability: string; responsibleTeam: string; recommendedAction: string; actionTaken: string;
+  sourceFile: string;
 };
 
 type TicketAggregate = { tt: string; primary: TicketRecord; siteIds: Set<string>; siteNames: Set<string>; rows: TicketRecord[] };
@@ -382,6 +383,7 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
         responsibleTeam: getResponsibleTeam(rcaFamily),
         recommendedAction: getRecommendedAction(rcaFamily),
         actionTaken: getField(row, ["Action"]),
+        sourceFile: fileName,
       };
     })
     .filter((row) => row.tt || row.siteId || row.siteName || row.issue);
@@ -407,18 +409,31 @@ function loadImageElement(src: string): Promise<HTMLImageElement> { return new P
 function loadReportLogos(): Promise<ReportLogos> { reportLogoPromise ??= Promise.all([loadImageElement(ngLogoSrc), loadImageElement(nascoLogoSrc)]).then(([ng, nasco]) => ({ ng, nasco })); return reportLogoPromise; }
 function drawPdfReportHeader(doc: jsPDF, pageW: number, title: string, subtitle: string, logos: ReportLogos, titleColor: [number, number, number] = TEMPLATE_PDF_COLORS.title) { doc.addImage(logos.ng, "PNG", 12, 6, 34, 12); doc.addImage(logos.nasco, "PNG", pageW - 46, 6, 34, 12); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(...titleColor); doc.text(title, pageW / 2, 12.2, { align: "center" }); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...TEMPLATE_PDF_COLORS.muted); doc.text(subtitle, pageW / 2, 17.2, { align: "center" }); }
 
-type PerfRow = { siteId: string; siteName: string; sitesDownHours: number; availHours: number; availDay: string; reliability: string; channelBusy: number; mwLinkPerf: number; ticketCount: number };
+type PerfRow = { siteId: string; siteName: string; displayName: string; sourceLabel: string; perfKey: string; sitesDownHours: number; availHours: number; availDay: string; reliability: string; channelBusy: number; mwLinkPerf: number; ticketCount: number };
 
 function normalizeSiteId(id: string): string { return id.replace(/(\D+)(\d+)$/, (_, prefix, num) => prefix.toUpperCase() + String(parseInt(num, 10))).trim(); }
+
+function perfSourceLabel(row: TicketRecord): string { return clean(row.region) || clean(row.sourceFile) || "Workbook"; }
+function perfEntryKey(sourceLabel: string, siteId: string): string { return `${sourceLabel.toLowerCase()}||${normalizeSiteId(clean(siteId)).toLowerCase()}`; }
 
 function computePerfRows(allRows: TicketRecord[], monthKey: string, siteOrder: { siteId: string; siteName: string }[] = []): PerfRow[] {
   const range = monthKey !== "all" ? selectedMonthRange(monthKey) : null;
   const monthHours = monthKey !== "all" ? totalHoursInMonth(monthKey) : 24 * 30;
   const siteNameMap = new Map<string, string>();
+  const siteIdMap = new Map<string, string>();
+  const sourceMap = new Map<string, string>();
   const siteTicketCount = new Map<string, number>();
   const siteDownHours = new Map<string, number>();
 
-  allRows.forEach((row) => { if (!row.siteId) return; if (!siteNameMap.has(row.siteId) && row.siteName) { siteNameMap.set(row.siteId, row.siteName); } siteTicketCount.set(row.siteId, (siteTicketCount.get(row.siteId) ?? 0) + 1); });
+  allRows.forEach((row) => {
+    if (!row.siteId) return;
+    const sourceLabel = perfSourceLabel(row);
+    const key = perfEntryKey(sourceLabel, row.siteId);
+    if (!siteIdMap.has(key)) siteIdMap.set(key, row.siteId);
+    if (!sourceMap.has(key)) sourceMap.set(key, sourceLabel);
+    if (!siteNameMap.has(key) && row.siteName) siteNameMap.set(key, row.siteName);
+    siteTicketCount.set(key, (siteTicketCount.get(key) ?? 0) + 1);
+  });
 
   function combineDatetime(dateStr: string, timeStr: string): Date | null { const d = parseDateValue(dateStr); if (!d) return null; if (timeStr) { const tm = timeStr.match(/^(\d{1,2}):(\d{2})/); if (tm) { d.setHours(Number(tm[1]), Number(tm[2]), 0, 0); } } return d; }
 
@@ -430,7 +445,8 @@ function computePerfRows(allRows: TicketRecord[], monthKey: string, siteOrder: {
     const outageStart = combineDatetime(row.observationDate, row.observationTime);
     if (!outageStart) return;
     let outageEnd: Date | null = combineDatetime(row.recoveryDate, row.recoveryTime);
-    if (monthKey === "all") { const hours = parseDurationHours(row.duration) ?? 0; const key = normalizeSiteId(clean(row.siteId)).toLowerCase(); siteDownHours.set(key, Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10); return; }
+    const sourceLabel = perfSourceLabel(row);
+    if (monthKey === "all") { const hours = parseDurationHours(row.duration) ?? 0; const key = perfEntryKey(sourceLabel, row.siteId); siteDownHours.set(key, Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10); return; }
     const monthRange = selectedMonthRange(monthKey);
     if (!monthRange) return;
     const { start: monthStart, end: monthEnd } = monthRange;
@@ -441,16 +457,21 @@ function computePerfRows(allRows: TicketRecord[], monthKey: string, siteOrder: {
     const overlapMs = effectiveEnd.getTime() - effectiveStart.getTime();
     if (overlapMs <= 0) return;
     const hours = Math.round((overlapMs / (1000 * 60 * 60)) * 10) / 10;
-    const key = normalizeSiteId(clean(row.siteId)).toLowerCase();
+    const key = perfEntryKey(sourceLabel, row.siteId);
     siteDownHours.set(key, Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10);
   });
 
-  let siteEntries: { siteId: string; siteName: string }[];
-  if (siteOrder.length > 0) { siteEntries = siteOrder; } else { const allSiteIds = Array.from(siteNameMap.keys()).filter((id) => id !== ""); allSiteIds.sort((a, b) => (siteTicketCount.get(b) ?? 0) - (siteTicketCount.get(a) ?? 0)); siteEntries = allSiteIds.map((id) => ({ siteId: id, siteName: siteNameMap.get(id) ?? "" })); }
+  const allSiteKeys = Array.from(siteIdMap.keys()).filter(Boolean);
+  allSiteKeys.sort((a, b) => (siteTicketCount.get(b) ?? 0) - (siteTicketCount.get(a) ?? 0));
+  let siteEntries: { siteId: string; siteName: string; sourceLabel: string; perfKey: string }[];
+  if (allSiteKeys.length > 0) {
+    siteEntries = allSiteKeys.map((key) => ({ siteId: siteIdMap.get(key) ?? "", siteName: siteNameMap.get(key) ?? "", sourceLabel: sourceMap.get(key) ?? "Workbook", perfKey: key }));
+  } else {
+    siteEntries = siteOrder.map((site) => ({ siteId: site.siteId, siteName: site.siteName, sourceLabel: "Workbook", perfKey: perfEntryKey("Workbook", site.siteId) }));
+  }
 
-  return siteEntries.map(({ siteId, siteName }) => {
-    const key = normalizeSiteId(clean(siteId)).toLowerCase();
-    const downHours = siteDownHours.get(key) ?? 0;
+  return siteEntries.map(({ siteId, siteName, sourceLabel, perfKey }) => {
+    const downHours = siteDownHours.get(perfKey) ?? 0;
     const availHours = Math.max(0, monthHours - downHours);
     const totalHours = availHours + downHours;
     const reliability = totalHours > 0 ? availHours / totalHours : 1;
@@ -459,7 +480,7 @@ function computePerfRows(allRows: TicketRecord[], monthKey: string, siteOrder: {
     const dHrs = Math.floor((totalMins % (60 * 24)) / 60);
     const dMins = Math.round(totalMins % 60);
     const availDay = `${dDays} d, ${dHrs} h, ${dMins} m`;
-    return { siteId, siteName, sitesDownHours: downHours, availHours: Math.round(availHours * 10) / 10, availDay, reliability: `${(reliability * 100).toFixed(2)}%`, channelBusy: 0, mwLinkPerf: 0, ticketCount: siteTicketCount.get(siteId) ?? 0 };
+    return { siteId, siteName, displayName: `${siteId}${sourceLabel !== "Workbook" ? ` (${sourceLabel})` : ""}`, sourceLabel, perfKey, sitesDownHours: downHours, availHours: Math.round(availHours * 10) / 10, availDay, reliability: `${(reliability * 100).toFixed(2)}%`, channelBusy: 0, mwLinkPerf: 0, ticketCount: siteTicketCount.get(perfKey) ?? 0 };
   });
 }
 
@@ -2157,9 +2178,9 @@ export default function Home() {
       perfMonths.forEach((mk) => {
         const rows = computePerfRows(sourceRows, mk, siteOrder);
         rows.forEach((r) => {
-          const existing = combined.get(r.siteId);
+          const existing = combined.get(r.perfKey);
           if (!existing) {
-            combined.set(r.siteId, { ...r });
+            combined.set(r.perfKey, { ...r });
           } else {
             existing.sitesDownHours = Math.round((existing.sitesDownHours + r.sitesDownHours) * 10) / 10;
             // availHours: recalculate based on total month hours across selected months
@@ -2218,9 +2239,9 @@ export default function Home() {
     const combined = new Map<string, PerfRow>();
     filters.openingMonth.forEach((monthKey) => {
       computePerfRows(sourceRows, monthKey, siteOrder).forEach((row) => {
-        const existing = combined.get(row.siteId);
+        const existing = combined.get(row.perfKey);
         if (!existing) {
-          combined.set(row.siteId, { ...row });
+          combined.set(row.perfKey, { ...row });
         } else {
           existing.sitesDownHours = Math.round((existing.sitesDownHours + row.sitesDownHours) * 10) / 10;
         }
@@ -2385,7 +2406,18 @@ export default function Home() {
 
     const avgHoursSource = primaryRows.map((row) => parseDurationHours(row.duration)).filter((value): value is number => value !== null);
     const avgHours = avgHoursSource.length ? avgHoursSource.reduce((sum, value) => sum + value, 0) / avgHoursSource.length : 0;
-    const uniqueSites = new Set(performanceKpiRows.map((row) => clean(row.siteId)).filter(isRfSiteId)).size;
+    const uniqueSites = new Set(performanceKpiRows.map((row) => normalizeSiteId(clean(row.siteId)).toUpperCase()).filter(isRfSiteId)).size;
+    const sourceSiteSets = new Map<string, Set<string>>();
+    filteredTickets.forEach((ticket) => {
+      ticket.rows.forEach((row) => {
+        const siteId = normalizeSiteId(clean(row.siteId)).toUpperCase();
+        if (!isRfSiteId(siteId)) return;
+        const source = row.region || row.sourceFile || "Workbook";
+        if (!sourceSiteSets.has(source)) sourceSiteSets.set(source, new Set());
+        sourceSiteSets.get(source)!.add(siteId);
+      });
+    });
+    const regionSiteTotal = Array.from(sourceSiteSets.values()).reduce((sum, siteIds) => sum + siteIds.size, 0);
     const rootCauseUpdated = primaryRows.filter((row) => row.actionTaken || !rcaNotProvided(row.rca)).length;
     const totalSiteAffected = filteredTickets.reduce((sum, ticket) => sum + Math.max(ticket.siteIds.size, ticket.primary.siteId ? 1 : 0), 0);
     const rcaByCount = countBy(primaryRows, (row) => rcaNotProvided(row.rca) ? "RCA not Provided" : row.rca);
@@ -2463,7 +2495,7 @@ export default function Home() {
 
     return {
       totalUnique, status, severity, region, impact, escalation, monthly, trendGrain, replyTimeTrend, avgReplyTime, monthlyResolutionTime, avgHours,
-      uniqueSites, rootCauseUpdated, totalSiteAffected, topSites, rcaByCount, rcaFamily,
+      uniqueSites, regionSiteTotal, rootCauseUpdated, totalSiteAffected, topSites, rcaByCount, rcaFamily,
       topRcaByCount,
       topRcaByDowntime: downtimeByRca[0] ?? { name: "", value: 0, count: 0 },
       highestMttrRca: mttrByRca[0] ?? { name: "", value: 0, count: 0 },
@@ -2506,14 +2538,24 @@ export default function Home() {
   }, [monthlyExportTickets]);
 
   const performanceExportMetrics = useMemo(() => {
-    const rfSiteIds = new Set(perfRows.map((row) => clean(row.siteId)).filter(isRfSiteId));
-    const affectedIds = new Set(perfRows.filter((row) => row.sitesDownHours > 0).map((row) => clean(row.siteId)).filter(isRfSiteId));
+    const scopedSourceRows = allDataRows.filter((row) => {
+      const regionMatch = perfRegions.length === 0 || perfRegions.includes(row.region);
+      const monthMatch = perfMonths.length === 0 || coveredMonthKeys(row).some((monthKey) => perfMonths.includes(monthKey));
+      return regionMatch && monthMatch;
+    });
+    const scopedSiteIds = new Set(scopedSourceRows.map((row) => clean(row.siteId)).filter(isRfSiteId));
+    const rfPerfRows = scopedSiteIds.size
+      ? perfRows.filter((row) => scopedSiteIds.has(clean(row.siteId)))
+      : perfRows.filter((row) => isRfSiteId(row.siteId));
+    const rfSiteIds = new Set(rfPerfRows.map((row) => clean(row.siteId)).filter(isRfSiteId));
+    const affectedIds = new Set(rfPerfRows.filter((row) => row.sitesDownHours > 0).map((row) => clean(row.siteId)).filter(isRfSiteId));
     return {
       totalSites: rfSiteIds.size,
       affectedSites: affectedIds.size,
       nonAffectedSites: Math.max(0, rfSiteIds.size - affectedIds.size),
+      reportRows: rfPerfRows.length,
     };
-  }, [perfRows]);
+  }, [allDataRows, perfMonths, perfRegions, perfRows]);
 
   const filtersPanel = data ? (
     <section
@@ -2628,12 +2670,14 @@ export default function Home() {
 
 </div>
 
+{/* Report card chips paused until final layout decision.
 <div className="report-export-metrics">
   <span><b>{monthlyExportTickets.length}</b>Total TT</span>
   <span><b>{ticketExportMetrics.closedOrResolved}</b>Resolved</span>
   <span><b>{ticketExportMetrics.pendingCount}</b>Pending</span>
   <span><b>{ticketExportMetrics.criticalCount}</b>Critical</span>
 </div>
+*/}
 
 <div className="report-export-filters">
   <div style={{ flex: 1, minWidth: 0 }}>
@@ -2701,12 +2745,14 @@ export default function Home() {
       </strong>
     </div>
 
+    {/* Report card chips paused until final layout decision.
     <div className="report-export-metrics">
       <span><b>{performanceExportMetrics.totalSites}</b>Total RF Sites</span>
       <span><b>{performanceExportMetrics.affectedSites}</b>Affected</span>
       <span><b>{performanceExportMetrics.nonAffectedSites}</b>Non-Affected</span>
-      <span><b>{perfRows.length}</b>Rows</span>
+      <span><b>{performanceExportMetrics.reportRows}</b>Report Rows</span>
     </div>
+    */}
 
     <div className="report-export-filters">
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -2887,9 +2933,9 @@ export default function Home() {
             />
             
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`No. of Sites`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000" }}>{analytics.uniqueSites.toLocaleString()}</span>}
-              // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Unique Site ID</span>}
+              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Region Sites`}</span>}
+              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000" }}>{analytics.regionSiteTotal.toLocaleString()}</span>}
+              // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>{`${analytics.uniqueSites.toLocaleString()} Unique RF Sites`}</span>}
               icon={BarChart3} tone="#60a5fa"
             style={{ gridColumn: "span 6" }}
             />
@@ -3348,9 +3394,9 @@ export default function Home() {
           <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Site Availability (All Sites)</h3> <BarChart3 size={18} /></div>
 
           {/* The Safety Guard: Only render if data exists and is not empty */}
-          {perfRows && perfRows.length > 0 ? (
+          {performanceKpiRows && performanceKpiRows.length > 0 ? (
           <ResponsiveContainer width="100%" height={320}>
-            <BarChart key={JSON.stringify(perfRows)} data={perfRows} layout="horizontal" margin={{ left: 4, right: 8, top: 8, bottom: 6 }} barCategoryGap="22%">
+            <BarChart key={JSON.stringify(performanceKpiRows)} data={performanceKpiRows} layout="horizontal" margin={{ left: 4, right: 18, top: 24, bottom: 6 }} barCategoryGap="22%">
               <defs>
                 <linearGradient id="availabilityBar" x1="0" y1="1" x2="0" y2="0">
                   <stop offset="0%" stopColor="#059669" />
@@ -3358,10 +3404,12 @@ export default function Home() {
                 </linearGradient>
               </defs>
               <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
-              <XAxis dataKey="siteName" type="category" stroke={CHART_AXIS_STROKE} tick={{ fontSize: 8, fill: "#aac0dc" }} angle={-65} textAnchor="end" interval={0} height={88} />
+              <XAxis dataKey="displayName" type="category" stroke={CHART_AXIS_STROKE} tick={{ fontSize: 8, fill: "#aac0dc" }} angle={-65} textAnchor="end" interval={0} height={88} />
               <YAxis type="number" stroke={CHART_AXIS_STROKE} tickLine={false} axisLine={false} width={38} tick={{ fontSize: 10, fill: "#aac0dc" }} />
               <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: "rgba(16, 185, 129, .06)" }} />
-              <Bar dataKey="availHours" radius={COLUMN_BAR_RADIUS} fill="url(#availabilityBar)" maxBarSize={12} />
+              <Bar dataKey="availHours" radius={COLUMN_BAR_RADIUS} fill="url(#availabilityBar)" maxBarSize={12}>
+                <LabelList dataKey="availHours" position="top" fill="#d1fae5" fontSize={9} formatter={(value: number) => `${value}h`} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
           ) : (
@@ -3377,23 +3425,24 @@ export default function Home() {
           <div className="card-subheading">
           <span>Hours down per site</span>
           </div>
-          {perfRows && perfRows.length > 0 ? (
+          {performanceKpiRows && performanceKpiRows.length > 0 ? (
           <ResponsiveContainer width="100%" height={320}>
             <BarChart
-              key={"downtime-" + JSON.stringify(perfRows)}
-              data={perfRows}
+              key={"downtime-" + JSON.stringify(performanceKpiRows)}
+              data={performanceKpiRows}
               layout="horizontal"
-              margin={{ left: 4, right: 8, top: 8, bottom: 6 }}
+              margin={{ left: 4, right: 18, top: 24, bottom: 6 }}
               barCategoryGap="22%"
             >
               <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
-              <XAxis dataKey="siteName" type="category" stroke={CHART_AXIS_STROKE} tick={{ fontSize: 8, fill: "#aac0dc" }} angle={-65} textAnchor="end" interval={0} height={88} />
+              <XAxis dataKey="displayName" type="category" stroke={CHART_AXIS_STROKE} tick={{ fontSize: 8, fill: "#aac0dc" }} angle={-65} textAnchor="end" interval={0} height={88} />
               <YAxis type="number" stroke={CHART_AXIS_STROKE} tickLine={false} axisLine={false} width={38} tick={{ fontSize: 10, fill: "#aac0dc" }} />
               <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: number) => [`${value} hrs`, "Down Hours"]} cursor={{ fill: "rgba(248, 113, 113, .06)" }} />
               <Bar dataKey="sitesDownHours" radius={COLUMN_BAR_RADIUS} maxBarSize={12}>
-                {perfRows.map((row, index) => (
+                {performanceKpiRows.map((row, index) => (
                   <Cell key={`cell-${index}`} fill={row.sitesDownHours === 0 ? "rgba(148,163,184,0.25)" : row.sitesDownHours > 24 ? "#ef4444" : row.sitesDownHours > 8 ? "#f59e0b" : "#fb923c"} />
                 ))}
+                <LabelList dataKey="sitesDownHours" position="top" fill="#fecaca" fontSize={9} formatter={(value: number) => value > 0 ? `${value}h` : ""} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
