@@ -212,11 +212,293 @@
 .hero-export-card { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(180px, 260px) auto auto; align-items: end; gap: 16px; padding: 18px 24px; border: 1px solid rgba(34, 211, 238, .22); border-radius: 22px; background: linear-gradient(135deg, rgba(2, 6, 23, .78), rgba(8, 47, 73, .46)); box-shadow: 0 26px 80px rgba(2,6,23,.42), inset 0 1px rgba(255,255,255,.07); backdrop-filter: blur(18px); min-width: 0; overflow: hidden; }
 .hero-export-card--5col { grid-template-columns: minmax(180px, 1fr) minmax(160px, 220px) minmax(140px, 200px) auto; }
 .export-badge-mini { display: inline-flex; align-items: center; justify-content: center; width: fit-content; min-width: 0; height: auto; padding: 0; background: transparent; border: none; font-size: 32px; font-weight: 900; color: #22d3ee; font-family: var(--font-mono, monospace); vertical-align: middle; line-height: 1; white-space: nowrap; letter-spacing: -0.03em; }
+
+.report-export-card {
+  --report-accent: #22d3ee;
+  --report-accent-2: #60a5fa;
+  position: relative;
+  min-height: 244px;
+  gap: 12px !important;
+  padding: 16px !important;
+  border-radius: 10px;
+  border-color: color-mix(in srgb, var(--report-accent), transparent 60%);
+  background:
+    linear-gradient(180deg, rgba(15, 31, 56, .9), rgba(8, 17, 34, .94)),
+    linear-gradient(90deg, color-mix(in srgb, var(--report-accent), transparent 74%), transparent 58%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    0 18px 48px rgba(0,0,0,.28),
+    0 0 0 1px color-mix(in srgb, var(--report-accent), transparent 84%);
+}
+
+.report-export-card::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 10px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--report-accent), var(--report-accent-2));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--report-accent), transparent 45%);
+}
+
+.report-export-card--tickets {
+  --report-accent: #38bdf8;
+  --report-accent-2: #f59e0b;
+}
+
+.report-export-card--performance {
+  --report-accent: #10b981;
+  --report-accent-2: #22d3ee;
+}
+
+.report-export-card .hero-export-copy {
+  position: relative;
+  display: grid !important;
+  place-items: center;
+  min-height: 78px;
+  margin: 8px 0 2px !important;
+  padding: 8px 56px 4px;
+  text-align: center;
+}
+
+.report-export-card .hero-export-copy::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 12px;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--report-accent), transparent 42%);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--report-accent), transparent 62%), rgba(15,23,42,.55));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+}
+
+.report-export-card--tickets .hero-export-copy::after,
+.report-export-card--performance .hero-export-copy::after {
+  position: absolute;
+  left: 19px;
+  top: 21px;
+  color: #e0f7ff;
+  font-size: 21px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.report-export-card--tickets .hero-export-copy::after { content: "XL"; font-size: 13px; top: 25px; }
+.report-export-card--performance .hero-export-copy::after { content: "%"; }
+
+.report-export-card .hero-export-copy span {
+  color: color-mix(in srgb, var(--report-accent), white 34%);
+  font-size: 12px;
+  letter-spacing: .13em;
+}
+
+.report-export-card .hero-export-copy strong {
+  margin-top: 2px;
+  color: #f8fafc;
+  font-size: clamp(18px, 1.45vw, 24px);
+  font-weight: 950;
+}
+
+.report-export-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.report-export-metrics span {
+  display: grid;
+  place-items: center;
+  min-height: 56px;
+  padding: 8px 6px;
+  border: 1px solid rgba(148, 163, 184, .14);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, .34);
+  color: #9fb3ca;
+  font-size: 11px;
+  font-weight: 850;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: .055em;
+}
+
+.report-export-metrics b {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--report-accent);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: clamp(18px, 1.6vw, 26px);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.report-export-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.report-export-actions {
+  gap: 10px !important;
+  margin-top: 2px !important;
+  padding-top: 10px !important;
+  border-top: 1px solid rgba(148, 163, 184, .13);
+}
+
+.report-export-actions .ghost-button {
+  min-width: 92px;
+  border: 1px solid color-mix(in srgb, var(--report-accent), transparent 64%);
+  background: rgba(2, 6, 23, .46);
+}
+
+.report-export-actions .ghost-button:hover {
+  border-color: color-mix(in srgb, var(--report-accent), white 12%);
+  box-shadow: 0 14px 32px color-mix(in srgb, var(--report-accent), transparent 78%);
+}
+
+@media (max-width: 860px) {
+  .report-export-card .hero-export-copy {
+    padding-right: 8px;
+    padding-left: 8px;
+    padding-top: 58px;
+  }
+
+  .report-export-card .hero-export-copy::before,
+  .report-export-card .hero-export-copy::after {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .report-export-card .hero-export-copy::before { top: 8px; }
+  .report-export-card--tickets .hero-export-copy::after,
+  .report-export-card--performance .hero-export-copy::after { top: 21px; }
+  .report-export-card--tickets .hero-export-copy::after { top: 25px; }
+  .report-export-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-export-filters { grid-template-columns: 1fr; }
+}
+
 .perf-kpi-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 100%; padding: 0 4px; }
 .perf-kpi-row--table { padding: 16px 20px 0; }
 .perf-kpi-tile { flex: 1 1 130px; max-width: 180px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(8px); }
 .perf-kpi-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 5px; }
 .perf-kpi-value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.dashboard-shell .hero-export-row:has(.perf-kpi-row) {
+  width: 100%;
+  margin: 0 0 16px !important;
+  padding: 12px 16px 16px !important;
+  border: 1px solid rgba(125, 211, 252, .2);
+  border-radius: 14px;
+  background:
+    linear-gradient(90deg, rgba(8, 17, 34, .94), rgba(15, 31, 56, .88), rgba(8, 17, 34, .94)),
+    radial-gradient(circle at 18% 0%, rgba(16, 185, 129, .14), transparent 32%),
+    radial-gradient(circle at 86% 0%, rgba(248, 113, 113, .12), transparent 30%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 18px 42px rgba(0,0,0,.22);
+}
+
+.dashboard-shell .hero-export-row:has(.perf-kpi-row)::before {
+  content: "Performance KPIs";
+  display: block;
+  margin: 0 0 10px;
+  padding-left: 10px;
+  border-left: 4px solid #22d3ee;
+  color: #e0f7ff;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.dashboard-shell .perf-kpi-row {
+  display: grid !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px !important;
+  padding: 0 !important;
+}
+
+.dashboard-shell .perf-kpi-tile {
+  --kpi-color: #22d3ee;
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  max-width: none;
+  min-height: 116px;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px 12px 14px !important;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--kpi-color), transparent 58%);
+  background:
+    linear-gradient(180deg, rgba(15, 31, 56, .86), rgba(8, 17, 34, .92)),
+    radial-gradient(circle at 50% -20%, color-mix(in srgb, var(--kpi-color), transparent 64%), transparent 58%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    0 12px 28px rgba(0,0,0,.22),
+    0 0 0 1px color-mix(in srgb, var(--kpi-color), transparent 82%);
+}
+
+.dashboard-shell .perf-kpi-tile::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 6px solid color-mix(in srgb, var(--kpi-color), transparent 30%);
+  border-bottom-color: rgba(148, 163, 184, .18);
+  opacity: .36;
+  z-index: -1;
+}
+
+.dashboard-shell .perf-kpi-tile::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 8px;
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--kpi-color), color-mix(in srgb, var(--kpi-color), white 35%));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--kpi-color), transparent 45%);
+}
+
+.dashboard-shell .perf-kpi-label {
+  position: relative;
+  margin: 0 !important;
+  color: #b9c9df;
+  font-size: 20px !important;
+  font-weight: 900 !important;
+  line-height: 1.15;
+  letter-spacing: .055em;
+}
+
+.dashboard-shell .perf-kpi-value {
+  position: relative;
+  color: var(--kpi-color) !important;
+  font-size: clamp(22px, 1.7vw, 32px) !important;
+  font-weight: 1000 !important;
+  line-height: 1.08;
+  letter-spacing: 0;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--kpi-color), transparent 62%);
+}
+
+@media (max-width: 1180px) {
+  .dashboard-shell .perf-kpi-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-shell .perf-kpi-row {
+    grid-template-columns: 1fr;
+  }
+}
 .multi-select-option-all { border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 4px; padding-bottom: 4px; }
 .hero-export-copy { display: flex; flex-direction: column; align-items: flex-start; }
 .hero-export-copy span { display: block; color: #a5f3fc; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
@@ -543,11 +825,162 @@ Does this choice reinforce or dilute our design philosophy?
 } */
 
 .workbook-cards {
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(48, minmax(0, 1fr));
 }
 
 .workbook-cards .stat-card {
   min-height: 148px;
+}
+
+/* Full-width executive dashboard layout */
+.dashboard-shell .hero-panel,
+.dashboard-shell .stats-grid,
+.dashboard-shell .chart-2col,
+.dashboard-shell .chart-mosaic,
+.dashboard-shell .table-card {
+  width: 100%;
+  max-width: none;
+}
+
+.dashboard-shell .dashboard-filters-panel {
+  margin: 0 44px 18px !important;
+  width: auto !important;
+  max-width: none;
+}
+
+.dashboard-shell .stats-grid.workbook-cards {
+  margin: 0 0 22px;
+}
+
+.dashboard-shell .chart-2col,
+.dashboard-shell .chart-mosaic {
+  gap: 16px;
+  margin: 0 0 22px;
+}
+
+.dashboard-shell .chart-2col .glass-card,
+.dashboard-shell .chart-mosaic .glass-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 330px;
+  padding: 18px;
+  border-radius: 8px;
+  border-color: rgba(125, 211, 252, .18);
+  background:
+    linear-gradient(180deg, rgba(15, 31, 56, .94), rgba(8, 17, 34, .9)),
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, .12), transparent 34%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 18px 42px rgba(0,0,0,.24);
+  transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+
+.dashboard-shell .chart-2col .glass-card:hover,
+.dashboard-shell .chart-mosaic .glass-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, .34);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 22px 54px rgba(0,0,0,.28);
+}
+
+.dashboard-shell .chart-2col .card-heading,
+.dashboard-shell .chart-mosaic .card-heading {
+  min-height: 28px;
+  margin-bottom: 10px;
+}
+
+.dashboard-shell .chart-2col .card-heading h3,
+.dashboard-shell .chart-mosaic .card-heading h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.25;
+  letter-spacing: 0;
+  color: #eef7ff;
+}
+
+.dashboard-shell .chart-2col .card-heading svg,
+.dashboard-shell .chart-mosaic .card-heading svg {
+  color: #67e8f9;
+  filter: drop-shadow(0 0 8px rgba(34, 211, 238, .35));
+}
+
+.dashboard-shell .recharts-cartesian-grid line {
+  stroke-dasharray: 3 5;
+}
+
+.dashboard-shell .recharts-default-legend {
+  color: #bfd3ee !important;
+}
+
+.dashboard-shell .chart-2col {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.dashboard-shell .chart-mosaic {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.dashboard-shell .chart-2col .glass-card,
+.dashboard-shell .chart-mosaic .glass-card {
+  min-width: 0;
+}
+
+.dashboard-shell .chart-2col::before,
+.dashboard-shell .chart-mosaic::before,
+.dashboard-shell .table-card::before {
+  display: block;
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 4px solid #22d3ee;
+  color: #dffafe;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.dashboard-shell .chart-2col::before {
+  content: "Ticket Trends & Distribution";
+  grid-column: 1 / -1;
+}
+
+.dashboard-shell .chart-mosaic::before {
+  content: "Root Cause Analysis & Site-Level Performance";
+  grid-column: 1 / -1;
+}
+
+.dashboard-shell .table-card::before {
+  content: "Detailed Records";
+}
+
+@media (max-width: 1280px) {
+  .dashboard-shell .stats-grid.workbook-cards {
+    grid-template-columns: repeat(24, minmax(0, 1fr)) !important;
+  }
+  .dashboard-shell .stats-grid.workbook-cards .stat-card {
+    grid-column: span 6 !important;
+  }
+}
+
+@media (max-width: 860px) {
+  .dashboard-shell .dashboard-filters-panel {
+    margin: 0 18px 18px !important;
+    grid-template-columns: 1fr !important;
+  }
+  .dashboard-shell .stats-grid.workbook-cards {
+    grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+  }
+  .dashboard-shell .stats-grid.workbook-cards .stat-card {
+    grid-column: span 12 !important;
+  }
+  .dashboard-shell .chart-2col,
+  .dashboard-shell .chart-mosaic {
+    grid-template-columns: 1fr !important;
+  }
+  .dashboard-shell .chart-2col > .glass-card,
+  .dashboard-shell .chart-2col > div > .glass-card,
+  .dashboard-shell .chart-mosaic > .glass-card {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+  }
 }
 
 .top-site-mini-table {
@@ -631,4 +1064,216 @@ Does this choice reinforce or dilute our design philosophy?
   word-break: keep-all !important;  
   overflow-wrap: normal !important; 
   white-space: normal !important;   
+}
+
+/* Modern executive KPI cards */
+.dashboard-shell .stats-grid.workbook-cards {
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  border-color: rgba(125, 211, 252, .18);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, .54), rgba(2, 6, 23, .36)),
+    radial-gradient(circle at 18% 0%, rgba(34, 211, 238, .12), transparent 36%);
+}
+
+.dashboard-shell .workbook-cards .stat-card {
+  isolation: isolate;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 7px;
+  min-height: 142px;
+  padding: 14px 14px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--tone), transparent 68%);
+  background:
+    linear-gradient(180deg, rgba(15, 31, 56, .94), rgba(8, 17, 34, .9)),
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--tone), transparent 82%), transparent 42%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 14px 34px rgba(0,0,0,.22);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+
+.dashboard-shell .workbook-cards .stat-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--tone), transparent);
+  opacity: .9;
+  filter: drop-shadow(0 0 8px var(--tone));
+  z-index: -1;
+}
+
+.dashboard-shell .workbook-cards .stat-card::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 8px;
+  height: 4px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, var(--tone), color-mix(in srgb, var(--tone), white 34%)),
+    rgba(148, 163, 184, .16);
+  opacity: .74;
+}
+
+.dashboard-shell .workbook-cards .stat-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--tone), white 10%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 20px 48px rgba(0,0,0,.3);
+}
+
+.dashboard-shell .workbook-cards .stat-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--tone), transparent 72%), rgba(255,255,255,.04));
+  color: color-mix(in srgb, var(--tone), white 18%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 8px 18px color-mix(in srgb, var(--tone), transparent 78%);
+}
+
+.dashboard-shell .workbook-cards .stat-icon svg {
+  width: 30px;
+  height: 30px;
+  stroke-width: 2.4;
+}
+
+.dashboard-shell .workbook-cards .stat-card:hover .stat-icon {
+  transform: scale(1.07);
+}
+
+.dashboard-shell .workbook-cards .stat-card > span,
+.dashboard-shell .workbook-cards .stat-card > span * {
+  margin: 0 !important;
+  color: #9fb2cc !important;
+  font-size: 20px !important;
+  font-weight: 850 !important;
+  line-height: 1.25 !important;
+  letter-spacing: .055em !important;
+  text-transform: uppercase !important;
+}
+
+.dashboard-shell .workbook-cards .stat-card small,
+.dashboard-shell .workbook-cards .stat-card small * {
+  margin: 0 !important;
+  color: #9fb2cc !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  line-height: 1.25 !important;
+  letter-spacing: .055em !important;
+  text-transform: uppercase !important;
+}
+
+.dashboard-shell .workbook-cards .stat-card strong,
+.dashboard-shell .workbook-cards .stat-card strong * {
+  margin: 0 !important;
+  color: #f8fbff !important;
+  font-size: clamp(28px, 2vw, 34px) !important;
+  font-weight: 950 !important;
+  line-height: 1.05 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--tone), transparent 72%);
+}
+
+.dashboard-shell .workbook-cards .stat-card small,
+.dashboard-shell .workbook-cards .stat-card small * {
+  padding-bottom: 8px;
+  color: color-mix(in srgb, var(--tone), white 28%) !important;
+  font-size: 20px !important;
+  font-weight: 900 !important;
+}
+
+.dashboard-shell .workbook-cards .rca-inline-fix strong,
+.dashboard-shell .workbook-cards .rca-inline-fix strong * {
+  font-size: clamp(22px, 1.65vw, 26px) !important;
+  line-height: 1.22 !important;
+}
+
+@media (min-width: 1281px) {
+  .dashboard-shell .stats-grid.workbook-cards {
+    grid-template-columns: repeat(63, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-shell .stats-grid.workbook-cards .stat-card:nth-child(-n + 9) {
+    grid-column: span 7 !important;
+  }
+
+  .dashboard-shell .stats-grid.workbook-cards .stat-card:nth-child(n + 10) {
+    grid-column: span 9 !important;
+  }
+}
+
+/* Prototype: executive KPI ribbon with a highlighted severity cluster */
+.dashboard-shell .stats-grid.workbook-cards {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(125, 211, 252, .22);
+  background:
+    linear-gradient(90deg, rgba(8, 17, 34, .96), rgba(15, 31, 56, .9) 48%, rgba(8, 17, 34, .96)),
+    radial-gradient(circle at 8% 0%, rgba(34, 211, 238, .18), transparent 30%),
+    radial-gradient(circle at 78% 0%, rgba(248, 113, 113, .13), transparent 28%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 22px 60px rgba(0,0,0,.24);
+}
+
+.dashboard-shell .stats-grid.workbook-cards::before {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #22d3ee, #10b981, #f59e0b, #ef4444, #a78bfa);
+  opacity: .85;
+  filter: drop-shadow(0 0 10px rgba(34, 211, 238, .45));
+  z-index: -1;
+}
+
+.dashboard-shell .workbook-cards .stat-card {
+  min-height: 156px;
+  background:
+    linear-gradient(180deg, rgba(15, 31, 56, .76), rgba(8, 17, 34, .86)),
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--tone), transparent 78%), transparent 38%);
+  border-color: rgba(148, 163, 184, .18);
+}
+
+.dashboard-shell .workbook-cards .stat-card:nth-child(1),
+.dashboard-shell .workbook-cards .stat-card:nth-child(2),
+.dashboard-shell .workbook-cards .stat-card:nth-child(3),
+.dashboard-shell .workbook-cards .stat-card:nth-child(4) {
+  background:
+    linear-gradient(180deg, rgba(14, 37, 64, .82), rgba(8, 17, 34, .88)),
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--tone), transparent 72%), transparent 42%);
+}
+
+.dashboard-shell .workbook-cards .stat-card:nth-child(5),
+.dashboard-shell .workbook-cards .stat-card:nth-child(6),
+.dashboard-shell .workbook-cards .stat-card:nth-child(7) {
+  border-color: color-mix(in srgb, var(--tone), white 4%);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--tone), #081122 74%), rgba(8, 17, 34, .9)),
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--tone), transparent 64%), transparent 54%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.09),
+    0 18px 42px rgba(0,0,0,.26),
+    0 0 0 1px color-mix(in srgb, var(--tone), transparent 72%);
+}
+
+.dashboard-shell .workbook-cards .stat-card:nth-child(5)::after,
+.dashboard-shell .workbook-cards .stat-card:nth-child(6)::after,
+.dashboard-shell .workbook-cards .stat-card:nth-child(7)::after {
+  height: 6px;
+  opacity: .95;
+}
+
+.dashboard-shell .workbook-cards .stat-card:nth-child(n + 12) {
+  background:
+    linear-gradient(180deg, rgba(20, 27, 52, .82), rgba(8, 17, 34, .9)),
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--tone), transparent 76%), transparent 40%);
 }
