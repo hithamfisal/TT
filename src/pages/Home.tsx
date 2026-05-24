@@ -1,5 +1,12 @@
 import PptxGenJS from "pptxgenjs";
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -53,10 +60,17 @@ import {
 import autoTable from "jspdf-autotable";
 
 type ZipFileMap = Record<string, Uint8Array>;
-type ZipTextCodec = { strFromU8: (bytes: Uint8Array) => string; strToU8: (text: string) => Uint8Array };
+type ZipTextCodec = {
+  strFromU8: (bytes: Uint8Array) => string;
+  strToU8: (text: string) => Uint8Array;
+};
 type ExcelHorizontalAlign = "left" | "center";
 
-const applyExcelCellStyle = (xml: string, ref: string, styleIndex: number): string => {
+const applyExcelCellStyle = (
+  xml: string,
+  ref: string,
+  styleIndex: number
+): string => {
   const markerIdx = xml.indexOf(` r="${ref}"`);
   if (markerIdx === -1) return xml;
   const cStart = xml.lastIndexOf("<c", markerIdx);
@@ -66,7 +80,7 @@ const applyExcelCellStyle = (xml: string, ref: string, styleIndex: number): stri
   const openTag = xml.slice(cStart, tagClose + 1);
   const styledTag = openTag.includes(' s="')
     ? openTag.replace(/\s+s="[^"]*"/, ` s="${styleIndex}"`)
-    : openTag.replace(/\/?>$/, (ending) => ` s="${styleIndex}"${ending}`);
+    : openTag.replace(/\/?>$/, ending => ` s="${styleIndex}"${ending}`);
 
   return xml.slice(0, cStart) + styledTag + xml.slice(tagClose + 1);
 };
@@ -85,7 +99,7 @@ const ensureExcelAlignedStyle = (
   files: ZipFileMap,
   codec: ZipTextCodec,
   baseStyleIndex: number,
-  horizontal: ExcelHorizontalAlign,
+  horizontal: ExcelHorizontalAlign
 ) => {
   const stylesKey = "xl/styles.xml";
   if (!files[stylesKey]) return baseStyleIndex;
@@ -98,7 +112,10 @@ const ensureExcelAlignedStyle = (
   const openEnd = stylesXml.indexOf(">", cellXfsStart);
   const cellXfsInner = stylesXml.slice(openEnd + 1, cellXfsEnd);
   const xfs = cellXfsInner.match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g) ?? [];
-  const baseXf = xfs[baseStyleIndex] ?? xfs[0] ?? '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>';
+  const baseXf =
+    xfs[baseStyleIndex] ??
+    xfs[0] ??
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>';
   const alignmentTag = `<alignment horizontal="${horizontal}" vertical="center" wrapText="1"/>`;
   const withApplyAlignment = baseXf.includes("applyAlignment=")
     ? baseXf.replace(/applyAlignment="[^"]*"/, 'applyAlignment="1"')
@@ -106,17 +123,23 @@ const ensureExcelAlignedStyle = (
   const alignedXf = withApplyAlignment.endsWith("/>")
     ? withApplyAlignment.replace(/\/>$/, `>${alignmentTag}</xf>`)
     : withApplyAlignment
-        .replace(/<alignment\b[^>]*\/>|<alignment\b[^>]*>[\s\S]*?<\/alignment>/g, "")
+        .replace(
+          /<alignment\b[^>]*\/>|<alignment\b[^>]*>[\s\S]*?<\/alignment>/g,
+          ""
+        )
         .replace("</xf>", `${alignmentTag}</xf>`);
 
-  const existingIndex = xfs.findIndex((xf) => xf === alignedXf);
+  const existingIndex = xfs.findIndex(xf => xf === alignedXf);
   if (existingIndex !== -1) return existingIndex;
 
   const nextIndex = xfs.length;
   const beforeClose = stylesXml.slice(0, cellXfsEnd);
   const afterClose = stylesXml.slice(cellXfsEnd);
   stylesXml = `${beforeClose}${alignedXf}${afterClose}`;
-  stylesXml = stylesXml.replace(/(<cellXfs\b[^>]*\bcount=")\d+(")/, `$1${nextIndex + 1}$2`);
+  stylesXml = stylesXml.replace(
+    /(<cellXfs\b[^>]*\bcount=")\d+(")/,
+    `$1${nextIndex + 1}$2`
+  );
   files[stylesKey] = codec.strToU8(stylesXml);
   return nextIndex;
 };
@@ -126,18 +149,24 @@ const applyExcelColumnAlignment = (
   codec: ZipTextCodec,
   xml: string,
   refs: string[],
-  horizontal: ExcelHorizontalAlign,
+  horizontal: ExcelHorizontalAlign
 ) => {
   const styleCache = new Map<number, number>();
   return refs.reduce((sheetXml, ref) => {
     const baseStyle = getExcelCellStyle(sheetXml, ref);
-    const alignedStyle = styleCache.get(baseStyle) ?? ensureExcelAlignedStyle(files, codec, baseStyle, horizontal);
+    const alignedStyle =
+      styleCache.get(baseStyle) ??
+      ensureExcelAlignedStyle(files, codec, baseStyle, horizontal);
     styleCache.set(baseStyle, alignedStyle);
     return applyExcelCellStyle(sheetXml, ref, alignedStyle);
   }, xml);
 };
 
-const applySheetCellAlignment = (sheet: XLSX.WorkSheet, ref: string, horizontal: ExcelHorizontalAlign) => {
+const applySheetCellAlignment = (
+  sheet: XLSX.WorkSheet,
+  ref: string,
+  horizontal: ExcelHorizontalAlign
+) => {
   const cell = sheet[ref] as XLSX.CellObject & { s?: any };
   if (!cell) return;
   cell.s = {
@@ -159,95 +188,424 @@ const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
   try {
     const pptx = new PptxGenJS();
     pptx.layout = "LAYOUT_WIDE";
-    const BG="0a1628",CARD_BG="0f1f38",CYAN="22d3ee",GREEN="10b981",RED="ef4444",AMBER="f59e0b",MUTED="94a3b8",WHITE="f8fafc";
-    const labels=(data||[]).map(r=>r?.siteName||"N/A");
-    const availValues=(data||[]).map(r=>r?.availHours||0);
-    const downValues=(data||[]).map(r=>r?.sitesDownHours||0);
+    const BG = "0a1628",
+      CARD_BG = "0f1f38",
+      CYAN = "22d3ee",
+      GREEN = "10b981",
+      RED = "ef4444",
+      AMBER = "f59e0b",
+      MUTED = "94a3b8",
+      WHITE = "f8fafc";
+    const labels = (data || []).map(r => r?.siteName || "N/A");
+    const availValues = (data || []).map(r => r?.availHours || 0);
+    const downValues = (data || []).map(r => r?.sitesDownHours || 0);
 
-    const s1=pptx.addSlide(); s1.background={color:BG};
-    s1.addShape(pptx.ShapeType.rect,{x:0,y:0,w:"100%",h:0.06,fill:{color:CYAN}});
-    s1.addText("DMR Monthly Performance Report",{x:0.7,y:1.6,w:11.6,fontSize:36,bold:true,color:WHITE,fontFace:"Segoe UI"});
-    s1.addText(`Month: ${monthLabel}`,{x:0.7,y:2.5,w:6,fontSize:16,color:CYAN,fontFace:"Segoe UI"});
+    const s1 = pptx.addSlide();
+    s1.background = { color: BG };
+    s1.addShape(pptx.ShapeType.rect, {
+      x: 0,
+      y: 0,
+      w: "100%",
+      h: 0.06,
+      fill: { color: CYAN },
+    });
+    s1.addText("DMR Monthly Performance Report", {
+      x: 0.7,
+      y: 1.6,
+      w: 11.6,
+      fontSize: 36,
+      bold: true,
+      color: WHITE,
+      fontFace: "Segoe UI",
+    });
+    s1.addText(`Month: ${monthLabel}`, {
+      x: 0.7,
+      y: 2.5,
+      w: 6,
+      fontSize: 16,
+      color: CYAN,
+      fontFace: "Segoe UI",
+    });
 
     const kpi = computePerfKPIs(data);
     const kpiSlide = pptx.addSlide();
     kpiSlide.background = { color: BG };
-    kpiSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: 0.06, fill: { color: CYAN } });
-    kpiSlide.addText("KPI Summary", { x: 0.5, y: 0.18, w: 12, fontSize: 22, bold: true, color: WHITE, fontFace: "Segoe UI" });
-    kpiSlide.addText(`Month: ${monthLabel}  ·  ${data.length} sites`, { x: 0.5, y: 0.55, w: 12, fontSize: 11, color: MUTED, fontFace: "Segoe UI" });
+    kpiSlide.addShape(pptx.ShapeType.rect, {
+      x: 0,
+      y: 0,
+      w: "100%",
+      h: 0.06,
+      fill: { color: CYAN },
+    });
+    kpiSlide.addText("KPI Summary", {
+      x: 0.5,
+      y: 0.18,
+      w: 12,
+      fontSize: 22,
+      bold: true,
+      color: WHITE,
+      fontFace: "Segoe UI",
+    });
+    kpiSlide.addText(`Month: ${monthLabel}  ·  ${data.length} sites`, {
+      x: 0.5,
+      y: 0.55,
+      w: 12,
+      fontSize: 11,
+      color: MUTED,
+      fontFace: "Segoe UI",
+    });
 
     const kpiItems = [
-      { label: "% Availability", value: kpi.pctAvailability, color: GREEN, icon: "✓", labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" }, valueStyle: { fontSize: "20px", fontWeight: 700, color: GREEN } },
-      { label: "MTTR", value: kpi.mttr, color: AMBER, icon: "⏱", labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" }, valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER } },
-      { label: "MTBF", value: kpi.mtbf, color: CYAN, icon: "↻", labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" }, valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER } },
-      { label: "MTTF", value: kpi.mttf, color: CYAN, icon: "↻", labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" }, valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER } },
-      { label: "Affected Sites", value: String(kpi.affectedSites), color: kpi.affectedSites > 0 ? RED : GREEN, icon: "⚠", labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" }, valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER } },
-      { label: "Total Down Time", value: kpi.totalDownHrs, color: kpi.totalDownHrs === "0.0 hrs" ? GREEN : RED, icon: "↓", labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" }, valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER } },
+      {
+        label: "% Availability",
+        value: kpi.pctAvailability,
+        color: GREEN,
+        icon: "✓",
+        labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" },
+        valueStyle: { fontSize: "20px", fontWeight: 700, color: GREEN },
+      },
+      {
+        label: "MTTR",
+        value: kpi.mttr,
+        color: AMBER,
+        icon: "⏱",
+        labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" },
+        valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER },
+      },
+      {
+        label: "MTBF",
+        value: kpi.mtbf,
+        color: CYAN,
+        icon: "↻",
+        labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" },
+        valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER },
+      },
+      {
+        label: "MTTF",
+        value: kpi.mttf,
+        color: CYAN,
+        icon: "↻",
+        labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" },
+        valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER },
+      },
+      {
+        label: "Affected Sites",
+        value: String(kpi.affectedSites),
+        color: kpi.affectedSites > 0 ? RED : GREEN,
+        icon: "⚠",
+        labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" },
+        valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER },
+      },
+      {
+        label: "Total Down Time",
+        value: kpi.totalDownHrs,
+        color: kpi.totalDownHrs === "0.0 hrs" ? GREEN : RED,
+        icon: "↓",
+        labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" },
+        valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER },
+      },
     ];
 
-    const cW = 4.0, cH = 2.5, cGapX = 0.18, cGapY = 0.22;
-    const cStartX = 0.4, cStartY = 0.95;
+    const cW = 4.0,
+      cH = 2.5,
+      cGapX = 0.18,
+      cGapY = 0.22;
+    const cStartX = 0.4,
+      cStartY = 0.95;
     kpiItems.forEach((item, idx) => {
       const col = idx % 3;
       const row = Math.floor(idx / 3);
       const x = cStartX + col * (cW + cGapX);
       const y = cStartY + row * (cH + cGapY);
-      kpiSlide.addShape(pptx.ShapeType.roundRect, { x, y, w: cW, h: cH, fill: { color: CARD_BG }, line: { color: "1e3a5f", width: 0.5 } });
-      kpiSlide.addShape(pptx.ShapeType.rect, { x, y, w: cW, h: 0.06, fill: { color: item.color } });
-      kpiSlide.addText(item.label.toUpperCase(), { x: x + 0.18, y: y + 0.18, w: cW - 0.36, fontSize: 9, color: MUTED, fontFace: "Segoe UI", bold: false });
-      kpiSlide.addText(item.value, { x: x + 0.18, y: y + 0.6, w: cW - 0.36, fontSize: 28, bold: true, color: item.color, fontFace: "Segoe UI" });
-      kpiSlide.addText(`Month: ${monthLabel}`, { x: x + 0.18, y: y + cH - 0.4, w: cW - 0.36, fontSize: 8, color: MUTED, fontFace: "Segoe UI" });
+      kpiSlide.addShape(pptx.ShapeType.roundRect, {
+        x,
+        y,
+        w: cW,
+        h: cH,
+        fill: { color: CARD_BG },
+        line: { color: "1e3a5f", width: 0.5 },
+      });
+      kpiSlide.addShape(pptx.ShapeType.rect, {
+        x,
+        y,
+        w: cW,
+        h: 0.06,
+        fill: { color: item.color },
+      });
+      kpiSlide.addText(item.label.toUpperCase(), {
+        x: x + 0.18,
+        y: y + 0.18,
+        w: cW - 0.36,
+        fontSize: 9,
+        color: MUTED,
+        fontFace: "Segoe UI",
+        bold: false,
+      });
+      kpiSlide.addText(item.value, {
+        x: x + 0.18,
+        y: y + 0.6,
+        w: cW - 0.36,
+        fontSize: 28,
+        bold: true,
+        color: item.color,
+        fontFace: "Segoe UI",
+      });
+      kpiSlide.addText(`Month: ${monthLabel}`, {
+        x: x + 0.18,
+        y: y + cH - 0.4,
+        w: cW - 0.36,
+        fontSize: 8,
+        color: MUTED,
+        fontFace: "Segoe UI",
+      });
     });
 
     const itemsPerSlide = 18;
     const headerRow = [
-        { text: "S No", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
-        { text: "Site Name", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
-        { text: "Availability (Hrs)", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
-        { text: "Down (Hrs)", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
-        { text: "Reliability", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
+      {
+        text: "S No",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: "22d3ee" },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Site Name",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: "22d3ee" },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Availability (Hrs)",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: "22d3ee" },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Down (Hrs)",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: "22d3ee" },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Reliability",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: "22d3ee" },
+          align: "center",
+          valign: "mid",
+        },
+      },
     ];
 
     for (let i = 0; i < data.length; i += itemsPerSlide) {
       const slide = pptx.addSlide();
       slide.background = { color: BG };
-      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: 0.06, fill: { color: CYAN } });
+      slide.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: "100%",
+        h: 0.06,
+        fill: { color: CYAN },
+      });
       const titleSuffix = i === 0 ? "" : " (Contd.)";
-      slide.addText("Performance Table" + titleSuffix, { x: 0.5, y: 0.18, w: 12, fontSize: 18, bold: true, color: WHITE, fontFace: "Segoe UI" });
+      slide.addText("Performance Table" + titleSuffix, {
+        x: 0.5,
+        y: 0.18,
+        w: 12,
+        fontSize: 18,
+        bold: true,
+        color: WHITE,
+        fontFace: "Segoe UI",
+      });
       const chunkData = data.slice(i, i + itemsPerSlide);
       const tableRows = [
         headerRow,
         ...chunkData.map((r, index) => {
           const actualIdx = i + index;
           const relNum = parseFloat(r.reliability);
-          const relColor = !r.sitesDownHours ? GREEN : relNum < 95 ? RED : relNum < 99 ? AMBER : GREEN;
+          const relColor = !r.sitesDownHours
+            ? GREEN
+            : relNum < 95
+              ? RED
+              : relNum < 99
+                ? AMBER
+                : GREEN;
           return [
-            { text: String(actualIdx + 1), options: { color: MUTED, align: "center", valign: "mid" } },
-            { text: r?.siteName || "N/A", options: { color: WHITE, bold: true, align: "left", valign: "mid" } },
-            { text: String(r?.availHours || 0), options: { color: GREEN, align: "center", valign: "mid" } },
-            { text: String(r?.sitesDownHours || 0), options: { color: r.sitesDownHours > 0 ? RED : MUTED, align: "center", valign: "mid" } },
-            { text: r?.reliability || "100%", options: { color: relColor, bold: true, align: "center", valign: "mid" } },
+            {
+              text: String(actualIdx + 1),
+              options: { color: MUTED, align: "center", valign: "mid" },
+            },
+            {
+              text: r?.siteName || "N/A",
+              options: {
+                color: WHITE,
+                bold: true,
+                align: "left",
+                valign: "mid",
+              },
+            },
+            {
+              text: String(r?.availHours || 0),
+              options: { color: GREEN, align: "center", valign: "mid" },
+            },
+            {
+              text: String(r?.sitesDownHours || 0),
+              options: {
+                color: r.sitesDownHours > 0 ? RED : MUTED,
+                align: "center",
+                valign: "mid",
+              },
+            },
+            {
+              text: r?.reliability || "100%",
+              options: {
+                color: relColor,
+                bold: true,
+                align: "center",
+                valign: "mid",
+              },
+            },
           ];
-        })
+        }),
       ];
-      slide.addTable(tableRows, { x: 0.5, y: 0.65, w: 12, fontSize: 10, fontFace: "Segoe UI", border: { type: "solid", color: "1e3a5f", pt: 0.5 }, fill: { color: CARD_BG }, rowH: 0.28, colW: [0.6, 3.5, 2.2, 2.0, 1.7] });
+      slide.addTable(tableRows, {
+        x: 0.5,
+        y: 0.65,
+        w: 12,
+        fontSize: 10,
+        fontFace: "Segoe UI",
+        border: { type: "solid", color: "1e3a5f", pt: 0.5 },
+        fill: { color: CARD_BG },
+        rowH: 0.28,
+        colW: [0.6, 3.5, 2.2, 2.0, 1.7],
+      });
     }
 
     const slide3 = pptx.addSlide();
     slide3.background = { color: BG };
-    slide3.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: 0.06, fill: { color: CYAN } });
-    slide3.addText("Site Availability — Hours", { x: 0.5, y: 0.18, w: 12, fontSize: 18, bold: true, color: WHITE, fontFace: "Segoe UI" });
-    slide3.addText(`Month: ${monthLabel}`, { x: 0.5, y: 0.52, w: 6, fontSize: 11, color: MUTED, fontFace: "Segoe UI" });
-    slide3.addChart(pptx.ChartType.bar, [{ name: "Availability (Hrs)", labels, values: availValues }], { x: 0.4, y: 0.85, w: 12.2, h: 5.8, barDir: "col", barGapWidthPct: 120, chartColors: [GREEN], showValue: true, dataLabelFontSize: 7, dataLabelColor: WHITE, catAxisLabelFontSize: 8, catAxisLabelColor: MUTED, catAxisLabelRotate: 45, valAxisLabelFontSize: 9, valAxisLabelColor: MUTED, valGridLine: { style: "solid", color: "1e3a5f", size: 0.5 }, plotAreaFill: { color: CARD_BG }, showLegend: false });
+    slide3.addShape(pptx.ShapeType.rect, {
+      x: 0,
+      y: 0,
+      w: "100%",
+      h: 0.06,
+      fill: { color: CYAN },
+    });
+    slide3.addText("Site Availability — Hours", {
+      x: 0.5,
+      y: 0.18,
+      w: 12,
+      fontSize: 18,
+      bold: true,
+      color: WHITE,
+      fontFace: "Segoe UI",
+    });
+    slide3.addText(`Month: ${monthLabel}`, {
+      x: 0.5,
+      y: 0.52,
+      w: 6,
+      fontSize: 11,
+      color: MUTED,
+      fontFace: "Segoe UI",
+    });
+    slide3.addChart(
+      pptx.ChartType.bar,
+      [{ name: "Availability (Hrs)", labels, values: availValues }],
+      {
+        x: 0.4,
+        y: 0.85,
+        w: 12.2,
+        h: 5.8,
+        barDir: "col",
+        barGapWidthPct: 120,
+        chartColors: [GREEN],
+        showValue: true,
+        dataLabelFontSize: 7,
+        dataLabelColor: WHITE,
+        catAxisLabelFontSize: 8,
+        catAxisLabelColor: MUTED,
+        catAxisLabelRotate: 45,
+        valAxisLabelFontSize: 9,
+        valAxisLabelColor: MUTED,
+        valGridLine: { style: "solid", color: "1e3a5f", size: 0.5 },
+        plotAreaFill: { color: CARD_BG },
+        showLegend: false,
+      }
+    );
 
     const slide4 = pptx.addSlide();
     slide4.background = { color: BG };
-    slide4.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: 0.06, fill: { color: RED } });
-    slide4.addText("Site Downtime — Hours", { x: 0.5, y: 0.18, w: 12, fontSize: 18, bold: true, color: WHITE, fontFace: "Segoe UI" });
-    slide4.addText(`Month: ${monthLabel}  ·  ${data.filter(r => r.sitesDownHours > 0).length} of ${data.length} sites affected`, { x: 0.5, y: 0.52, w: 10, fontSize: 11, color: MUTED, fontFace: "Segoe UI" });
-    slide4.addChart(pptx.ChartType.bar, [{ name: "Down (Hrs)", labels, values: downValues }], { x: 0.4, y: 0.85, w: 12.2, h: 5.8, barDir: "col", barGapWidthPct: 120, chartColors: [RED], showValue: true, dataLabelFontSize: 7, dataLabelColor: WHITE, catAxisLabelFontSize: 8, catAxisLabelColor: MUTED, catAxisLabelRotate: 45, valAxisLabelFontSize: 9, valAxisLabelColor: MUTED, valGridLine: { style: "solid", color: "1e3a5f", size: 0.5 }, plotAreaFill: { color: CARD_BG }, showLegend: false });
+    slide4.addShape(pptx.ShapeType.rect, {
+      x: 0,
+      y: 0,
+      w: "100%",
+      h: 0.06,
+      fill: { color: RED },
+    });
+    slide4.addText("Site Downtime — Hours", {
+      x: 0.5,
+      y: 0.18,
+      w: 12,
+      fontSize: 18,
+      bold: true,
+      color: WHITE,
+      fontFace: "Segoe UI",
+    });
+    slide4.addText(
+      `Month: ${monthLabel}  ·  ${data.filter(r => r.sitesDownHours > 0).length} of ${data.length} sites affected`,
+      {
+        x: 0.5,
+        y: 0.52,
+        w: 10,
+        fontSize: 11,
+        color: MUTED,
+        fontFace: "Segoe UI",
+      }
+    );
+    slide4.addChart(
+      pptx.ChartType.bar,
+      [{ name: "Down (Hrs)", labels, values: downValues }],
+      {
+        x: 0.4,
+        y: 0.85,
+        w: 12.2,
+        h: 5.8,
+        barDir: "col",
+        barGapWidthPct: 120,
+        chartColors: [RED],
+        showValue: true,
+        dataLabelFontSize: 7,
+        dataLabelColor: WHITE,
+        catAxisLabelFontSize: 8,
+        catAxisLabelColor: MUTED,
+        catAxisLabelRotate: 45,
+        valAxisLabelFontSize: 9,
+        valAxisLabelColor: MUTED,
+        valGridLine: { style: "solid", color: "1e3a5f", size: 0.5 },
+        plotAreaFill: { color: CARD_BG },
+        showLegend: false,
+      }
+    );
 
-    pptx.writeFile(`Performance_Report_${monthLabel.replace(/\s+/g, "_")}.pptx`);
+    pptx.writeFile(
+      `Performance_Report_${monthLabel.replace(/\s+/g, "_")}.pptx`
+    );
   } catch (error) {
     console.error("Failed to generate Performance PPT:", error);
   }
@@ -258,32 +616,141 @@ const exportTicketsPpt = (tickets: any[], monthLabel: string = "All") => {
   try {
     const pptx = new PptxGenJS();
     pptx.layout = "LAYOUT_WIDE";
-    const BG = "0a1628", CARD_BG = "0f1f38", CYAN = "22d3ee", WHITE = "f8fafc", MUTED = "94a3b8";
+    const BG = "0a1628",
+      CARD_BG = "0f1f38",
+      CYAN = "22d3ee",
+      WHITE = "f8fafc",
+      MUTED = "94a3b8";
 
     const slide1 = pptx.addSlide();
     slide1.background = { color: BG };
-    slide1.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: 0.06, fill: { color: CYAN } });
-    slide1.addText("DMR Monthly Tickets Report", { x: 0.5, y: 2.5, w: 12, fontSize: 36, bold: true, color: WHITE, fontFace: "Segoe UI" });
-    slide1.addText(`Target Month: ${monthLabel}`, { x: 0.5, y: 3.2, w: 12, fontSize: 18, color: CYAN, fontFace: "Segoe UI" });
-    slide1.addText(`Total Aggregated Tickets: ${tickets.length}`, { x: 0.5, y: 3.6, w: 12, fontSize: 14, color: MUTED, italic: true });
+    slide1.addShape(pptx.ShapeType.rect, {
+      x: 0,
+      y: 0,
+      w: "100%",
+      h: 0.06,
+      fill: { color: CYAN },
+    });
+    slide1.addText("DMR Monthly Tickets Report", {
+      x: 0.5,
+      y: 2.5,
+      w: 12,
+      fontSize: 36,
+      bold: true,
+      color: WHITE,
+      fontFace: "Segoe UI",
+    });
+    slide1.addText(`Target Month: ${monthLabel}`, {
+      x: 0.5,
+      y: 3.2,
+      w: 12,
+      fontSize: 18,
+      color: CYAN,
+      fontFace: "Segoe UI",
+    });
+    slide1.addText(`Total Aggregated Tickets: ${tickets.length}`, {
+      x: 0.5,
+      y: 3.6,
+      w: 12,
+      fontSize: 14,
+      color: MUTED,
+      italic: true,
+    });
 
     const itemsPerSlide = 16;
     const headerRow = [
-      { text: "S No", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
-      { text: "Ticket ID", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
-      { text: "Site IDs", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
-      { text: "Resource", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
-      { text: "Sev", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
-      { text: "Issue Description", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
-      { text: "Status", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
+      {
+        text: "S No",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Ticket ID",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Site IDs",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Resource",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Sev",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Issue Description",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Status",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
     ];
 
     for (let i = 0; i < tickets.length; i += itemsPerSlide) {
       const slide = pptx.addSlide();
       slide.background = { color: BG };
-      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: 0.06, fill: { color: CYAN } });
+      slide.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: "100%",
+        h: 0.06,
+        fill: { color: CYAN },
+      });
       const titleSuffix = i === 0 ? "" : " (Contd.)";
-      slide.addText(`Aggregated Ticket Details${titleSuffix}`, { x: 0.5, y: 0.2, w: 12, fontSize: 20, bold: true, color: WHITE, fontFace: "Segoe UI" });
+      slide.addText(`Aggregated Ticket Details${titleSuffix}`, {
+        x: 0.5,
+        y: 0.2,
+        w: 12,
+        fontSize: 20,
+        bold: true,
+        color: WHITE,
+        fontFace: "Segoe UI",
+      });
       const chunk = tickets.slice(i, i + itemsPerSlide);
       const tableRows = [
         headerRow,
@@ -291,35 +758,100 @@ const exportTicketsPpt = (tickets: any[], monthLabel: string = "All") => {
           const row = t.primary || {};
           const sites = Array.from(t.siteIds || []).join(", ");
           return [
-            { text: String(i + idx + 1), options: { color: MUTED, align: "center" } },
+            {
+              text: String(i + idx + 1),
+              options: { color: MUTED, align: "center" },
+            },
             { text: t.tt || "N/A", options: { color: CYAN, bold: true } },
-            { text: sites.length > 30 ? sites.substring(0, 30) + "..." : sites, options: { color: WHITE, fontSize: 7 } },
-            { text: row.managedResource || "N/A", options: { color: WHITE, align: "center", valign: "mid" } },
-            { text: row.severity || "N/A", options: { color: row.severity === 'Critical' ? "ef4444" : WHITE, bold: true, align: "center", valign: "mid" } },
-            { text: row.issue || "N/A", options: { color: WHITE, fontSize: 8 } },
-            { text: row.status || "N/A", options: { color: row.status === 'Resolved' ? "10b981" : "f59e0b", bold: true } },
+            {
+              text: sites.length > 30 ? sites.substring(0, 30) + "..." : sites,
+              options: { color: WHITE, fontSize: 7 },
+            },
+            {
+              text: row.managedResource || "N/A",
+              options: { color: WHITE, align: "center", valign: "mid" },
+            },
+            {
+              text: row.severity || "N/A",
+              options: {
+                color: row.severity === "Critical" ? "ef4444" : WHITE,
+                bold: true,
+                align: "center",
+                valign: "mid",
+              },
+            },
+            {
+              text: row.issue || "N/A",
+              options: { color: WHITE, fontSize: 8 },
+            },
+            {
+              text: row.status || "N/A",
+              options: {
+                color: row.status === "Resolved" ? "10b981" : "f59e0b",
+                bold: true,
+              },
+            },
           ];
-        })
+        }),
       ];
-      slide.addTable(tableRows, { x: 0.4, y: 0.7, w: 12.5, fontSize: 9, fontFace: "Segoe UI", border: { type: "solid", color: "1e3a5f", pt: 0.5 }, fill: { color: CARD_BG }, rowH: 0.35, colW: [0.6, 1.2, 1.8, 1.8, 0.8, 5.1, 1.2] });
-      slide.addText(`Page ${Math.floor(i/itemsPerSlide) + 2}`, { x: 12, y: 7.1, w: 1, fontSize: 8, color: MUTED, align: "right" });
+      slide.addTable(tableRows, {
+        x: 0.4,
+        y: 0.7,
+        w: 12.5,
+        fontSize: 9,
+        fontFace: "Segoe UI",
+        border: { type: "solid", color: "1e3a5f", pt: 0.5 },
+        fill: { color: CARD_BG },
+        rowH: 0.35,
+        colW: [0.6, 1.2, 1.8, 1.8, 0.8, 5.1, 1.2],
+      });
+      slide.addText(`Page ${Math.floor(i / itemsPerSlide) + 2}`, {
+        x: 12,
+        y: 7.1,
+        w: 1,
+        fontSize: 8,
+        color: MUTED,
+        align: "right",
+      });
     }
 
-    pptx.writeFile({ fileName: `DMR_Tickets_Report_${monthLabel.replace(/\s+/g, "_")}.pptx` });
+    pptx.writeFile({
+      fileName: `DMR_Tickets_Report_${monthLabel.replace(/\s+/g, "_")}.pptx`,
+    });
   } catch (error) {
     console.error("Failed to generate Tickets PPT:", error);
     alert("Error generating PowerPoint. Please check the console.");
   }
 };
 
-const COLORS = ["#22d3ee", "#60a5fa", "#f59e0b", "#ef4444", "#34d399", "#a78bfa", "#f472b6", "#94a3b8"];
-const STATUS_COLORS: Record<string, string> = { Closed: "#34d399", Pending: "#f59e0b", Resolved: "#60a5fa", Open: "#ef4444" };
-const SEVERITY_COLORS: Record<string, string> = { Critical: "#ef4444", Major: "#f59e0b", Minor: "#22d3ee", Low: "#34d399" };
+const COLORS = [
+  "#22d3ee",
+  "#60a5fa",
+  "#f59e0b",
+  "#ef4444",
+  "#34d399",
+  "#a78bfa",
+  "#f472b6",
+  "#94a3b8",
+];
+const STATUS_COLORS: Record<string, string> = {
+  Closed: "#34d399",
+  Pending: "#f59e0b",
+  Resolved: "#60a5fa",
+  Open: "#ef4444",
+};
+const SEVERITY_COLORS: Record<string, string> = {
+  Critical: "#ef4444",
+  Major: "#f59e0b",
+  Minor: "#22d3ee",
+  Low: "#34d399",
+};
 const CHART_GRID_STROKE = "rgba(148, 163, 184, .14)";
 const CHART_AXIS_STROKE = "#8ea4c2";
 const CHART_LABEL_FILL = "#e5f0ff";
 const CHART_TOOLTIP_STYLE: CSSProperties = {
-  background: "linear-gradient(145deg, rgba(8, 17, 34, .98), rgba(15, 31, 56, .96))",
+  background:
+    "linear-gradient(145deg, rgba(8, 17, 34, .98), rgba(15, 31, 56, .96))",
   border: "1px solid rgba(125, 211, 252, .34)",
   borderRadius: 10,
   color: "#e5f0ff",
@@ -334,154 +866,708 @@ const BAR_RADIUS: [number, number, number, number] = [0, 8, 8, 0];
 const COLUMN_BAR_RADIUS: [number, number, number, number] = [6, 6, 0, 0];
 
 type TicketRecord = {
-  rowNo: number; tt: string; siteId: string; siteName: string; managedResource: string; issue: string; severity: string; region: string;
-  observationDate: string; observationTime: string; openingMonthKey: string; openingMonthLabel: string;
-  recoveryDate: string; recoveryTime: string; duration: string; impact: string; escalatedTo: string; escalationLevel: string;
-  escalatedForL3SupportDate: string; escalatedForL3SupportTime: string;
-  frtHours: number | null; responseHours: number | null; resolutionHours: number | null;
-  status: string; rca: string; rcaFamily: string; preventability: string; responsibleTeam: string; recommendedAction: string; actionTaken: string;
+  rowNo: number;
+  tt: string;
+  siteId: string;
+  siteName: string;
+  managedResource: string;
+  issue: string;
+  severity: string;
+  region: string;
+  observationDate: string;
+  observationTime: string;
+  openingMonthKey: string;
+  openingMonthLabel: string;
+  recoveryDate: string;
+  recoveryTime: string;
+  duration: string;
+  impact: string;
+  escalatedTo: string;
+  escalationLevel: string;
+  escalatedForL3SupportDate: string;
+  escalatedForL3SupportTime: string;
+  frtHours: number | null;
+  responseHours: number | null;
+  resolutionHours: number | null;
+  status: string;
+  rca: string;
+  rcaFamily: string;
+  preventability: string;
+  responsibleTeam: string;
+  recommendedAction: string;
+  actionTaken: string;
   sourceFile: string;
 };
 
-type TicketAggregate = { tt: string; primary: TicketRecord; siteIds: Set<string>; siteNames: Set<string>; rows: TicketRecord[] };
+type TicketAggregate = {
+  tt: string;
+  primary: TicketRecord;
+  siteIds: Set<string>;
+  siteNames: Set<string>;
+  rows: TicketRecord[];
+};
 
-type DashboardData = { fileName: string; sheetName: string; generatedAt: string; rows: TicketRecord[]; uniqueTickets: TicketAggregate[]; siteOrder: { siteId: string; siteName: string }[] };
+type DashboardData = {
+  fileName: string;
+  sheetName: string;
+  generatedAt: string;
+  rows: TicketRecord[];
+  uniqueTickets: TicketAggregate[];
+  siteOrder: { siteId: string; siteName: string }[];
+};
 
-type Filters = { search: string; status: string[]; severity: string[]; region: string[]; impact: string[]; site: string[]; openingMonth: string[]; rcaFamily: string[] };
+type Filters = {
+  search: string;
+  status: string[];
+  severity: string[];
+  region: string[];
+  impact: string[];
+  site: string[];
+  openingMonth: string[];
+  rcaFamily: string[];
+};
 
-const EMPTY_FILTERS: Filters = { search: "", status: [], severity: [], region: [], impact: [], site: [], openingMonth: [], rcaFamily: [] };
+const EMPTY_FILTERS: Filters = {
+  search: "",
+  status: [],
+  severity: [],
+  region: [],
+  impact: [],
+  site: [],
+  openingMonth: [],
+  rcaFamily: [],
+};
 
-function clean(value: unknown): string { if (value === null || value === undefined) return ""; return String(value).replace(/\s+/g, " ").trim(); }
-function normalizeHeader(value: string): string { return clean(value).toLowerCase().replace(/[^a-z0-9]/g, ""); }
-function getField(row: Record<string, unknown>, aliases: string[]): string { const map = new Map<string, unknown>(); Object.entries(row).forEach(([key, value]) => map.set(normalizeHeader(key), value)); for (const alias of aliases) { const found = map.get(normalizeHeader(alias)); if (found !== undefined) return clean(found); } return ""; }
-function getRawField(row: Record<string, unknown>, aliases: string[]): unknown { const map = new Map<string, unknown>(); Object.entries(row).forEach(([key, value]) => map.set(normalizeHeader(key), value)); for (const alias of aliases) { const found = map.get(normalizeHeader(alias)); if (found !== undefined && found !== null && found !== "") return found; } return ""; }
-function isRfSiteId(value: unknown): boolean { return clean(value).toUpperCase().startsWith("RF"); }
+function clean(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/\s+/g, " ").trim();
+}
+function normalizeHeader(value: string): string {
+  return clean(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+function getField(row: Record<string, unknown>, aliases: string[]): string {
+  const map = new Map<string, unknown>();
+  Object.entries(row).forEach(([key, value]) =>
+    map.set(normalizeHeader(key), value)
+  );
+  for (const alias of aliases) {
+    const found = map.get(normalizeHeader(alias));
+    if (found !== undefined) return clean(found);
+  }
+  return "";
+}
+function getRawField(row: Record<string, unknown>, aliases: string[]): unknown {
+  const map = new Map<string, unknown>();
+  Object.entries(row).forEach(([key, value]) =>
+    map.set(normalizeHeader(key), value)
+  );
+  for (const alias of aliases) {
+    const found = map.get(normalizeHeader(alias));
+    if (found !== undefined && found !== null && found !== "") return found;
+  }
+  return "";
+}
+function isRfSiteId(value: unknown): boolean {
+  return clean(value).toUpperCase().startsWith("RF");
+}
 
 function parseDateValue(value: unknown): Date | null {
   if (value === null || value === undefined || value === "") return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
-  const numericValue = typeof value === "number" ? value : /^\d+(\.\d+)?$/.test(clean(value)) ? Number(clean(value)) : null;
-  if (numericValue !== null && numericValue > 20000 && numericValue < 90000) { const excelDate = XLSX.SSF.parse_date_code(numericValue); if (excelDate) return new Date(excelDate.y, excelDate.m - 1, excelDate.d); }
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : /^\d+(\.\d+)?$/.test(clean(value))
+        ? Number(clean(value))
+        : null;
+  if (numericValue !== null && numericValue > 20000 && numericValue < 90000) {
+    const excelDate = XLSX.SSF.parse_date_code(numericValue);
+    if (excelDate) return new Date(excelDate.y, excelDate.m - 1, excelDate.d);
+  }
   const text = clean(value);
   const dmyMatch = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
-  if (dmyMatch) { const d = Number(dmyMatch[1]); const m = Number(dmyMatch[2]); const y = Number(dmyMatch[3]); if (d > 12) { const candidate = new Date(y, m - 1, d); if (!Number.isNaN(candidate.getTime())) return candidate; } else { const candidate = new Date(y, m - 1, d); if (!Number.isNaN(candidate.getTime())) return candidate; } }
+  if (dmyMatch) {
+    const d = Number(dmyMatch[1]);
+    const m = Number(dmyMatch[2]);
+    const y = Number(dmyMatch[3]);
+    if (d > 12) {
+      const candidate = new Date(y, m - 1, d);
+      if (!Number.isNaN(candidate.getTime())) return candidate;
+    } else {
+      const candidate = new Date(y, m - 1, d);
+      if (!Number.isNaN(candidate.getTime())) return candidate;
+    }
+  }
   const direct = new Date(text);
   if (!Number.isNaN(direct.getTime())) return direct;
-  const match = text.match(/(\d{1,2})[-/ ]([A-Za-z]{3,}|\d{1,2})[-/ ](\d{2,4})/);
+  const match = text.match(
+    /(\d{1,2})[-/ ]([A-Za-z]{3,}|\d{1,2})[-/ ](\d{2,4})/
+  );
   if (!match) return null;
   const parsed = new Date(text.replace(/-/g, " "));
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function normalizeMonthKey(value: unknown): string | null { const text = clean(value); if (!text) return null; const keyMatch = text.match(/^(\d{4})[-/](\d{1,2})$/); if (keyMatch) return `${keyMatch[1]}-${keyMatch[2].padStart(2, "0")}`; const parsed = parseDateValue(text.startsWith("1 ") ? text : `1 ${text}`); if (!parsed) return null; return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`; }
-function openingMonthKey(value: unknown): string { const parsed = parseDateValue(value); if (!parsed) return "Unknown"; const month = String(parsed.getMonth() + 1).padStart(2, "0"); return `${parsed.getFullYear()}-${month}`; }
-function resolveOpeningMonthKey(sourceKey: unknown, sourceLabel: unknown, observationDate: unknown): string { return normalizeMonthKey(sourceKey) ?? normalizeMonthKey(sourceLabel) ?? openingMonthKey(observationDate); }
-function openingMonthLabel(key: string): string { if (!key || key === "Unknown") return "Unknown"; const parsed = new Date(`${key}-01T00:00:00`); if (Number.isNaN(parsed.getTime())) return key; return parsed.toLocaleDateString("en", { month: "short", year: "numeric" }); }
-function startOfWeek(date: Date): Date { const copy = new Date(date.getFullYear(), date.getMonth(), date.getDate()); const day = copy.getDay(); const diff = day === 0 ? -6 : 1 - day; copy.setDate(copy.getDate() + diff); return copy; }
-function weekKey(value: unknown): string { const parsed = parseDateValue(value); if (!parsed) return "Unknown"; const start = startOfWeek(parsed); return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`; }
-function weekLabel(key: string): string { if (!key || key === "Unknown") return "Unknown"; const parsed = new Date(`${key}T00:00:00`); if (Number.isNaN(parsed.getTime())) return key; const end = new Date(parsed); end.setDate(end.getDate() + 6); const sameMonth = parsed.getMonth() === end.getMonth() && parsed.getFullYear() === end.getFullYear(); const startLabel = parsed.toLocaleDateString("en", { day: "2-digit", month: "short" }); const endLabel = end.toLocaleDateString("en", sameMonth ? { day: "2-digit" } : { day: "2-digit", month: "short" }); return `${startLabel}-${endLabel}`; }
-function recordDateMonthKey(value: string): string { const parsed = parseDateValue(value); if (!parsed) return "Unknown"; return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`; }
-function selectedMonthRange(selectedMonth: string): { start: Date; end: Date } | null { const match = selectedMonth.match(/^(\d{4})-(\d{2})$/); if (!match) return null; const year = Number(match[1]); const monthIndex = Number(match[2]) - 1; const start = new Date(year, monthIndex, 1); const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999); return Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) ? null : { start, end }; }
-function totalHoursInMonth(monthKey: string): number { const range = selectedMonthRange(monthKey); if (!range) return 0; const daysInMonth = range.end.getDate(); return daysInMonth * 24; }
-function coveredMonthKeys(row: TicketRecord): string[] { const observation = parseDateValue(row.observationDate); const recovery = parseDateValue(row.recoveryDate); const keys = new Set<string>(); const addEndpoint = (value: string) => { const key = recordDateMonthKey(value); if (key !== "Unknown") keys.add(key); }; addEndpoint(row.observationDate); addEndpoint(row.recoveryDate); if (!observation || !recovery) return Array.from(keys); const startDate = observation <= recovery ? observation : recovery; const endDate = recovery >= observation ? recovery : observation; const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1); const final = new Date(endDate.getFullYear(), endDate.getMonth(), 1); let guard = 0; while (cursor <= final && guard < 240) { keys.add(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`); cursor.setMonth(cursor.getMonth() + 1); guard += 1; } return Array.from(keys); }
-function isPendingStatus(value: string): boolean { return clean(value).toLowerCase() === "pending"; }
-function dateWithinMonth(dateValue: string, selectedMonth: string): boolean { const range = selectedMonthRange(selectedMonth); if (!range) return false; const parsed = parseDateValue(dateValue); if (!parsed) return false; return parsed >= range.start && parsed <= range.end; }
-function ticketMatchesMonthlyExport(ticket: TicketAggregate, selectedMonth: string): boolean { if (selectedMonth === "all") return true; const range = selectedMonthRange(selectedMonth); if (!range) return false; return ticket.rows.some((row) => { const obsDate = parseDateValue(row.observationDate); const recDate = parseDateValue(row.recoveryDate); const observationInMonth = obsDate !== null && obsDate >= range.start && obsDate <= range.end; const recoveryInMonth = recDate !== null && recDate >= range.start && recDate <= range.end; const pendingBeforeMonthEnd = isPendingStatus(row.status) && obsDate !== null && obsDate <= range.end; const spansEntireMonth = obsDate !== null && recDate !== null && obsDate < range.start && recDate > range.end; return observationInMonth || recoveryInMonth || pendingBeforeMonthEnd || spansEntireMonth; }); }
-function dateKey(value: string): number { const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime(); }
-function formatDateDDMMYYYY(value: string): string { const parsed = parseDateValue(value); if (!parsed) return value || ""; const d = String(parsed.getDate()).padStart(2, "0"); const m = String(parsed.getMonth() + 1).padStart(2, "0"); const y = parsed.getFullYear(); return `${d}/${m}/${y}`; }
-function formatMonthMMMMYYYY(monthKey: string): string { if (!monthKey || monthKey === "all") return ""; const parsed = new Date(`${monthKey}-01T00:00:00`); if (Number.isNaN(parsed.getTime())) return monthKey; return parsed.toLocaleDateString("en", { month: "short", year: "numeric" }); }
-function parseDurationHours(duration: string): number | null { if (!duration) return null; if (/days?/i.test(duration) || /hrs?/i.test(duration)) { const days = Number(duration.match(/(\d+)\s*days?/i)?.[1] ?? 0); const hrs = Number(duration.match(/(\d+)\s*hrs?/i)?.[1] ?? 0); const mins = Number(duration.match(/(\d+)\s*mins?/i)?.[1] ?? 0); const total = days * 24 + hrs + mins / 60; return Number.isFinite(total) ? total : null; } const num = Number(duration); if (Number.isFinite(num) && num >= 0) { if (num > 0 && num < 1) return Math.round(num * 24 * 10) / 10; return Math.round(num * 10) / 10; } return null; }
-function combineDateTime(dateStr: string, timeStr: string): Date | null { const parsed = parseDateValue(dateStr); if (!parsed) return null; const time = clean(timeStr); const match = time.match(/^(\d{1,2}):(\d{2})/); if (match) parsed.setHours(Number(match[1]), Number(match[2]), 0, 0); return parsed; }
-function hoursBetween(start: Date | null, end: Date | null): number | null { if (!start || !end || end < start) return null; return Math.round(((end.getTime() - start.getTime()) / 36e5) * 10) / 10; }
-function average(values: Array<number | null | undefined>): number { const valid = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value)); return valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : 0; }
+function normalizeMonthKey(value: unknown): string | null {
+  const text = clean(value);
+  if (!text) return null;
+  const keyMatch = text.match(/^(\d{4})[-/](\d{1,2})$/);
+  if (keyMatch) return `${keyMatch[1]}-${keyMatch[2].padStart(2, "0")}`;
+  const parsed = parseDateValue(text.startsWith("1 ") ? text : `1 ${text}`);
+  if (!parsed) return null;
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
+}
+function openingMonthKey(value: unknown): string {
+  const parsed = parseDateValue(value);
+  if (!parsed) return "Unknown";
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  return `${parsed.getFullYear()}-${month}`;
+}
+function resolveOpeningMonthKey(
+  sourceKey: unknown,
+  sourceLabel: unknown,
+  observationDate: unknown
+): string {
+  return (
+    normalizeMonthKey(sourceKey) ??
+    normalizeMonthKey(sourceLabel) ??
+    openingMonthKey(observationDate)
+  );
+}
+function openingMonthLabel(key: string): string {
+  if (!key || key === "Unknown") return "Unknown";
+  const parsed = new Date(`${key}-01T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return key;
+  return parsed.toLocaleDateString("en", { month: "short", year: "numeric" });
+}
+function startOfWeek(date: Date): Date {
+  const copy = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = copy.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  copy.setDate(copy.getDate() + diff);
+  return copy;
+}
+function weekKey(value: unknown): string {
+  const parsed = parseDateValue(value);
+  if (!parsed) return "Unknown";
+  const start = startOfWeek(parsed);
+  return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`;
+}
+function weekLabel(key: string): string {
+  if (!key || key === "Unknown") return "Unknown";
+  const parsed = new Date(`${key}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return key;
+  const end = new Date(parsed);
+  end.setDate(end.getDate() + 6);
+  const sameMonth =
+    parsed.getMonth() === end.getMonth() &&
+    parsed.getFullYear() === end.getFullYear();
+  const startLabel = parsed.toLocaleDateString("en", {
+    day: "2-digit",
+    month: "short",
+  });
+  const endLabel = end.toLocaleDateString(
+    "en",
+    sameMonth ? { day: "2-digit" } : { day: "2-digit", month: "short" }
+  );
+  return `${startLabel}-${endLabel}`;
+}
+function recordDateMonthKey(value: string): string {
+  const parsed = parseDateValue(value);
+  if (!parsed) return "Unknown";
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
+}
+function selectedMonthRange(
+  selectedMonth: string
+): { start: Date; end: Date } | null {
+  const match = selectedMonth.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const start = new Date(year, monthIndex, 1);
+  const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
+  return Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())
+    ? null
+    : { start, end };
+}
+function totalHoursInMonth(monthKey: string): number {
+  const range = selectedMonthRange(monthKey);
+  if (!range) return 0;
+  const daysInMonth = range.end.getDate();
+  return daysInMonth * 24;
+}
+function coveredMonthKeys(row: TicketRecord): string[] {
+  const observation = parseDateValue(row.observationDate);
+  const recovery = parseDateValue(row.recoveryDate);
+  const keys = new Set<string>();
+  const addEndpoint = (value: string) => {
+    const key = recordDateMonthKey(value);
+    if (key !== "Unknown") keys.add(key);
+  };
+  addEndpoint(row.observationDate);
+  addEndpoint(row.recoveryDate);
+  if (!observation || !recovery) return Array.from(keys);
+  const startDate = observation <= recovery ? observation : recovery;
+  const endDate = recovery >= observation ? recovery : observation;
+  const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const final = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+  let guard = 0;
+  while (cursor <= final && guard < 240) {
+    keys.add(
+      `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`
+    );
+    cursor.setMonth(cursor.getMonth() + 1);
+    guard += 1;
+  }
+  return Array.from(keys);
+}
+function isPendingStatus(value: string): boolean {
+  return clean(value).toLowerCase() === "pending";
+}
+function dateWithinMonth(dateValue: string, selectedMonth: string): boolean {
+  const range = selectedMonthRange(selectedMonth);
+  if (!range) return false;
+  const parsed = parseDateValue(dateValue);
+  if (!parsed) return false;
+  return parsed >= range.start && parsed <= range.end;
+}
+function ticketMatchesMonthlyExport(
+  ticket: TicketAggregate,
+  selectedMonth: string
+): boolean {
+  if (selectedMonth === "all") return true;
+  const range = selectedMonthRange(selectedMonth);
+  if (!range) return false;
+  return ticket.rows.some(row => {
+    const obsDate = parseDateValue(row.observationDate);
+    const recDate = parseDateValue(row.recoveryDate);
+    const observationInMonth =
+      obsDate !== null && obsDate >= range.start && obsDate <= range.end;
+    const recoveryInMonth =
+      recDate !== null && recDate >= range.start && recDate <= range.end;
+    const pendingBeforeMonthEnd =
+      isPendingStatus(row.status) && obsDate !== null && obsDate <= range.end;
+    const spansEntireMonth =
+      obsDate !== null &&
+      recDate !== null &&
+      obsDate < range.start &&
+      recDate > range.end;
+    return (
+      observationInMonth ||
+      recoveryInMonth ||
+      pendingBeforeMonthEnd ||
+      spansEntireMonth
+    );
+  });
+}
+function dateKey(value: string): number {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+function formatDateDDMMYYYY(value: string): string {
+  const parsed = parseDateValue(value);
+  if (!parsed) return value || "";
+  const d = String(parsed.getDate()).padStart(2, "0");
+  const m = String(parsed.getMonth() + 1).padStart(2, "0");
+  const y = parsed.getFullYear();
+  return `${d}/${m}/${y}`;
+}
+function formatMonthMMMMYYYY(monthKey: string): string {
+  if (!monthKey || monthKey === "all") return "";
+  const parsed = new Date(`${monthKey}-01T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return monthKey;
+  return parsed.toLocaleDateString("en", { month: "short", year: "numeric" });
+}
+function parseDurationHours(duration: string): number | null {
+  if (!duration) return null;
+  if (/days?/i.test(duration) || /hrs?/i.test(duration)) {
+    const days = Number(duration.match(/(\d+)\s*days?/i)?.[1] ?? 0);
+    const hrs = Number(duration.match(/(\d+)\s*hrs?/i)?.[1] ?? 0);
+    const mins = Number(duration.match(/(\d+)\s*mins?/i)?.[1] ?? 0);
+    const total = days * 24 + hrs + mins / 60;
+    return Number.isFinite(total) ? total : null;
+  }
+  const num = Number(duration);
+  if (Number.isFinite(num) && num >= 0) {
+    if (num > 0 && num < 1) return Math.round(num * 24 * 10) / 10;
+    return Math.round(num * 10) / 10;
+  }
+  return null;
+}
+function combineDateTime(dateStr: string, timeStr: string): Date | null {
+  const parsed = parseDateValue(dateStr);
+  if (!parsed) return null;
+  const time = clean(timeStr);
+  const match = time.match(/^(\d{1,2}):(\d{2})/);
+  if (match) parsed.setHours(Number(match[1]), Number(match[2]), 0, 0);
+  return parsed;
+}
+function hoursBetween(start: Date | null, end: Date | null): number | null {
+  if (!start || !end || end < start) return null;
+  return Math.round(((end.getTime() - start.getTime()) / 36e5) * 10) / 10;
+}
+function average(values: Array<number | null | undefined>): number {
+  const valid = values.filter(
+    (value): value is number =>
+      typeof value === "number" && Number.isFinite(value)
+  );
+  return valid.length
+    ? valid.reduce((sum, value) => sum + value, 0) / valid.length
+    : 0;
+}
 
 const RCA_FAMILY_MAP: Record<string, string> = {
-  "Power Issue": "Power & Environment", "High Temperature": "Power & Environment", "High VSWR": "Power & Environment", "Weather Issue": "Power & Environment", "DC Charger Faulty": "Power & Environment",
-  "Link Down": "Transmission & Link", "Link Flapping": "Transmission & Link", "Transmission": "Transmission & Link", "MW Issue": "Transmission & Link", "MPLS Issue": "Transmission & Link", "SDH Hanged": "Transmission & Link",
-  "Hardware Failure": "Hardware & Device", "Hardware Faulty": "Hardware & Device", "Device Hanged": "Hardware & Device",
-  "Fiber Cut": "Fiber & Physical", "Cabling": "Fiber & Physical", "Port Disable": "Fiber & Physical", "Port Hang": "Fiber & Physical", "Loss of Signal": "Fiber & Physical", "Media Converter Faulty": "Fiber & Physical",
-  "Configuration Issue": "Configuration / Software", "Software Issue": "Configuration / Software", "Application Issue": "Configuration / Software",
-  "Human Mistake": "Human / Process / Planned", "Approved Activity": "Human / Process / Planned", "Un-Approved Activity": "Human / Process / Planned", "Planned Activity": "Human / Process / Planned", "Project Team": "Human / Process / Planned", "FMD Team": "Human / Process / Planned", "NG FO Team": "Human / Process / Planned",
+  "Power Issue": "Power & Environment",
+  "High Temperature": "Power & Environment",
+  "High VSWR": "Power & Environment",
+  "Weather Issue": "Power & Environment",
+  "DC Charger Faulty": "Power & Environment",
+  "Link Down": "Transmission & Link",
+  "Link Flapping": "Transmission & Link",
+  Transmission: "Transmission & Link",
+  "MW Issue": "Transmission & Link",
+  "MPLS Issue": "Transmission & Link",
+  "SDH Hanged": "Transmission & Link",
+  "Hardware Failure": "Hardware & Device",
+  "Hardware Faulty": "Hardware & Device",
+  "Device Hanged": "Hardware & Device",
+  "Fiber Cut": "Fiber & Physical",
+  Cabling: "Fiber & Physical",
+  "Port Disable": "Fiber & Physical",
+  "Port Hang": "Fiber & Physical",
+  "Loss of Signal": "Fiber & Physical",
+  "Media Converter Faulty": "Fiber & Physical",
+  "Configuration Issue": "Configuration / Software",
+  "Software Issue": "Configuration / Software",
+  "Application Issue": "Configuration / Software",
+  "Human Mistake": "Human / Process / Planned",
+  "Approved Activity": "Human / Process / Planned",
+  "Un-Approved Activity": "Human / Process / Planned",
+  "Planned Activity": "Human / Process / Planned",
+  "Project Team": "Human / Process / Planned",
+  "FMD Team": "Human / Process / Planned",
+  "NG FO Team": "Human / Process / Planned",
   "RCA not Provided": "Unknown / Missing",
 };
 
-const NON_PREVENTABLE_RCAS = new Set(["Weather Issue", "Approved Activity", "Planned Activity", "RCA not Provided"]);
-const RESPONSIBLE_TEAM_BY_FAMILY: Record<string, string> = { "Power & Environment": "Power / Facilities Team", "Transmission & Link": "Transmission / NOC Team", "Hardware & Device": "Field Maintenance / Vendor", "Fiber & Physical": "Fiber / Physical Maintenance Team", "Configuration / Software": "NOC / Configuration Team", "Human / Process / Planned": "Process Owner / Project Team", "Unknown / Missing": "RCA Owner / Follow-up Required", "Other / Review": "Operations Review Team" };
-const RECOMMENDED_ACTION_BY_FAMILY: Record<string, string> = { "Power & Environment": "Check power source, rectifier, batteries, grounding, cooling, and repeated environmental alarms.", "Transmission & Link": "Review link stability, transmission path, MPLS/MW/SDH health, and vendor escalation history.", "Hardware & Device": "Inspect device health, replace faulty hardware, verify spares, and monitor repeated failures.", "Fiber & Physical": "Inspect fiber/cabling route, port status, optical levels, patching quality, and civil-work exposure.", "Configuration / Software": "Review recent changes, configuration backup, software version, rollback records, and approval controls.", "Human / Process / Planned": "Validate activity approval, handover, method of procedure, and team process compliance.", "Unknown / Missing": "Complete RCA, assign owner, and update action taken before closure reporting.", "Other / Review": "Review RCA text manually and assign the correct operational owner." };
+const NON_PREVENTABLE_RCAS = new Set([
+  "Weather Issue",
+  "Approved Activity",
+  "Planned Activity",
+  "RCA not Provided",
+]);
+const RESPONSIBLE_TEAM_BY_FAMILY: Record<string, string> = {
+  "Power & Environment": "Power / Facilities Team",
+  "Transmission & Link": "Transmission / NOC Team",
+  "Hardware & Device": "Field Maintenance / Vendor",
+  "Fiber & Physical": "Fiber / Physical Maintenance Team",
+  "Configuration / Software": "NOC / Configuration Team",
+  "Human / Process / Planned": "Process Owner / Project Team",
+  "Unknown / Missing": "RCA Owner / Follow-up Required",
+  "Other / Review": "Operations Review Team",
+};
+const RECOMMENDED_ACTION_BY_FAMILY: Record<string, string> = {
+  "Power & Environment":
+    "Check power source, rectifier, batteries, grounding, cooling, and repeated environmental alarms.",
+  "Transmission & Link":
+    "Review link stability, transmission path, MPLS/MW/SDH health, and vendor escalation history.",
+  "Hardware & Device":
+    "Inspect device health, replace faulty hardware, verify spares, and monitor repeated failures.",
+  "Fiber & Physical":
+    "Inspect fiber/cabling route, port status, optical levels, patching quality, and civil-work exposure.",
+  "Configuration / Software":
+    "Review recent changes, configuration backup, software version, rollback records, and approval controls.",
+  "Human / Process / Planned":
+    "Validate activity approval, handover, method of procedure, and team process compliance.",
+  "Unknown / Missing":
+    "Complete RCA, assign owner, and update action taken before closure reporting.",
+  "Other / Review":
+    "Review RCA text manually and assign the correct operational owner.",
+};
 
-function getRcaFamily(rca: string): string { const normalized = clean(rca) || "RCA not Provided"; return RCA_FAMILY_MAP[normalized] ?? "Other / Review"; }
-function getPreventability(rca: string): string { const normalized = clean(rca) || "RCA not Provided"; return NON_PREVENTABLE_RCAS.has(normalized) ? "Non-preventable" : "Preventable"; }
-function getResponsibleTeam(rcaFamily: string): string { return RESPONSIBLE_TEAM_BY_FAMILY[rcaFamily] ?? RESPONSIBLE_TEAM_BY_FAMILY["Other / Review"]; }
-function getRecommendedAction(rcaFamily: string): string { return RECOMMENDED_ACTION_BY_FAMILY[rcaFamily] ?? RECOMMENDED_ACTION_BY_FAMILY["Other / Review"]; }
-function rcaNotProvided(rca: string): boolean { const normalized = clean(rca).toLowerCase(); return !normalized || normalized === "rca not provided"; }
-function formatHours(value: number): string { if (!value || !Number.isFinite(value)) return ""; return `${value.toFixed(1)} hrs`; }
+function getRcaFamily(rca: string): string {
+  const normalized = clean(rca) || "RCA not Provided";
+  return RCA_FAMILY_MAP[normalized] ?? "Other / Review";
+}
+function getPreventability(rca: string): string {
+  const normalized = clean(rca) || "RCA not Provided";
+  return NON_PREVENTABLE_RCAS.has(normalized)
+    ? "Non-preventable"
+    : "Preventable";
+}
+function getResponsibleTeam(rcaFamily: string): string {
+  return (
+    RESPONSIBLE_TEAM_BY_FAMILY[rcaFamily] ??
+    RESPONSIBLE_TEAM_BY_FAMILY["Other / Review"]
+  );
+}
+function getRecommendedAction(rcaFamily: string): string {
+  return (
+    RECOMMENDED_ACTION_BY_FAMILY[rcaFamily] ??
+    RECOMMENDED_ACTION_BY_FAMILY["Other / Review"]
+  );
+}
+function rcaNotProvided(rca: string): boolean {
+  const normalized = clean(rca).toLowerCase();
+  return !normalized || normalized === "rca not provided";
+}
+function formatHours(value: number): string {
+  if (!value || !Number.isFinite(value)) return "";
+  return `${value.toFixed(1)} hrs`;
+}
 
-function groupTickets(rows: TicketRecord[]): TicketAggregate[] { const grouped = new Map<string, TicketAggregate>(); rows.forEach((row) => { if (!row.tt) return; const existing = grouped.get(row.tt); if (!existing) { grouped.set(row.tt, { tt: row.tt, primary: row, siteIds: new Set(row.siteId ? [row.siteId] : []), siteNames: new Set(row.siteName ? [row.siteName] : []), rows: [row] }); } else { existing.rows.push(row); if (row.siteId) existing.siteIds.add(row.siteId); if (row.siteName) existing.siteNames.add(row.siteName); const currentDate = dateKey(existing.primary.observationDate); const nextDate = dateKey(row.observationDate); if (!currentDate || (nextDate && nextDate < currentDate)) existing.primary = row; } }); return Array.from(grouped.values()); }
+function groupTickets(rows: TicketRecord[]): TicketAggregate[] {
+  const grouped = new Map<string, TicketAggregate>();
+  rows.forEach(row => {
+    if (!row.tt) return;
+    const existing = grouped.get(row.tt);
+    if (!existing) {
+      grouped.set(row.tt, {
+        tt: row.tt,
+        primary: row,
+        siteIds: new Set(row.siteId ? [row.siteId] : []),
+        siteNames: new Set(row.siteName ? [row.siteName] : []),
+        rows: [row],
+      });
+    } else {
+      existing.rows.push(row);
+      if (row.siteId) existing.siteIds.add(row.siteId);
+      if (row.siteName) existing.siteNames.add(row.siteName);
+      const currentDate = dateKey(existing.primary.observationDate);
+      const nextDate = dateKey(row.observationDate);
+      if (!currentDate || (nextDate && nextDate < currentDate))
+        existing.primary = row;
+    }
+  });
+  return Array.from(grouped.values());
+}
 
-function parseSiteOrder(workbook: XLSX.WorkBook): { siteId: string; siteName: string }[] {
-  const siteSheetName = workbook.SheetNames.find((name) => { const n = name.toLowerCase().replace(/[^a-z0-9]/g, ""); return n === "dashboarddata" || n === "siteid" || n === "sites" || n === "sitelist" || n === "siteids" || n === "sitedata"; });
+function parseSiteOrder(
+  workbook: XLSX.WorkBook
+): { siteId: string; siteName: string }[] {
+  const siteSheetName = workbook.SheetNames.find(name => {
+    const n = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return (
+      n === "dashboarddata" ||
+      n === "siteid" ||
+      n === "sites" ||
+      n === "sitelist" ||
+      n === "siteids" ||
+      n === "sitedata"
+    );
+  });
   if (!siteSheetName) return [];
   const sheet = workbook.Sheets[siteSheetName];
-  const raw2d = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null }) as unknown[][];
-  let siteIdCol = -1; let siteNameCol = -1; let headerRowIdx = -1;
-  for (let ri = 0; ri < raw2d.length; ri++) { const row = raw2d[ri]; for (let ci = 0; ci < row.length; ci++) { const cell = String(row[ci] ?? "").trim().toLowerCase(); if (cell === "site id" || cell === "siteid") { siteIdCol = ci; headerRowIdx = ri; } if (cell === "site name" || cell === "sitename") { siteNameCol = ci; } } if (siteIdCol >= 0 && siteNameCol >= 0) break; }
+  const raw2d = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    defval: null,
+  }) as unknown[][];
+  let siteIdCol = -1;
+  let siteNameCol = -1;
+  let headerRowIdx = -1;
+  for (let ri = 0; ri < raw2d.length; ri++) {
+    const row = raw2d[ri];
+    for (let ci = 0; ci < row.length; ci++) {
+      const cell = String(row[ci] ?? "")
+        .trim()
+        .toLowerCase();
+      if (cell === "site id" || cell === "siteid") {
+        siteIdCol = ci;
+        headerRowIdx = ri;
+      }
+      if (cell === "site name" || cell === "sitename") {
+        siteNameCol = ci;
+      }
+    }
+    if (siteIdCol >= 0 && siteNameCol >= 0) break;
+  }
   if (headerRowIdx < 0 || siteIdCol < 0) return [];
-  const seen = new Set<string>(); const result: { siteId: string; siteName: string }[] = [];
-  for (let ri = headerRowIdx + 1; ri < raw2d.length; ri++) { const row = raw2d[ri]; const id = clean(String(row[siteIdCol] ?? "")); const name = siteNameCol >= 0 ? clean(String(row[siteNameCol] ?? "")) : ""; if (!id) break; if (!seen.has(id)) { seen.add(id); result.push({ siteId: id, siteName: name }); } }
+  const seen = new Set<string>();
+  const result: { siteId: string; siteName: string }[] = [];
+  for (let ri = headerRowIdx + 1; ri < raw2d.length; ri++) {
+    const row = raw2d[ri];
+    const id = clean(String(row[siteIdCol] ?? ""));
+    const name = siteNameCol >= 0 ? clean(String(row[siteNameCol] ?? "")) : "";
+    if (!id) break;
+    if (!seen.has(id)) {
+      seen.add(id);
+      result.push({ siteId: id, siteName: name });
+    }
+  }
   return result;
 }
 
 function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
-  const preferred = workbook.SheetNames.find((name) => name.toLowerCase().includes("tickets_data"));
+  const preferred = workbook.SheetNames.find(name =>
+    name.toLowerCase().includes("tickets_data")
+  );
   const sheetName = preferred ?? workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: true });
+  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    defval: "",
+    raw: true,
+  });
   const siteOrder = parseSiteOrder(workbook);
 
-  function toDateStr(val: unknown): string { if (val === null || val === undefined || val === "") return ""; const parsed = parseDateValue(val); if (!parsed) return String(val); const d = String(parsed.getDate()).padStart(2, "0"); const m = String(parsed.getMonth() + 1).padStart(2, "0"); return `${d}/${m}/${parsed.getFullYear()}`; }
-  function toTimeStr(val: unknown): string { if (val === null || val === undefined || val === "") return ""; if (val instanceof Date) { const hh = String(val.getUTCHours()).padStart(2, "0"); const mm = String(val.getUTCMinutes()).padStart(2, "0"); return `${hh}:${mm}`; } if (typeof val === "number") { const totalMinutes = Math.round(val * 24 * 60); const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0"); const mm = String(totalMinutes % 60).padStart(2, "0"); return `${hh}:${mm}`; } const text = String(val).trim(); const hhmmss = text.match(/^(\d{1,2}):(\d{2})(:\d{2})?$/); if (hhmmss) return `${hhmmss[1].padStart(2, "0")}:${hhmmss[2]}`; return text; }
+  function toDateStr(val: unknown): string {
+    if (val === null || val === undefined || val === "") return "";
+    const parsed = parseDateValue(val);
+    if (!parsed) return String(val);
+    const d = String(parsed.getDate()).padStart(2, "0");
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    return `${d}/${m}/${parsed.getFullYear()}`;
+  }
+  function toTimeStr(val: unknown): string {
+    if (val === null || val === undefined || val === "") return "";
+    if (val instanceof Date) {
+      const hh = String(val.getUTCHours()).padStart(2, "0");
+      const mm = String(val.getUTCMinutes()).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+    if (typeof val === "number") {
+      const totalMinutes = Math.round(val * 24 * 60);
+      const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0");
+      const mm = String(totalMinutes % 60).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+    const text = String(val).trim();
+    const hhmmss = text.match(/^(\d{1,2}):(\d{2})(:\d{2})?$/);
+    if (hhmmss) return `${hhmmss[1].padStart(2, "0")}:${hhmmss[2]}`;
+    return text;
+  }
 
   const rows: TicketRecord[] = raw
     .map((row, index) => {
-      const observationDate = toDateStr(getRawField(row, ["Observation Date", "Observed Date"]) || "");
-      const monthKey = resolveOpeningMonthKey(getField(row, ["Opening Month Key", "OpeningMonthKey"]), getField(row, ["Opening Month", "OpeningMonth"]), observationDate);
-      const observationTime = toTimeStr(getRawField(row, ["Observation Time", "Observed Time", "ObservationTime"]));
+      const observationDate = toDateStr(
+        getRawField(row, ["Observation Date", "Observed Date"]) || ""
+      );
+      const monthKey = resolveOpeningMonthKey(
+        getField(row, ["Opening Month Key", "OpeningMonthKey"]),
+        getField(row, ["Opening Month", "OpeningMonth"]),
+        observationDate
+      );
+      const observationTime = toTimeStr(
+        getRawField(row, [
+          "Observation Time",
+          "Observed Time",
+          "ObservationTime",
+        ])
+      );
       const recoveryDate = toDateStr(getRawField(row, ["Recovery Date"]) || "");
-      const recoveryTime = toTimeStr(getRawField(row, ["Recovery Time", "RecoveryTime"]));
-      const duration = String(getRawField(row, ["Total Duration Days/Hours", "Total Durration Days/Hours", "Duration"]) ?? "");
-      const l3Date = toDateStr(getField(row, ["Escalated for L3 Support Date", "Escalated For L3 Support Date", "L3 Support Date", "L3 Escalation Date", "Escalation L3 Date", "Escalated L3 Date"]) || "");
-      const l3Time = toTimeStr(getRawField(row, ["Escalated for L3 Support Time", "Escalated For L3 Support Time", "L3 Support Time", "L3 Escalation Time", "Escalation L3 Time", "Escalated L3 Time"]));
+      const recoveryTime = toTimeStr(
+        getRawField(row, ["Recovery Time", "RecoveryTime"])
+      );
+      const duration = String(
+        getRawField(row, [
+          "Total Duration Days/Hours",
+          "Total Durration Days/Hours",
+          "Duration",
+        ]) ?? ""
+      );
+      const l3Date = toDateStr(
+        getField(row, [
+          "Escalated for L3 Support Date",
+          "Escalated For L3 Support Date",
+          "L3 Support Date",
+          "L3 Escalation Date",
+          "Escalation L3 Date",
+          "Escalated L3 Date",
+        ]) || ""
+      );
+      const l3Time = toTimeStr(
+        getRawField(row, [
+          "Escalated for L3 Support Time",
+          "Escalated For L3 Support Time",
+          "L3 Support Time",
+          "L3 Escalation Time",
+          "Escalation L3 Time",
+          "Escalated L3 Time",
+        ])
+      );
       const observedAt = combineDateTime(observationDate, observationTime);
       const l3At = combineDateTime(l3Date, l3Time);
       const recoveredAt = combineDateTime(recoveryDate, recoveryTime);
-      const explicitFrt = parseDurationHours(String(getRawField(row, ["FRT", "Avg FRT", "First Reply Time", "First Response Time"]) ?? ""));
-      const explicitResponse = parseDurationHours(String(getRawField(row, ["Response Time", "Avg Response Time", "Ticket Response Time"]) ?? ""));
-      const explicitResolution = parseDurationHours(String(getRawField(row, ["Resolution Time", "Avg Resolution Time", "Ticket Resolution Time"]) ?? ""));
-      const rca = getField(row, ["RCA", "Root Cause Analysis", "Root Cause", "Action Taken/RCA"]);
+      const explicitFrt = parseDurationHours(
+        String(
+          getRawField(row, [
+            "FRT",
+            "Avg FRT",
+            "First Reply Time",
+            "First Response Time",
+          ]) ?? ""
+        )
+      );
+      const explicitResponse = parseDurationHours(
+        String(
+          getRawField(row, [
+            "Response Time",
+            "Avg Response Time",
+            "Ticket Response Time",
+          ]) ?? ""
+        )
+      );
+      const explicitResolution = parseDurationHours(
+        String(
+          getRawField(row, [
+            "Resolution Time",
+            "Avg Resolution Time",
+            "Ticket Resolution Time",
+          ]) ?? ""
+        )
+      );
+      const rca = getField(row, [
+        "RCA",
+        "Root Cause Analysis",
+        "Root Cause",
+        "Action Taken/RCA",
+      ]);
       const rcaFamily = getRcaFamily(rca);
       return {
         rowNo: index + 2,
         tt: getField(row, ["TT", "Ticket", "Ticket Number"]),
         siteId: getField(row, ["Site ID", "SiteID", "Site Name", "SiteName"]),
         siteName: getField(row, ["Site Name", "SiteName"]),
-        managedResource: getField(row, ["Managed Resource", "ManagedResource", "Managed Resources", "Resource", "NE Name", "Network Element"]),
+        managedResource: getField(row, [
+          "Managed Resource",
+          "ManagedResource",
+          "Managed Resources",
+          "Resource",
+          "NE Name",
+          "Network Element",
+        ]),
         issue: getField(row, ["Issues", "Issue"]),
         severity: getField(row, ["Severity"]),
         region: getField(row, ["Region"]),
-        observationDate, observationTime,
+        observationDate,
+        observationTime,
         openingMonthKey: monthKey,
         openingMonthLabel: openingMonthLabel(monthKey),
-        recoveryDate, recoveryTime, duration,
-        impact: getField(row, ["Service Impaction Status", "Service Impact Status"]),
-        escalatedTo: getField(row, ["Escalated to", "Escalated To", "Escalated to "]),
+        recoveryDate,
+        recoveryTime,
+        duration,
+        impact: getField(row, [
+          "Service Impaction Status",
+          "Service Impact Status",
+        ]),
+        escalatedTo: getField(row, [
+          "Escalated to",
+          "Escalated To",
+          "Escalated to ",
+        ]),
         escalationLevel: getField(row, ["Escalation Level", "Esclation Level"]),
         escalatedForL3SupportDate: l3Date,
         escalatedForL3SupportTime: l3Time,
         frtHours: explicitFrt ?? hoursBetween(observedAt, l3At),
         responseHours: explicitResponse ?? hoursBetween(observedAt, l3At),
-        resolutionHours: explicitResolution ?? parseDurationHours(duration) ?? hoursBetween(observedAt, recoveredAt),
+        resolutionHours:
+          explicitResolution ??
+          parseDurationHours(duration) ??
+          hoursBetween(observedAt, recoveredAt),
         status: getField(row, ["Status"]),
-        rca, rcaFamily,
+        rca,
+        rcaFamily,
         preventability: getPreventability(rca),
         responsibleTeam: getResponsibleTeam(rcaFamily),
         recommendedAction: getRecommendedAction(rcaFamily),
@@ -489,37 +1575,222 @@ function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
         sourceFile: fileName,
       };
     })
-    .filter((row) => row.tt || row.siteId || row.siteName || row.issue);
+    .filter(row => row.tt || row.siteId || row.siteName || row.issue);
 
-  return { fileName, sheetName, generatedAt: new Date().toLocaleString(), rows, uniqueTickets: groupTickets(rows), siteOrder };
+  return {
+    fileName,
+    sheetName,
+    generatedAt: new Date().toLocaleString(),
+    rows,
+    uniqueTickets: groupTickets(rows),
+    siteOrder,
+  };
 }
 
-function countBy<T>(items: T[], keyFn: (item: T) => string): { name: string; value: number }[] { const map = new Map<string, number>(); items.forEach((item) => { const key = keyFn(item) || "Blank"; map.set(key, (map.get(key) ?? 0) + 1); }); return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name)); }
-function pct(value: number, total: number): string { if (!total) return ""; return `${((value / total) * 100).toFixed(1)}%`; }
-function metricValue(items: { name: string; value: number }[], expected: string): number { return items.find((item) => item.name.toLowerCase() === expected.toLowerCase())?.value ?? 0; }
-function renderPieLabel(props: { name?: string; value?: number; percent?: number }) { const value = props.value ?? 0; if (!value) return ""; return `${value}`; }
+function countBy<T>(
+  items: T[],
+  keyFn: (item: T) => string
+): { name: string; value: number }[] {
+  const map = new Map<string, number>();
+  items.forEach(item => {
+    const key = keyFn(item) || "Blank";
+    map.set(key, (map.get(key) ?? 0) + 1);
+  });
+  return Array.from(map.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+}
+function pct(value: number, total: number): string {
+  if (!total) return "";
+  return `${((value / total) * 100).toFixed(1)}%`;
+}
+function metricValue(
+  items: { name: string; value: number }[],
+  expected: string
+): number {
+  return (
+    items.find(item => item.name.toLowerCase() === expected.toLowerCase())
+      ?.value ?? 0
+  );
+}
+function renderPieLabel(props: {
+  name?: string;
+  value?: number;
+  percent?: number;
+}) {
+  const value = props.value ?? 0;
+  if (!value) return "";
+  return `${value}`;
+}
 
-const DISTINCT_REPORT_HEADERS = ["#", "Site ID", "Site Name", "Managed Resource", "Severity", "Issues", "Observation Date", "Observation Time", "Recovery Date", "Recovery Time", "Escalated for L3 Support Date", "Escalated for L3 Support Time", "Total Duration Days/Hours", "TT", "Status", "Escalated to", "Action"];
-const PERF_REPORT_HEADERS = ["S No", "Site ID", "Site Name", "Site Availability, Hrs", "Site Availability, days", "Channel Busy Count", "MW link Performance, Hrs", "DMR Reliability", "Sites Down, hrs"];
-const PERF_TEMPLATE_PDF_HEADERS = ["S No", "Site No", "Site ID", "Site Availability, Hrs", "Site Availability, days", "Channel Busy Count", "MW link Performance, Hrs", "DMR Reliability", "Sites Down, hrs"];
-const TICKET_TEMPLATE_PDF_HEAD = [["No", "Equipment/ site", "Site Name", "Effected Managed Resource", "Severity", "Alarm Type", "Escalation", "", "Recovery", "", "Escalated for L3 Support", "", "Outage Duration", "TT Number", "TT Status", "TT Owner", "Comments"], ["", "", "", "", "", "", "Date", "Time", "Date", "Time", "Date", "Time", "", "", "", "", ""]];
+const DISTINCT_REPORT_HEADERS = [
+  "#",
+  "Site ID",
+  "Site Name",
+  "Managed Resource",
+  "Severity",
+  "Issues",
+  "Observation Date",
+  "Observation Time",
+  "Recovery Date",
+  "Recovery Time",
+  "Escalated for L3 Support Date",
+  "Escalated for L3 Support Time",
+  "Total Duration Days/Hours",
+  "TT",
+  "Status",
+  "Escalated to",
+  "Action",
+];
+const PERF_REPORT_HEADERS = [
+  "S No",
+  "Site ID",
+  "Site Name",
+  "Site Availability, Hrs",
+  "Site Availability, days",
+  "Channel Busy Count",
+  "MW link Performance, Hrs",
+  "DMR Reliability",
+  "Sites Down, hrs",
+];
+const PERF_TEMPLATE_PDF_HEADERS = [
+  "S No",
+  "Site No",
+  "Site ID",
+  "Site Availability, Hrs",
+  "Site Availability, days",
+  "Channel Busy Count",
+  "MW link Performance, Hrs",
+  "DMR Reliability",
+  "Sites Down, hrs",
+];
+const TICKET_TEMPLATE_PDF_HEAD = [
+  [
+    "No",
+    "Equipment/ site",
+    "Site Name",
+    "Effected Managed Resource",
+    "Severity",
+    "Alarm Type",
+    "Escalation",
+    "",
+    "Recovery",
+    "",
+    "Escalated for L3 Support",
+    "",
+    "Outage Duration",
+    "TT Number",
+    "TT Status",
+    "TT Owner",
+    "Comments",
+  ],
+  [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Date",
+    "Time",
+    "Date",
+    "Time",
+    "Date",
+    "Time",
+    "",
+    "",
+    "",
+    "",
+    "",
+  ],
+];
 
-const TEMPLATE_PDF_COLORS = { title: [192, 0, 0] as [number, number, number], band: [192, 0, 0] as [number, number, number], bandText: [255, 255, 255] as [number, number, number], header: [217, 217, 217] as [number, number, number], subHeader: [242, 242, 242] as [number, number, number], text: [0, 0, 0] as [number, number, number], muted: [89, 89, 89] as [number, number, number], border: [128, 128, 128] as [number, number, number], ok: [0, 128, 0] as [number, number, number], warn: [192, 0, 0] as [number, number, number] };
+const TEMPLATE_PDF_COLORS = {
+  title: [192, 0, 0] as [number, number, number],
+  band: [192, 0, 0] as [number, number, number],
+  bandText: [255, 255, 255] as [number, number, number],
+  header: [217, 217, 217] as [number, number, number],
+  subHeader: [242, 242, 242] as [number, number, number],
+  text: [0, 0, 0] as [number, number, number],
+  muted: [89, 89, 89] as [number, number, number],
+  border: [128, 128, 128] as [number, number, number],
+  ok: [0, 128, 0] as [number, number, number],
+  warn: [192, 0, 0] as [number, number, number],
+};
 
 type ReportLogos = { ng: HTMLImageElement; nasco: HTMLImageElement };
 let reportLogoPromise: Promise<ReportLogos> | null = null;
-function loadImageElement(src: string): Promise<HTMLImageElement> { return new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = src; }); }
-function loadReportLogos(): Promise<ReportLogos> { reportLogoPromise ??= Promise.all([loadImageElement(ngLogoSrc), loadImageElement(nascoLogoSrc)]).then(([ng, nasco]) => ({ ng, nasco })); return reportLogoPromise; }
-function drawPdfReportHeader(doc: jsPDF, pageW: number, title: string, subtitle: string, logos: ReportLogos, titleColor: [number, number, number] = TEMPLATE_PDF_COLORS.title) { doc.addImage(logos.ng, "PNG", 12, 6, 34, 12); doc.addImage(logos.nasco, "PNG", pageW - 46, 6, 34, 12); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(...titleColor); doc.text(title, pageW / 2, 12.2, { align: "center" }); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...TEMPLATE_PDF_COLORS.muted); doc.text(subtitle, pageW / 2, 17.2, { align: "center" }); }
+function loadImageElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+function loadReportLogos(): Promise<ReportLogos> {
+  reportLogoPromise ??= Promise.all([
+    loadImageElement(ngLogoSrc),
+    loadImageElement(nascoLogoSrc),
+  ]).then(([ng, nasco]) => ({ ng, nasco }));
+  return reportLogoPromise;
+}
+function drawPdfReportHeader(
+  doc: jsPDF,
+  pageW: number,
+  title: string,
+  subtitle: string,
+  logos: ReportLogos,
+  titleColor: [number, number, number] = TEMPLATE_PDF_COLORS.title
+) {
+  doc.addImage(logos.ng, "PNG", 12, 6, 34, 12);
+  doc.addImage(logos.nasco, "PNG", pageW - 46, 6, 34, 12);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.setTextColor(...titleColor);
+  doc.text(title, pageW / 2, 12.2, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...TEMPLATE_PDF_COLORS.muted);
+  doc.text(subtitle, pageW / 2, 17.2, { align: "center" });
+}
 
-type PerfRow = { siteId: string; siteName: string; displayName: string; sourceLabel: string; perfKey: string; sitesDownHours: number; availHours: number; availDay: string; reliability: string; channelBusy: number; mwLinkPerf: number; ticketCount: number };
+type PerfRow = {
+  siteId: string;
+  siteName: string;
+  displayName: string;
+  sourceLabel: string;
+  perfKey: string;
+  sitesDownHours: number;
+  availHours: number;
+  availDay: string;
+  reliability: string;
+  channelBusy: number;
+  mwLinkPerf: number;
+  ticketCount: number;
+};
 
-function normalizeSiteId(id: string): string { return id.replace(/(\D+)(\d+)$/, (_, prefix, num) => prefix.toUpperCase() + String(parseInt(num, 10))).trim(); }
+function normalizeSiteId(id: string): string {
+  return id
+    .replace(
+      /(\D+)(\d+)$/,
+      (_, prefix, num) => prefix.toUpperCase() + String(parseInt(num, 10))
+    )
+    .trim();
+}
 
-function perfSourceLabel(row: TicketRecord): string { return clean(row.region) || clean(row.sourceFile) || "Workbook"; }
-function perfEntryKey(sourceLabel: string, siteId: string): string { return `${sourceLabel.toLowerCase()}||${normalizeSiteId(clean(siteId)).toLowerCase()}`; }
+function perfSourceLabel(row: TicketRecord): string {
+  return clean(row.region) || clean(row.sourceFile) || "Workbook";
+}
+function perfEntryKey(sourceLabel: string, siteId: string): string {
+  return `${sourceLabel.toLowerCase()}||${normalizeSiteId(clean(siteId)).toLowerCase()}`;
+}
 
-function computePerfRows(allRows: TicketRecord[], monthKey: string, siteOrder: { siteId: string; siteName: string }[] = []): PerfRow[] {
+function computePerfRows(
+  allRows: TicketRecord[],
+  monthKey: string,
+  siteOrder: { siteId: string; siteName: string }[] = []
+): PerfRow[] {
   const range = monthKey !== "all" ? selectedMonthRange(monthKey) : null;
   const monthHours = monthKey !== "all" ? totalHoursInMonth(monthKey) : 24 * 30;
   const siteNameMap = new Map<string, string>();
@@ -528,32 +1799,59 @@ function computePerfRows(allRows: TicketRecord[], monthKey: string, siteOrder: {
   const siteTicketCount = new Map<string, number>();
   const siteDownHours = new Map<string, number>();
 
-  allRows.forEach((row) => {
+  allRows.forEach(row => {
     if (!row.siteId) return;
     const sourceLabel = perfSourceLabel(row);
     const key = perfEntryKey(sourceLabel, row.siteId);
     if (!siteIdMap.has(key)) siteIdMap.set(key, row.siteId);
     if (!sourceMap.has(key)) sourceMap.set(key, sourceLabel);
-    if (!siteNameMap.has(key) && row.siteName) siteNameMap.set(key, row.siteName);
+    if (!siteNameMap.has(key) && row.siteName)
+      siteNameMap.set(key, row.siteName);
     siteTicketCount.set(key, (siteTicketCount.get(key) ?? 0) + 1);
   });
 
-  function combineDatetime(dateStr: string, timeStr: string): Date | null { const d = parseDateValue(dateStr); if (!d) return null; if (timeStr) { const tm = timeStr.match(/^(\d{1,2}):(\d{2})/); if (tm) { d.setHours(Number(tm[1]), Number(tm[2]), 0, 0); } } return d; }
+  function combineDatetime(dateStr: string, timeStr: string): Date | null {
+    const d = parseDateValue(dateStr);
+    if (!d) return null;
+    if (timeStr) {
+      const tm = timeStr.match(/^(\d{1,2}):(\d{2})/);
+      if (tm) {
+        d.setHours(Number(tm[1]), Number(tm[2]), 0, 0);
+      }
+    }
+    return d;
+  }
 
-  allRows.forEach((row) => {
+  allRows.forEach(row => {
     if (!row.siteId) return;
     if (clean(row.impact).toLowerCase() !== "service impact") return;
     const mr = clean(row.managedResource).toLowerCase();
     if (mr !== "complete site" && mr !== "link down") return;
-    const outageStart = combineDatetime(row.observationDate, row.observationTime);
+    const outageStart = combineDatetime(
+      row.observationDate,
+      row.observationTime
+    );
     if (!outageStart) return;
-    let outageEnd: Date | null = combineDatetime(row.recoveryDate, row.recoveryTime);
+    let outageEnd: Date | null = combineDatetime(
+      row.recoveryDate,
+      row.recoveryTime
+    );
     const sourceLabel = perfSourceLabel(row);
-    if (monthKey === "all") { const hours = parseDurationHours(row.duration) ?? 0; const key = perfEntryKey(sourceLabel, row.siteId); siteDownHours.set(key, Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10); return; }
+    if (monthKey === "all") {
+      const hours = parseDurationHours(row.duration) ?? 0;
+      const key = perfEntryKey(sourceLabel, row.siteId);
+      siteDownHours.set(
+        key,
+        Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10
+      );
+      return;
+    }
     const monthRange = selectedMonthRange(monthKey);
     if (!monthRange) return;
     const { start: monthStart, end: monthEnd } = monthRange;
-    if (!outageEnd) { outageEnd = monthEnd; }
+    if (!outageEnd) {
+      outageEnd = monthEnd;
+    }
     if (outageEnd <= monthStart || outageStart > monthEnd) return;
     const effectiveStart = outageStart < monthStart ? monthStart : outageStart;
     const effectiveEnd = outageEnd > monthEnd ? monthEnd : outageEnd;
@@ -561,16 +1859,36 @@ function computePerfRows(allRows: TicketRecord[], monthKey: string, siteOrder: {
     if (overlapMs <= 0) return;
     const hours = Math.round((overlapMs / (1000 * 60 * 60)) * 10) / 10;
     const key = perfEntryKey(sourceLabel, row.siteId);
-    siteDownHours.set(key, Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10);
+    siteDownHours.set(
+      key,
+      Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10
+    );
   });
 
   const allSiteKeys = Array.from(siteIdMap.keys()).filter(Boolean);
-  allSiteKeys.sort((a, b) => (siteTicketCount.get(b) ?? 0) - (siteTicketCount.get(a) ?? 0));
-  let siteEntries: { siteId: string; siteName: string; sourceLabel: string; perfKey: string }[];
+  allSiteKeys.sort(
+    (a, b) => (siteTicketCount.get(b) ?? 0) - (siteTicketCount.get(a) ?? 0)
+  );
+  let siteEntries: {
+    siteId: string;
+    siteName: string;
+    sourceLabel: string;
+    perfKey: string;
+  }[];
   if (allSiteKeys.length > 0) {
-    siteEntries = allSiteKeys.map((key) => ({ siteId: siteIdMap.get(key) ?? "", siteName: siteNameMap.get(key) ?? "", sourceLabel: sourceMap.get(key) ?? "Workbook", perfKey: key }));
+    siteEntries = allSiteKeys.map(key => ({
+      siteId: siteIdMap.get(key) ?? "",
+      siteName: siteNameMap.get(key) ?? "",
+      sourceLabel: sourceMap.get(key) ?? "Workbook",
+      perfKey: key,
+    }));
   } else {
-    siteEntries = siteOrder.map((site) => ({ siteId: site.siteId, siteName: site.siteName, sourceLabel: "Workbook", perfKey: perfEntryKey("Workbook", site.siteId) }));
+    siteEntries = siteOrder.map(site => ({
+      siteId: site.siteId,
+      siteName: site.siteName,
+      sourceLabel: "Workbook",
+      perfKey: perfEntryKey("Workbook", site.siteId),
+    }));
   }
 
   return siteEntries.map(({ siteId, siteName, sourceLabel, perfKey }) => {
@@ -583,33 +1901,90 @@ function computePerfRows(allRows: TicketRecord[], monthKey: string, siteOrder: {
     const dHrs = Math.floor((totalMins % (60 * 24)) / 60);
     const dMins = Math.round(totalMins % 60);
     const availDay = `${dDays} d, ${dHrs} h, ${dMins} m`;
-    return { siteId, siteName, displayName: `${siteId}${sourceLabel !== "Workbook" ? ` (${sourceLabel})` : ""}`, sourceLabel, perfKey, sitesDownHours: downHours, availHours: Math.round(availHours * 10) / 10, availDay, reliability: `${(reliability * 100).toFixed(2)}%`, channelBusy: 0, mwLinkPerf: 0, ticketCount: siteTicketCount.get(perfKey) ?? 0 };
+    return {
+      siteId,
+      siteName,
+      displayName: `${siteId}${sourceLabel !== "Workbook" ? ` (${sourceLabel})` : ""}`,
+      sourceLabel,
+      perfKey,
+      sitesDownHours: downHours,
+      availHours: Math.round(availHours * 10) / 10,
+      availDay,
+      reliability: `${(reliability * 100).toFixed(2)}%`,
+      channelBusy: 0,
+      mwLinkPerf: 0,
+      ticketCount: siteTicketCount.get(perfKey) ?? 0,
+    };
   });
 }
 
-function perfReportRows(rows: PerfRow[]): string[][] { return rows.map((r, i) => [String(i + 1), r.siteId, r.siteName, String(r.availHours), r.availDay, "", "", r.reliability, String(r.sitesDownHours)]); }
+function perfReportRows(rows: PerfRow[]): string[][] {
+  return rows.map((r, i) => [
+    String(i + 1),
+    r.siteId,
+    r.siteName,
+    String(r.availHours),
+    r.availDay,
+    "",
+    "",
+    r.reliability,
+    String(r.sitesDownHours),
+  ]);
+}
 
-function computePerfKPIs(rows: PerfRow[]): { pctAvailability: string; mttr: string; mtbf: string; mttf: string; totalDown: number; totalAvail: number; affectedSites: number; nonAffectedSites: number; totalDownHrs: string } {
+function computePerfKPIs(rows: PerfRow[]): {
+  pctAvailability: string;
+  mttr: string;
+  mtbf: string;
+  mttf: string;
+  totalDown: number;
+  totalAvail: number;
+  affectedSites: number;
+  nonAffectedSites: number;
+  totalDownHrs: string;
+} {
   const totalAvail = rows.reduce((s, r) => s + r.availHours, 0);
   const totalDown = rows.reduce((s, r) => s + r.sitesDownHours, 0);
-  const totalSiteIds = new Set(rows.map((r) => clean(r.siteId)).filter(isRfSiteId));
-  const affectedSiteIds = new Set(rows.filter((r) => r.sitesDownHours > 0).map((r) => clean(r.siteId)).filter(isRfSiteId));
+  const totalSiteIds = new Set(
+    rows.map(r => clean(r.siteId)).filter(isRfSiteId)
+  );
+  const affectedSiteIds = new Set(
+    rows
+      .filter(r => r.sitesDownHours > 0)
+      .map(r => clean(r.siteId))
+      .filter(isRfSiteId)
+  );
   const sitesWithDown = affectedSiteIds.size;
   const nonAffectedSites = Math.max(0, totalSiteIds.size - sitesWithDown);
   const totalHrs = totalAvail + totalDown;
-  const pctAvailability = totalHrs > 0 ? `${((totalAvail / totalHrs) * 100).toFixed(2)}%` : "";
-  const mttr = sitesWithDown > 0 ? `${(totalDown / sitesWithDown).toFixed(2)} hrs` : "";
+  const pctAvailability =
+    totalHrs > 0 ? `${((totalAvail / totalHrs) * 100).toFixed(2)}%` : "";
+  const mttr =
+    sitesWithDown > 0 ? `${(totalDown / sitesWithDown).toFixed(2)} hrs` : "";
   const mtbf = totalDown > 0 ? `${(totalHrs / totalDown).toFixed(2)} hrs` : "";
   const mtbfNum = totalDown > 0 ? totalHrs / totalDown : null;
   const mttrNum = sitesWithDown > 0 ? totalDown / sitesWithDown : null;
-  const mttf = mtbfNum !== null && mttrNum !== null ? `${(mtbfNum + mttrNum).toFixed(2)} hrs` : "";
+  const mttf =
+    mtbfNum !== null && mttrNum !== null
+      ? `${(mtbfNum + mttrNum).toFixed(2)} hrs`
+      : "";
   const totalDownRounded = Math.round(totalDown * 10) / 10;
   const tdMins = Math.round(totalDown * 60);
   const tdDays = Math.floor(tdMins / (60 * 24));
   const tdHrs = Math.floor((tdMins % (60 * 24)) / 60);
   const tdMin = Math.round(tdMins % 60);
   const totalDownHrs = `${tdDays}d ${tdHrs}h ${tdMin}m`;
-  return { pctAvailability, mttr, mtbf, mttf, totalDown: totalDownRounded, totalAvail: Math.round(totalAvail * 10) / 10, affectedSites: sitesWithDown, nonAffectedSites, totalDownHrs };
+  return {
+    pctAvailability,
+    mttr,
+    mtbf,
+    mttf,
+    totalDown: totalDownRounded,
+    totalAvail: Math.round(totalAvail * 10) / 10,
+    affectedSites: sitesWithDown,
+    nonAffectedSites,
+    totalDownHrs,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -643,19 +2018,31 @@ function computePerfKPIs(rows: PerfRow[]): { pctAvailability: string; mttr: stri
 // Charts auto-update: their data ranges are updated to match the new sheet name
 // and actual site count. Place the template in public/Network_Performance_Report.xlsx
 // ─────────────────────────────────────────────────────────────────────────────
-async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: string[]) {
-  const DATA_START  = 7;   // first data row
-  const LAST_DATA   = 40;  // last template data row
-  const PROTECTED   = 41;  // totals/formulas row — shift if needed
-  const TEMPLATE_N  = LAST_DATA - DATA_START + 1; // 34 rows
-  const OLD_SHEET   = "EOA March 2026";            // original sheet name in template
-  const COLS        = ["A","B","C","D","E","F","G","H","I"];
+async function exportPerfTemplate(
+  rows: PerfRow[],
+  monthKey: string,
+  regions: string[]
+) {
+  const DATA_START = 7; // first data row
+  const LAST_DATA = 40; // last template data row
+  const PROTECTED = 41; // totals/formulas row — shift if needed
+  const TEMPLATE_N = LAST_DATA - DATA_START + 1; // 34 rows
+  const OLD_SHEET = "EOA March 2026"; // original sheet name in template
+  const COLS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
 
   const xmlEsc = (s: string) =>
-    s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
 
   // Find a cell by ref, replace its value while keeping its style
-  const setCell = (xml: string, ref: string, value: string | number): string => {
+  const setCell = (
+    xml: string,
+    ref: string,
+    value: string | number
+  ): string => {
     const markerIdx = xml.indexOf(` r="${ref}"`);
     if (markerIdx === -1) return xml;
     const cStart = xml.lastIndexOf("<c", markerIdx);
@@ -674,33 +2061,42 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
       cEnd = fcIdx + 4;
     }
     // Preserve original attributes (e.g. s="N" style index), strip type — we set it ourselves
-    let attrs = xml.slice(cStart + 2, tagClose).replace(/\s*\/$/, "").replace(/\s+t="[^"]*"/g, "");
+    let attrs = xml
+      .slice(cStart + 2, tagClose)
+      .replace(/\s*\/$/, "")
+      .replace(/\s+t="[^"]*"/g, "");
     const v = String(value ?? "");
     let cell: string;
-    if (!v)                             cell = `<c${attrs}/>`;
+    if (!v) cell = `<c${attrs}/>`;
     else if (typeof value === "number") cell = `<c${attrs}><v>${v}</v></c>`;
-    else                                cell = `<c${attrs} t="inlineStr"><is><t>${xmlEsc(v)}</t></is></c>`;
+    else cell = `<c${attrs} t="inlineStr"><is><t>${xmlEsc(v)}</t></is></c>`;
     return xml.slice(0, cStart) + cell + xml.slice(cEnd);
   };
 
   try {
     const res = await fetch("/Network_Performance_Report.xlsx");
-    if (!res.ok) throw new Error(
-      `HTTP ${res.status} — place Network_Performance_Report.xlsx in your public/ folder`
-    );
+    if (!res.ok)
+      throw new Error(
+        `HTTP ${res.status} — place Network_Performance_Report.xlsx in your public/ folder`
+      );
     const rawBuf = await res.arrayBuffer();
     const { unzipSync, zipSync, strFromU8, strToU8 } = await import("fflate");
     const files = unzipSync(new Uint8Array(rawBuf));
 
     // ── Month label & sheet name ──────────────────────────────────────────
-    const full  = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
+    const full = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
     const parts = full.split(" ");
-    const mmm   = parts.length === 2 ? `${parts[0].slice(0,3)}-${parts[1]}` : full;
+    const mmm =
+      parts.length === 2 ? `${parts[0].slice(0, 3)}-${parts[1]}` : full;
     const regionPart = regions.length > 0 ? regions.join(", ") + " " : "";
-    const sheetLabel = `${regionPart}${mmm}`.replace(/[\/*?[\]:]/g, "-").slice(0, 31);
+    const sheetLabel = `${regionPart}${mmm}`
+      .replace(/[\/*?[\]:]/g, "-")
+      .slice(0, 31);
 
     // ── Locate worksheet XML ──────────────────────────────────────────────
-    const sheetKey = Object.keys(files).find(k => /^xl\/worksheets\/sheet\d+\.xml$/.test(k))!;
+    const sheetKey = Object.keys(files).find(k =>
+      /^xl\/worksheets\/sheet\d+\.xml$/.test(k)
+    )!;
     let xml = strFromU8(files[sheetKey]);
 
     // ── KPI summary (row 3 = labels already in template, row 4 = values) ──
@@ -720,21 +2116,30 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
       const extra = needed - TEMPLATE_N;
 
       // Capture template row 7 for cloning
-      const tmplMarker    = ` r="${DATA_START}" `;
+      const tmplMarker = ` r="${DATA_START}" `;
       const tmplMarkerIdx = xml.indexOf(tmplMarker);
-      const tmplRowStart  = tmplMarkerIdx !== -1 ? xml.lastIndexOf("<row", tmplMarkerIdx) : -1;
-      const tmplRowEnd    = tmplRowStart  !== -1 ? xml.indexOf("</row>", tmplRowStart) + 6 : -1;
-      const tmplRow       = (tmplRowStart !== -1 && tmplRowEnd > 0)
-        ? xml.slice(tmplRowStart, tmplRowEnd) : "";
+      const tmplRowStart =
+        tmplMarkerIdx !== -1 ? xml.lastIndexOf("<row", tmplMarkerIdx) : -1;
+      const tmplRowEnd =
+        tmplRowStart !== -1 ? xml.indexOf("</row>", tmplRowStart) + 6 : -1;
+      const tmplRow =
+        tmplRowStart !== -1 && tmplRowEnd > 0
+          ? xml.slice(tmplRowStart, tmplRowEnd)
+          : "";
 
       // Shift rows >= PROTECTED and their cell refs
       xml = xml
-        .replace(/(<row[^>]* r=")(\d+)(")/g,
-          (_m, a, n, b) => +n >= PROTECTED ? `${a}${+n+extra}${b}` : _m)
-        .replace(/(<c[^>]* r=")([A-Z]+)(\d+)(")/g,
-          (_m, a, col, n, b) => +n >= PROTECTED ? `${a}${col}${+n+extra}${b}` : _m)
-        .replace(/(<dimension ref="[A-Z]+\d+:[A-Z]+)(\d+)(")/,
-          (_m, pre, n, post) => +n >= PROTECTED ? `${pre}${+n+extra}${post}` : _m);
+        .replace(/(<row[^>]* r=")(\d+)(")/g, (_m, a, n, b) =>
+          +n >= PROTECTED ? `${a}${+n + extra}${b}` : _m
+        )
+        .replace(/(<c[^>]* r=")([A-Z]+)(\d+)(")/g, (_m, a, col, n, b) =>
+          +n >= PROTECTED ? `${a}${col}${+n + extra}${b}` : _m
+        )
+        .replace(
+          /(<dimension ref="[A-Z]+\d+:[A-Z]+)(\d+)(")/,
+          (_m, pre, n, post) =>
+            +n >= PROTECTED ? `${pre}${+n + extra}${post}` : _m
+        );
 
       // Update the SUM formula in the shifted totals row
       const sumOld = `SUM(D${DATA_START}:D${LAST_DATA})`;
@@ -745,17 +2150,22 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
       if (tmplRow) {
         const newRows = Array.from({ length: extra }, (_, i) => {
           const rn = LAST_DATA + 1 + i;
-          return tmplRow
-            .replace(/ r="(\d+)"/, ` r="${rn}"`)
-            .replace(/(<c[^>]* r=")([A-Z]+)\d+(")/g, (_m2, a, col, b) => `${a}${col}${rn}${b}`)
-            // Strip values, inline-strings and formulas so cloned cells are truly empty.
-            // Leaving <v></v> with t="s" → ref to shared-string "" → "Removed Records" error.
-            .replace(/<v>[^<]*<\/v>/g, "")
-            .replace(/<is>[\s\S]*?<\/is>/g, "")
-            .replace(/<f[^>]*\/>/g, "")
-            .replace(/<f[^>]*>[\s\S]*?<\/f>/g, "")
-            // Strip the type attribute — setCell will assign the correct one when filling
-            .replace(/\s+t="[^"]*"/g, "");
+          return (
+            tmplRow
+              .replace(/ r="(\d+)"/, ` r="${rn}"`)
+              .replace(
+                /(<c[^>]* r=")([A-Z]+)\d+(")/g,
+                (_m2, a, col, b) => `${a}${col}${rn}${b}`
+              )
+              // Strip values, inline-strings and formulas so cloned cells are truly empty.
+              // Leaving <v></v> with t="s" → ref to shared-string "" → "Removed Records" error.
+              .replace(/<v>[^<]*<\/v>/g, "")
+              .replace(/<is>[\s\S]*?<\/is>/g, "")
+              .replace(/<f[^>]*\/>/g, "")
+              .replace(/<f[^>]*>[\s\S]*?<\/f>/g, "")
+              // Strip the type attribute — setCell will assign the correct one when filling
+              .replace(/\s+t="[^"]*"/g, "")
+          );
         }).join("");
 
         const shiftedTag = ` r="${PROTECTED + extra}" `;
@@ -769,7 +2179,9 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
       }
     } else if (needed < TEMPLATE_N) {
       for (let r = DATA_START + needed; r <= LAST_DATA; r++) {
-        COLS.forEach(col => { xml = setCell(xml, `${col}${r}`, ""); });
+        COLS.forEach(col => {
+          xml = setCell(xml, `${col}${r}`, "");
+        });
       }
     }
 
@@ -777,24 +2189,42 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
     // Strips t="shared", si="N" and ref="..." from <f> formula elements.
     // Also updates formula body row refs when row insertion happened.
     // Without this, Excel shows "Removed Records: Shared formula" on open.
-    xml = xml.split(' t="shared"').join('');
+    xml = xml.split(' t="shared"').join("");
     // Strip si="N" attributes
-    { let tmp = ''; let src = xml;
+    {
+      let tmp = "";
+      let src = xml;
       while (true) {
         const idx = src.indexOf(' si="');
-        if (idx === -1) { tmp += src; break; }
+        if (idx === -1) {
+          tmp += src;
+          break;
+        }
         const eq = src.indexOf('"', idx + 5);
-        if (eq === -1) { tmp += src; break; }
-        tmp += src.slice(0, idx); src = src.slice(eq + 1);
-      } xml = tmp;
+        if (eq === -1) {
+          tmp += src;
+          break;
+        }
+        tmp += src.slice(0, idx);
+        src = src.slice(eq + 1);
+      }
+      xml = tmp;
     }
     // Strip ref="..." from <f> elements (only valid for shared/array formulas)
-    { let result = ''; let src = xml;
+    {
+      let result = "";
+      let src = xml;
       while (true) {
-        const fi = src.indexOf('<f ');
-        if (fi === -1) { result += src; break; }
-        const fe = src.indexOf('>', fi);
-        if (fe === -1) { result += src; break; }
+        const fi = src.indexOf("<f ");
+        if (fi === -1) {
+          result += src;
+          break;
+        }
+        const fe = src.indexOf(">", fi);
+        if (fe === -1) {
+          result += src;
+          break;
+        }
         const fTag = src.slice(fi, fe + 1);
         const ri = fTag.indexOf(' ref="');
         if (ri !== -1) {
@@ -804,26 +2234,36 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
           result += src.slice(0, fe + 1);
         }
         src = src.slice(fe + 1);
-      } xml = result;
+      }
+      xml = result;
     }
     // Update formula body row refs for any inserted rows.
     // Keep this scoped to <f>...</f> contents only; changing <c r="A41">
     // cell addresses creates duplicate cells and Excel repairs sheet1.xml.
     if (needed > TEMPLATE_N) {
       const extra2 = needed - TEMPLATE_N;
-      xml = xml.replace(/(<f[^>]*>)([\s\S]*?)(<\/f>)/g, (_m, open, body, close) => {
-        const updatedBody = body.replace(/(\$?)([A-J])(\$?)(\d+)/g, (ref, absCol, col, absRow, rowText) => {
-          const rowNum = Number(rowText);
-          return rowNum >= PROTECTED ? `${absCol}${col}${absRow}${rowNum + extra2}` : ref;
-        });
-        return `${open}${updatedBody}${close}`;
-      });
+      xml = xml.replace(
+        /(<f[^>]*>)([\s\S]*?)(<\/f>)/g,
+        (_m, open, body, close) => {
+          const updatedBody = body.replace(
+            /(\$?)([A-J])(\$?)(\d+)/g,
+            (ref, absCol, col, absRow, rowText) => {
+              const rowNum = Number(rowText);
+              return rowNum >= PROTECTED
+                ? `${absCol}${col}${absRow}${rowNum + extra2}`
+                : ref;
+            }
+          );
+          return `${open}${updatedBody}${close}`;
+        }
+      );
     }
 
     // ── Fill data rows ──────────────────────────────────────────────────
     rows.forEach((row, i) => {
       const r = DATA_START + i;
-      const availDays = row.availDay || String(Math.round(row.availHours / 24 * 10) / 10);
+      const availDays =
+        row.availDay || String(Math.round((row.availHours / 24) * 10) / 10);
       xml = setCell(xml, `A${r}`, i + 1);
       xml = setCell(xml, `B${r}`, row.siteId);
       xml = setCell(xml, `C${r}`, row.siteName);
@@ -834,21 +2274,26 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
       xml = setCell(xml, `H${r}`, row.reliability);
       xml = setCell(xml, `I${r}`, row.sitesDownHours);
     });
-    const perfDataRows = Array.from({ length: rows.length }, (_, i) => DATA_START + i);
+    const perfDataRows = Array.from(
+      { length: rows.length },
+      (_, i) => DATA_START + i
+    );
     const perfTableRows = [DATA_START - 1, ...perfDataRows];
     xml = applyExcelColumnAlignment(
       files,
       { strFromU8, strToU8 },
       xml,
-      perfTableRows.flatMap((r) => ["A", "D", "E", "F", "G", "H", "I"].map((col) => `${col}${r}`)),
-      "center",
+      perfTableRows.flatMap(r =>
+        ["A", "D", "E", "F", "G", "H", "I"].map(col => `${col}${r}`)
+      ),
+      "center"
     );
     xml = applyExcelColumnAlignment(
       files,
       { strFromU8, strToU8 },
       xml,
-      perfTableRows.flatMap((r) => ["B", "C"].map((col) => `${col}${r}`)),
-      "left",
+      perfTableRows.flatMap(r => ["B", "C"].map(col => `${col}${r}`)),
+      "left"
     );
     files[sheetKey] = strToU8(xml);
 
@@ -857,21 +2302,23 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
     if (files[wbKey]) {
       let wbXml = strFromU8(files[wbKey]);
       // Replace name="..." in the <sheet> element
-      wbXml = wbXml.split(`name="${OLD_SHEET}"`).join(`name="${xmlEsc(sheetLabel)}"`);
+      wbXml = wbXml
+        .split(`name="${OLD_SHEET}"`)
+        .join(`name="${xmlEsc(sheetLabel)}"`);
       // Replace 'OLD_SHEET'! in definedName formula references
       wbXml = wbXml.split(`'${OLD_SHEET}'!`).join(`'${sheetLabel}'!`);
       files[wbKey] = strToU8(wbXml);
     }
 
     // ── Update chart XMLs: new sheet name + correct last data row ──────────
-    const lastRow   = DATA_START + rows.length - 1;
-    const chartKeys = Object.keys(files).filter(k =>
-      k.startsWith("xl/charts/chart") && k.endsWith(".xml")
+    const lastRow = DATA_START + rows.length - 1;
+    const chartKeys = Object.keys(files).filter(
+      k => k.startsWith("xl/charts/chart") && k.endsWith(".xml")
     );
 
     // Helper: replace non-contiguous chart range (inside parentheses) with simple range
     const flattenRange = (cxml: string, col: string): string => {
-      const openTag  = "<c:f>(";
+      const openTag = "<c:f>(";
       const closeTag = ")</c:f>";
       let result = cxml;
       let searchFrom = 0;
@@ -883,7 +2330,10 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
         const inner = result.slice(start, end + closeTag.length);
         if (inner.includes(`$${col}$`)) {
           const simple = `<c:f>'${sheetLabel}'!$${col}$${DATA_START}:'${sheetLabel}'!$${col}$${lastRow}</c:f>`;
-          result = result.slice(0, start) + simple + result.slice(end + closeTag.length);
+          result =
+            result.slice(0, start) +
+            simple +
+            result.slice(end + closeTag.length);
         }
         searchFrom = start + 1;
       }
@@ -897,7 +2347,7 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
       cxml = cxml.split(`'${OLD_SHEET}'!`).join(`'${sheetLabel}'!`);
 
       // 2. Update end row: $X$40 → $X$lastRow (for each chart column)
-      ["B","D","F","G","I"].forEach(col => {
+      ["B", "D", "F", "G", "I"].forEach(col => {
         cxml = cxml.split(`$${col}$${LAST_DATA}`).join(`$${col}$${lastRow}`);
       });
 
@@ -912,26 +2362,32 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
     delete files["xl/calcChain.xml"];
     if (files["[Content_Types].xml"]) {
       let ct = strFromU8(files["[Content_Types].xml"]);
-      ct = ct.split(`<Override PartName="/xl/calcChain.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml"/>`).join("");
+      ct = ct
+        .split(
+          `<Override PartName="/xl/calcChain.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml"/>`
+        )
+        .join("");
       files["[Content_Types].xml"] = strToU8(ct);
     }
 
     // ── Download ──────────────────────────────────────────────────────────
     const output = zipSync(files, { level: 0 });
-    const blob   = new Blob([output], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    const blob = new Blob([output], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
     const url = URL.createObjectURL(blob);
-    const a   = document.createElement("a");
-    a.href = url; a.download = `Network_Performance_${sheetLabel}.xlsx`; a.click();
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Network_Performance_${sheetLabel}.xlsx`;
+    a.click();
     URL.revokeObjectURL(url);
-
   } catch (err: any) {
     console.error("Perf template export failed:", err);
     alert(
       "Performance template export failed.\n\n" +
-      "Make sure Network_Performance_Report.xlsx is in your public/ folder.\n\n" +
-      "Error: " + (err?.message ?? String(err))
+        "Make sure Network_Performance_Report.xlsx is in your public/ folder.\n\n" +
+        "Error: " +
+        (err?.message ?? String(err))
     );
   }
 }
@@ -940,20 +2396,47 @@ function exportPerfCsv(rows: PerfRow[], monthKey: string) {
   const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
   const kpi = computePerfKPIs(rows);
   const kpiRows: string[][] = [
-    [], ["KPI Summary"],
-    ["% Availability", kpi.pctAvailability], ["MTTR", kpi.mttr], ["MTBF", kpi.mtbf],
-    ["MTTF", kpi.mttf], ["No. of Affected Sites", String(kpi.affectedSites)], ["Total Down Duration", kpi.totalDownHrs],
+    [],
+    ["KPI Summary"],
+    ["% Availability", kpi.pctAvailability],
+    ["MTTR", kpi.mttr],
+    ["MTBF", kpi.mtbf],
+    ["MTTF", kpi.mttf],
+    ["No. of Affected Sites", String(kpi.affectedSites)],
+    ["Total Down Duration", kpi.totalDownHrs],
   ];
   const availChartRows: string[][] = [
-    [], ["Site Availability Chart Data"], ["Site Name", "Availability (Hrs)"],
+    [],
+    ["Site Availability Chart Data"],
+    ["Site Name", "Availability (Hrs)"],
     ...rows.map(r => [r.siteName, String(r.availHours)]),
   ];
   const downtimeChartRows: string[][] = [
-    [], ["Site Downtime Chart Data"], ["Site Name", "Down (Hrs)", "Status"],
-    ...rows.map(r => [r.siteName, String(r.sitesDownHours), r.sitesDownHours === 0 ? "No Downtime" : r.sitesDownHours > 24 ? "Critical (>24h)" : r.sitesDownHours > 8 ? "High (8-24h)" : "Moderate (<8h)"]),
+    [],
+    ["Site Downtime Chart Data"],
+    ["Site Name", "Down (Hrs)", "Status"],
+    ...rows.map(r => [
+      r.siteName,
+      String(r.sitesDownHours),
+      r.sitesDownHours === 0
+        ? "No Downtime"
+        : r.sitesDownHours > 24
+          ? "Critical (>24h)"
+          : r.sitesDownHours > 8
+            ? "High (8-24h)"
+            : "Moderate (<8h)",
+    ]),
   ];
-  const csv = [PERF_REPORT_HEADERS, ...perfReportRows(rows), ...kpiRows, ...availChartRows, ...downtimeChartRows]
-    .map((line) => line.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+  const csv = [
+    PERF_REPORT_HEADERS,
+    ...perfReportRows(rows),
+    ...kpiRows,
+    ...availChartRows,
+    ...downtimeChartRows,
+  ]
+    .map(line =>
+      line.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")
+    )
     .join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -968,35 +2451,86 @@ function exportPerfExcel(rows: PerfRow[], monthKey: string) {
   const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
   const kpi = computePerfKPIs(rows);
   const kpiRows: string[][] = [
-    [], ["KPI Summary"],
-    ["% Availability", kpi.pctAvailability], ["MTTR", kpi.mttr], ["MTBF", kpi.mtbf],
-    ["MTTF", kpi.mttf], ["No. of Affected Sites", String(kpi.affectedSites)], ["Total Down Duration", kpi.totalDownHrs],
+    [],
+    ["KPI Summary"],
+    ["% Availability", kpi.pctAvailability],
+    ["MTTR", kpi.mttr],
+    ["MTBF", kpi.mtbf],
+    ["MTTF", kpi.mttf],
+    ["No. of Affected Sites", String(kpi.affectedSites)],
+    ["Total Down Duration", kpi.totalDownHrs],
   ];
   // Sheet 1: Full performance table + KPIs
-  const worksheet = XLSX.utils.aoa_to_sheet([PERF_REPORT_HEADERS, ...perfReportRows(rows), ...kpiRows]);
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    PERF_REPORT_HEADERS,
+    ...perfReportRows(rows),
+    ...kpiRows,
+  ]);
   PERF_REPORT_HEADERS.forEach((_, colIndex) => {
     const horizontal = perfExportLeftIndexes.has(colIndex) ? "left" : "center";
     for (let rowIndex = 0; rowIndex <= rows.length; rowIndex++) {
-      applySheetCellAlignment(worksheet, XLSX.utils.encode_cell({ r: rowIndex, c: colIndex }), horizontal);
+      applySheetCellAlignment(
+        worksheet,
+        XLSX.utils.encode_cell({ r: rowIndex, c: colIndex }),
+        horizontal
+      );
     }
   });
   worksheet["!cols"] = [
-    { wch: 6 }, { wch: 14 }, { wch: 30 }, { wch: 24 }, { wch: 26 },
-    { wch: 20 }, { wch: 26 }, { wch: 18 }, { wch: 18 },
+    { wch: 6 },
+    { wch: 14 },
+    { wch: 30 },
+    { wch: 24 },
+    { wch: 26 },
+    { wch: 20 },
+    { wch: 26 },
+    { wch: 18 },
+    { wch: 18 },
   ];
   // Sheet 2: Availability chart data
   const availSheet = XLSX.utils.aoa_to_sheet([
     ["Site Name", "Availability (Hrs)", "Down (Hrs)", "Reliability (%)"],
-    ...rows.map(r => [r.siteName, r.availHours, r.sitesDownHours, parseFloat(r.reliability) || 100]),
+    ...rows.map(r => [
+      r.siteName,
+      r.availHours,
+      r.sitesDownHours,
+      parseFloat(r.reliability) || 100,
+    ]),
   ]);
   availSheet["!cols"] = [{ wch: 32 }, { wch: 20 }, { wch: 16 }, { wch: 18 }];
   // Sheet 3: Downtime chart data — sorted worst first
-  const downtimeSorted = [...rows].sort((a, b) => b.sitesDownHours - a.sitesDownHours);
+  const downtimeSorted = [...rows].sort(
+    (a, b) => b.sitesDownHours - a.sitesDownHours
+  );
   const downtimeSheet = XLSX.utils.aoa_to_sheet([
-    ["Site Name", "Down (Hrs)", "Availability (Hrs)", "Reliability (%)", "Status"],
-    ...downtimeSorted.map(r => [r.siteName, r.sitesDownHours, r.availHours, parseFloat(r.reliability) || 100, r.sitesDownHours === 0 ? "No Downtime" : r.sitesDownHours > 24 ? "Critical (>24h)" : r.sitesDownHours > 8 ? "High (8-24h)" : "Moderate (<8h)"]),
+    [
+      "Site Name",
+      "Down (Hrs)",
+      "Availability (Hrs)",
+      "Reliability (%)",
+      "Status",
+    ],
+    ...downtimeSorted.map(r => [
+      r.siteName,
+      r.sitesDownHours,
+      r.availHours,
+      parseFloat(r.reliability) || 100,
+      r.sitesDownHours === 0
+        ? "No Downtime"
+        : r.sitesDownHours > 24
+          ? "Critical (>24h)"
+          : r.sitesDownHours > 8
+            ? "High (8-24h)"
+            : "Moderate (<8h)",
+    ]),
   ]);
-  downtimeSheet["!cols"] = [{ wch: 32 }, { wch: 14 }, { wch: 20 }, { wch: 18 }, { wch: 20 }];
+  downtimeSheet["!cols"] = [
+    { wch: 32 },
+    { wch: 14 },
+    { wch: 20 },
+    { wch: 18 },
+    { wch: 20 },
+  ];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Monthly Performance");
   XLSX.utils.book_append_sheet(workbook, availSheet, "Availability Chart Data");
@@ -1006,13 +2540,19 @@ function exportPerfExcel(rows: PerfRow[], monthKey: string) {
 
 async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
-  const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
+  const monthLabel =
+    monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   {
     const logos = await loadReportLogos();
-    const templateDoc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const templateMonthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
+    const templateDoc = new jsPDF({
+      orientation: "landscape",
+      unit: "mm",
+      format: "a4",
+    });
+    const templateMonthLabel =
+      monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
     const templatePageW = templateDoc.internal.pageSize.getWidth();
     const templatePageH = templateDoc.internal.pageSize.getHeight();
     const C = TEMPLATE_PDF_COLORS;
@@ -1023,7 +2563,14 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
       const pageNumber = data?.pageNumber ?? 1;
       templateDoc.setFillColor(255, 255, 255);
       templateDoc.rect(0, 0, templatePageW, templatePageH, "F");
-      drawPdfReportHeader(templateDoc, templatePageW, "Network Performance", `DMR Hytera | ${templateMonthLabel}`, logos, C.title);
+      drawPdfReportHeader(
+        templateDoc,
+        templatePageW,
+        "Network Performance",
+        `DMR Hytera | ${templateMonthLabel}`,
+        logos,
+        C.title
+      );
       templateDoc.setFillColor(...C.band);
       templateDoc.rect(10, 23, templatePageW - 20, 8, "F");
       templateDoc.setTextColor(...C.bandText);
@@ -1031,8 +2578,22 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
       templateDoc.text(`Network Performance: ${templateMonthLabel}`, 13, 28.5);
 
       if (pageNumber !== 1) return;
-      const labels = ["Total Downtime ,hrs", "Total Sites Affected", "% Availability", "MTTR", "MTBF", "MTTF"];
-      const values = [kpi.totalDownHrs, String(kpi.affectedSites), kpi.pctAvailability, kpi.mttr, kpi.mtbf, kpi.mttf];
+      const labels = [
+        "Total Downtime ,hrs",
+        "Total Sites Affected",
+        "% Availability",
+        "MTTR",
+        "MTBF",
+        "MTTF",
+      ];
+      const values = [
+        kpi.totalDownHrs,
+        String(kpi.affectedSites),
+        kpi.pctAvailability,
+        kpi.mttr,
+        kpi.mtbf,
+        kpi.mttf,
+      ];
       const cellW = (templatePageW - 20) / labels.length;
       labels.forEach((label, i) => {
         const x = 10 + i * cellW;
@@ -1056,8 +2617,25 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
       head: [PERF_TEMPLATE_PDF_HEADERS],
       body: perfReportRows(rows),
       theme: "grid",
-      styles: { fontSize: 7, cellPadding: 1.5, overflow: "linebreak", halign: "center", valign: "middle", textColor: C.text, fillColor: [255, 255, 255], lineColor: C.border, lineWidth: 0.15 },
-      headStyles: { fillColor: C.header, textColor: C.text, fontStyle: "bold", fontSize: 7.2, cellPadding: 1.6, halign: "center" },
+      styles: {
+        fontSize: 7,
+        cellPadding: 1.5,
+        overflow: "linebreak",
+        halign: "center",
+        valign: "middle",
+        textColor: C.text,
+        fillColor: [255, 255, 255],
+        lineColor: C.border,
+        lineWidth: 0.15,
+      },
+      headStyles: {
+        fillColor: C.header,
+        textColor: C.text,
+        fontStyle: "bold",
+        fontSize: 7.2,
+        cellPadding: 1.6,
+        halign: "center",
+      },
       alternateRowStyles: { fillColor: [248, 248, 248] },
       columnStyles: {
         0: { cellWidth: 10, halign: "center" },
@@ -1070,10 +2648,16 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
         7: { cellWidth: 28, halign: "center", fontStyle: "bold" },
         8: { cellWidth: 25, halign: "center", fontStyle: "bold" },
       },
-      margin: { left: perfTableMargin, right: perfTableMargin, top: 54, bottom: 10 },
+      margin: {
+        left: perfTableMargin,
+        right: perfTableMargin,
+        top: 54,
+        bottom: 10,
+      },
       willDrawPage: drawTemplateHeader,
-      didParseCell: (d) => {
-        d.cell.styles.halign = d.column.index === 1 || d.column.index === 2 ? "left" : "center";
+      didParseCell: d => {
+        d.cell.styles.halign =
+          d.column.index === 1 || d.column.index === 2 ? "left" : "center";
         d.cell.styles.valign = "middle";
         if (d.section === "body" && d.column.index === 7) {
           const v = parseFloat(String(d.cell.raw ?? "100"));
@@ -1084,25 +2668,45 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
           d.cell.styles.textColor = v > 0 ? C.warn : C.ok;
         }
       },
-      didDrawPage: (d) => {
+      didDrawPage: d => {
         templateDoc.setFont("helvetica", "normal");
         templateDoc.setFontSize(7);
         templateDoc.setTextColor(...C.muted);
-        templateDoc.text(`Network Performance - ${templateMonthLabel} | Page ${d.pageNumber}`, templatePageW / 2, templatePageH - 5, { align: "center" });
+        templateDoc.text(
+          `Network Performance - ${templateMonthLabel} | Page ${d.pageNumber}`,
+          templatePageW / 2,
+          templatePageH - 5,
+          { align: "center" }
+        );
       },
     });
 
-    const drawPerfChartPage = (title: string, chartRows: PerfRow[], valueKey: "availHours" | "sitesDownHours", color: [number, number, number]) => {
+    const drawPerfChartPage = (
+      title: string,
+      chartRows: PerfRow[],
+      valueKey: "availHours" | "sitesDownHours",
+      color: [number, number, number]
+    ) => {
       templateDoc.addPage();
       templateDoc.setFillColor(255, 255, 255);
       templateDoc.rect(0, 0, templatePageW, templatePageH, "F");
-      drawPdfReportHeader(templateDoc, templatePageW, title, `Network Performance | ${templateMonthLabel}`, logos, C.title);
+      drawPdfReportHeader(
+        templateDoc,
+        templatePageW,
+        title,
+        `Network Performance | ${templateMonthLabel}`,
+        logos,
+        C.title
+      );
       const chartW = 245;
       const chartH = 115;
       const chartX = (templatePageW - chartW) / 2;
       const chartY = 42;
       const items = chartRows.slice(0, 34);
-      const maxValue = Math.max(...items.map((row) => Number(row[valueKey]) || 0), 1);
+      const maxValue = Math.max(
+        ...items.map(row => Number(row[valueKey]) || 0),
+        1
+      );
       templateDoc.setDrawColor(...C.border);
       templateDoc.setLineWidth(0.2);
       templateDoc.rect(chartX, chartY, chartW, chartH);
@@ -1123,51 +2727,96 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
         templateDoc.setFontSize(5);
         templateDoc.setTextColor(...C.muted);
         const label = row.siteName || row.siteId;
-        templateDoc.text(label.length > 10 ? `${label.slice(0, 9)}...` : label, x + barW / 2, chartY + chartH + 6, { align: "center", angle: 45 });
+        templateDoc.text(
+          label.length > 10 ? `${label.slice(0, 9)}...` : label,
+          x + barW / 2,
+          chartY + chartH + 6,
+          { align: "center", angle: 45 }
+        );
       });
       templateDoc.setFont("helvetica", "normal");
       templateDoc.setFontSize(7);
       templateDoc.setTextColor(...C.muted);
-      templateDoc.text(`Network Performance - ${templateMonthLabel} | Page ${templateDoc.getNumberOfPages()}`, templatePageW / 2, templatePageH - 5, { align: "center" });
+      templateDoc.text(
+        `Network Performance - ${templateMonthLabel} | Page ${templateDoc.getNumberOfPages()}`,
+        templatePageW / 2,
+        templatePageH - 5,
+        { align: "center" }
+      );
     };
 
     drawPerfChartPage("Site Availability Chart", rows, "availHours", C.ok);
-    drawPerfChartPage("Site Downtime Chart", [...rows].sort((a, b) => b.sitesDownHours - a.sitesDownHours), "sitesDownHours", C.warn);
-    templateDoc.save(`DMR-Monthly-Performance-${templateMonthLabel.replace(/ /g, "-")}.pdf`);
+    drawPerfChartPage(
+      "Site Downtime Chart",
+      [...rows].sort((a, b) => b.sitesDownHours - a.sitesDownHours),
+      "sitesDownHours",
+      C.warn
+    );
+    templateDoc.save(
+      `DMR-Monthly-Performance-${templateMonthLabel.replace(/ /g, "-")}.pdf`
+    );
     return;
   }
 
   // ── Theme (mirrors PPT palette) ───────────────────────────────────────
   const C = {
-    bg:     [10,  22,  40]  as [number,number,number],
-    card:   [15,  31,  56]  as [number,number,number],
-    card2:  [10,  25,  48]  as [number,number,number],
-    cyan:   [34,  211, 238] as [number,number,number],
-    white:  [248, 250, 252] as [number,number,number],
-    muted:  [148, 163, 184] as [number,number,number],
-    green:  [16,  185, 129] as [number,number,number],
-    red:    [220, 38,  38]  as [number,number,number],
-    amber:  [217, 119, 6]   as [number,number,number],
-    border: [30,  58,  95]  as [number,number,number],
+    bg: [10, 22, 40] as [number, number, number],
+    card: [15, 31, 56] as [number, number, number],
+    card2: [10, 25, 48] as [number, number, number],
+    cyan: [34, 211, 238] as [number, number, number],
+    white: [248, 250, 252] as [number, number, number],
+    muted: [148, 163, 184] as [number, number, number],
+    green: [16, 185, 129] as [number, number, number],
+    red: [220, 38, 38] as [number, number, number],
+    amber: [217, 119, 6] as [number, number, number],
+    border: [30, 58, 95] as [number, number, number],
   };
 
   // ── helpers ───────────────────────────────────────────────────────────
-  const pageBg = () => {doc.setFillColor(...C.bg); doc.rect(0, 0, pageW, pageH, "F");};
-  const accentBar = (color: [number,number,number] = C.cyan) => {doc.setFillColor(...color); doc.rect(0, 0, pageW, 2, "F");};
-  const pageHeader = (title: string, sub: string, accent: [number,number,number] = C.cyan) => {pageBg(); accentBar(accent);
-    doc.setFontSize(14); doc.setFont("helvetica", "bold"); doc.setTextColor(...C.white);
+  const pageBg = () => {
+    doc.setFillColor(...C.bg);
+    doc.rect(0, 0, pageW, pageH, "F");
+  };
+  const accentBar = (color: [number, number, number] = C.cyan) => {
+    doc.setFillColor(...color);
+    doc.rect(0, 0, pageW, 2, "F");
+  };
+  const pageHeader = (
+    title: string,
+    sub: string,
+    accent: [number, number, number] = C.cyan
+  ) => {
+    pageBg();
+    accentBar(accent);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...C.white);
     doc.text(title, 14, 12);
-    doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(...C.cyan);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...C.cyan);
     doc.text(sub, pageW - 14, 12, { align: "right" });
   };
   const pageFooter = (n: number) => {
-    doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(...C.muted);
-    doc.text(`DMR Monthly Performance Report — ${monthLabel}  |  Page ${n}`, pageW / 2, pageH - 4, { align: "center" });
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...C.muted);
+    doc.text(
+      `DMR Monthly Performance Report — ${monthLabel}  |  Page ${n}`,
+      pageW / 2,
+      pageH - 4,
+      { align: "center" }
+    );
   };
 
   // ── PAGE 1: Data Table ────────────────────────────────────────────────
-  pageHeader("DMR Monthly Performance Report", `Month: ${monthLabel}  ·  Sites: ${rows.length}`);
-  doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(...C.muted);
+  pageHeader(
+    "DMR Monthly Performance Report",
+    `Month: ${monthLabel}  ·  Sites: ${rows.length}`
+  );
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...C.muted);
   doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 19);
 
   const kpi = computePerfKPIs(rows);
@@ -1176,13 +2825,21 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
     head: [PERF_REPORT_HEADERS],
     body: perfReportRows(rows),
     styles: {
-      fontSize: 8, cellPadding: 2.5, overflow: "linebreak", valign: "middle",
-      fillColor: C.card, textColor: C.white,
-      lineColor: C.border, lineWidth: 0.2,
+      fontSize: 8,
+      cellPadding: 2.5,
+      overflow: "linebreak",
+      valign: "middle",
+      fillColor: C.card,
+      textColor: C.white,
+      lineColor: C.border,
+      lineWidth: 0.2,
     },
     headStyles: {
-      fillColor: C.cyan, textColor: C.bg,
-      fontStyle: "bold", fontSize: 9, cellPadding: 3,
+      fillColor: C.cyan,
+      textColor: C.bg,
+      fontStyle: "bold",
+      fontSize: 9,
+      cellPadding: 3,
     },
     alternateRowStyles: { fillColor: C.card2 },
     columnStyles: {
@@ -1197,8 +2854,9 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
       8: { cellWidth: 22, halign: "center", fontStyle: "bold" },
     },
     margin: { left: 10, right: 10, top: 22 },
-    didParseCell: (d) => {
-      d.cell.styles.halign = d.column.index === 1 || d.column.index === 2 ? "left" : "center";
+    didParseCell: d => {
+      d.cell.styles.halign =
+        d.column.index === 1 || d.column.index === 2 ? "left" : "center";
       d.cell.styles.valign = "middle";
       if (d.section === "body" && d.column.index === 7) {
         const v = parseFloat(String(d.cell.raw ?? "100"));
@@ -1212,14 +2870,19 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
         else d.cell.styles.textColor = C.muted;
       }
     },
-    didDrawPage: (d) => {
+    didDrawPage: d => {
       if (d.pageNumber > 1) {
         // Redraw dark header area on continuation pages (table starts at margin.top:22)
-        doc.setFillColor(...C.bg); doc.rect(0, 0, pageW, 22, "F");
+        doc.setFillColor(...C.bg);
+        doc.rect(0, 0, pageW, 22, "F");
         accentBar();
-        doc.setFontSize(11); doc.setFont("helvetica", "bold"); doc.setTextColor(...C.white);
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...C.white);
         doc.text("DMR Monthly Performance Report", 14, 11);
-        doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(...C.cyan);
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...C.cyan);
         doc.text(`${monthLabel} (cont.)`, pageW - 14, 11, { align: "right" });
       }
       pageFooter(d.pageNumber);
@@ -1232,19 +2895,29 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
 
   // 6 KPI cards — 3 columns × 2 rows
   const kpiItems = [
-    { label: "% Availability",  value: kpi.pctAvailability,      color: C.green },
-    { label: "MTTR",            value: kpi.mttr,                  color: C.amber },
-    { label: "MTBF",            value: kpi.mtbf,                  color: C.cyan  },
-    { label: "MTTF",            value: kpi.mttf,                  color: C.cyan  },
-    { label: "Affected Sites",  value: String(kpi.affectedSites), color: kpi.affectedSites > 0 ? C.red : C.green },
-    { label: "Total Down Time", value: kpi.totalDownHrs,          color: kpi.totalDownHrs === "0.0 hrs" ? C.green : C.red },
+    { label: "% Availability", value: kpi.pctAvailability, color: C.green },
+    { label: "MTTR", value: kpi.mttr, color: C.amber },
+    { label: "MTBF", value: kpi.mtbf, color: C.cyan },
+    { label: "MTTF", value: kpi.mttf, color: C.cyan },
+    {
+      label: "Affected Sites",
+      value: String(kpi.affectedSites),
+      color: kpi.affectedSites > 0 ? C.red : C.green,
+    },
+    {
+      label: "Total Down Time",
+      value: kpi.totalDownHrs,
+      color: kpi.totalDownHrs === "0.0 hrs" ? C.green : C.red,
+    },
   ];
 
-  const cols = 3, cPad = 6;
+  const cols = 3,
+    cPad = 6;
   const totalGapX = (cols - 1) * cPad;
   const cW = (pageW - 28 - totalGapX) / cols;
   const cH = 52;
-  const cStartX = 14, cStartY = 26;
+  const cStartX = 14,
+    cStartY = 26;
 
   kpiItems.forEach((item, idx) => {
     const col = idx % cols;
@@ -1257,17 +2930,19 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
     doc.roundedRect(x, y, cW, cH, 2, 2, "F");
 
     // Top colour accent bar
-    doc.setFillColor(...item.color as [number,number,number]);
+    doc.setFillColor(...(item.color as [number, number, number]));
     doc.roundedRect(x, y, cW, 2.5, 1, 1, "F");
 
     // Label
-    doc.setFontSize(8); doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
     doc.setTextColor(...C.muted);
     doc.text(item.label.toUpperCase(), x + 7, y + 12);
 
     // Value — large
-    doc.setFontSize(22); doc.setFont("helvetica", "bold");
-    doc.setTextColor(...item.color as [number,number,number]);
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...(item.color as [number, number, number]));
     doc.text(item.value, x + 7, y + 30);
 
     // Divider line
@@ -1276,24 +2951,33 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
     doc.line(x + 7, y + 35, x + cW - 7, y + 35);
 
     // Month sub-label
-    doc.setFontSize(7); doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
     doc.setTextColor(...C.muted);
     doc.text(`Month: ${monthLabel}`, x + 7, y + 44);
   });
 
-  pageFooter((doc as jsPDF & { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages());
+  pageFooter(
+    (
+      doc as jsPDF & { internal: { getNumberOfPages: () => number } }
+    ).internal.getNumberOfPages()
+  );
 
   // ── Chart pages helper ────────────────────────────────────────────────
   const drawChartPage = (
-    title: string, subtitle: string,
+    title: string,
+    subtitle: string,
     items: { label: string; value: number }[],
-    accentColor: [number,number,number],
-    colorFn: (v: number) => [number,number,number]
+    accentColor: [number, number, number],
+    colorFn: (v: number) => [number, number, number]
   ) => {
     doc.addPage();
     pageHeader(title, subtitle, accentColor);
 
-    const mL = 24, mR = 18, mTop = 24, mBot = 36;
+    const mL = 24,
+      mR = 18,
+      mTop = 24,
+      mBot = 36;
     const cW = pageW - mL - mR;
     const cH = pageH - mTop - mBot;
     const maxV = Math.max(...items.map(d => d.value), 1);
@@ -1305,12 +2989,15 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
     doc.roundedRect(mL - 4, mTop - 4, cW + 8, cH + 8, 2, 2, "F");
 
     // Grid lines
-    doc.setDrawColor(...C.border); doc.setLineWidth(0.2);
+    doc.setDrawColor(...C.border);
+    doc.setLineWidth(0.2);
     for (let i = 0; i <= 5; i++) {
       const y = mTop + cH - (i / 5) * cH;
       doc.line(mL, y, mL + cW, y);
-      const lv = Math.round(maxV * i / 5 * 10) / 10;
-      doc.setFontSize(6.5); doc.setTextColor(...C.muted); doc.setFont("helvetica", "normal");
+      const lv = Math.round(((maxV * i) / 5) * 10) / 10;
+      doc.setFontSize(6.5);
+      doc.setTextColor(...C.muted);
+      doc.setFont("helvetica", "normal");
       doc.text(String(lv), mL - 3, y + 1.8, { align: "right" });
     }
 
@@ -1322,39 +3009,60 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
       doc.setFillColor(...colorFn(d.value));
       if (bH > 0.5) doc.roundedRect(x, y, barW, bH, 1, 1, "F");
       if (d.value > 0) {
-        doc.setFontSize(5.5); doc.setTextColor(...C.white); doc.setFont("helvetica", "bold");
+        doc.setFontSize(5.5);
+        doc.setTextColor(...C.white);
+        doc.setFont("helvetica", "bold");
         doc.text(String(d.value), x + barW / 2, y - 1.5, { align: "center" });
       }
-      doc.setFontSize(5.8); doc.setTextColor(...C.muted); doc.setFont("helvetica", "normal");
-      const lbl = d.label.length > 13 ? d.label.substring(0, 12) + "…" : d.label;
-      doc.text(lbl, x + barW / 2, mTop + cH + 5, { align: "center", angle: 42 });
+      doc.setFontSize(5.8);
+      doc.setTextColor(...C.muted);
+      doc.setFont("helvetica", "normal");
+      const lbl =
+        d.label.length > 13 ? d.label.substring(0, 12) + "…" : d.label;
+      doc.text(lbl, x + barW / 2, mTop + cH + 5, {
+        align: "center",
+        angle: 42,
+      });
     });
 
     // Axis lines
-    doc.setDrawColor(...C.cyan); doc.setLineWidth(0.5);
+    doc.setDrawColor(...C.cyan);
+    doc.setLineWidth(0.5);
     doc.line(mL, mTop, mL, mTop + cH);
     doc.line(mL, mTop + cH, mL + cW, mTop + cH);
 
-    pageFooter((doc as jsPDF & { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages());
+    pageFooter(
+      (
+        doc as jsPDF & { internal: { getNumberOfPages: () => number } }
+      ).internal.getNumberOfPages()
+    );
   };
 
   drawChartPage(
-    "Site Availability — Hours", `Month: ${monthLabel}  ·  ${rows.length} sites`,
+    "Site Availability — Hours",
+    `Month: ${monthLabel}  ·  ${rows.length} sites`,
     rows.map(r => ({ label: r.siteName, value: r.availHours })),
-    C.cyan, () => C.green
+    C.cyan,
+    () => C.green
   );
   drawChartPage(
-    "Site Downtime — Hours", `Month: ${monthLabel}  ·  ${rows.filter(r=>r.sitesDownHours>0).length} of ${rows.length} sites affected`,
+    "Site Downtime — Hours",
+    `Month: ${monthLabel}  ·  ${rows.filter(r => r.sitesDownHours > 0).length} of ${rows.length} sites affected`,
     rows.map(r => ({ label: r.siteName, value: r.sitesDownHours })),
     C.red,
-    (v) => v === 0 ? C.muted : v > 24 ? C.red : v > 8 ? C.amber : [234, 88, 12]
+    v => (v === 0 ? C.muted : v > 24 ? C.red : v > 8 ? C.amber : [234, 88, 12])
   );
 
   doc.save(`DMR-Monthly-Performance-${monthLabel.replace(/ /g, "-")}.pdf`);
 }
 
-function uniqueTicketValues(ticket: TicketAggregate, field: keyof TicketRecord): string {
-  return Array.from(new Set(ticket.rows.map((row) => clean(row[field])).filter(Boolean))).join(", ");
+function uniqueTicketValues(
+  ticket: TicketAggregate,
+  field: keyof TicketRecord
+): string {
+  return Array.from(
+    new Set(ticket.rows.map(row => clean(row[field])).filter(Boolean))
+  ).join(", ");
 }
 
 function distinctReportRow(ticket: TicketAggregate, index: number): string[] {
@@ -1386,7 +3094,9 @@ function distinctReportRows(rows: TicketAggregate[]): string[][] {
 
 function exportCsv(rows: TicketAggregate[]) {
   const csv = [DISTINCT_REPORT_HEADERS, ...distinctReportRows(rows)]
-    .map((line) => line.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+    .map(line =>
+      line.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")
+    )
     .join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -1398,55 +3108,108 @@ function exportCsv(rows: TicketAggregate[]) {
 }
 
 function exportExcel(rows: TicketAggregate[]) {
-  const worksheet = XLSX.utils.aoa_to_sheet([DISTINCT_REPORT_HEADERS, ...distinctReportRows(rows)]);
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    DISTINCT_REPORT_HEADERS,
+    ...distinctReportRows(rows),
+  ]);
   DISTINCT_REPORT_HEADERS.forEach((_, colIndex) => {
-    const horizontal = ticketExportCenteredIndexes.has(colIndex) ? "center" : "left";
+    const horizontal = ticketExportCenteredIndexes.has(colIndex)
+      ? "center"
+      : "left";
     for (let rowIndex = 0; rowIndex <= rows.length; rowIndex++) {
-      applySheetCellAlignment(worksheet, XLSX.utils.encode_cell({ r: rowIndex, c: colIndex }), horizontal);
+      applySheetCellAlignment(
+        worksheet,
+        XLSX.utils.encode_cell({ r: rowIndex, c: colIndex }),
+        horizontal
+      );
     }
   });
   worksheet["!cols"] = [
-    { wch: 6 }, { wch: 24 }, { wch: 28 }, { wch: 30 }, { wch: 12 }, { wch: 32 },
-    { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 26 }, { wch: 26 },
-    { wch: 24 }, { wch: 18 }, { wch: 14 }, { wch: 20 }, { wch: 34 },
+    { wch: 6 },
+    { wch: 24 },
+    { wch: 28 },
+    { wch: 30 },
+    { wch: 12 },
+    { wch: 32 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 26 },
+    { wch: 26 },
+    { wch: 24 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 20 },
+    { wch: 34 },
   ];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Distinct TT Report");
   XLSX.writeFile(workbook, "follow-up-distinct-tt-report.xlsx");
 }
 
-async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string) {
+async function exportTicketTemplate(
+  tickets: TicketAggregate[],
+  monthKey: string
+) {
   // Pure ZIP+XML approach using fflate (already in your project).
   // Only the worksheet XML is touched — xl/styles.xml, xl/drawings/, xl/media/
   // (logos, borders, fills) are never opened, so they survive byte-for-byte.
 
-  const DATA_START = 39;  // first data row
-  const PROTECTED  = 59;  // Remarks row — never modified
-  const AVAIL      = PROTECTED - DATA_START; // 20 template rows
-  const COLS = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q"];
+  const DATA_START = 39; // first data row
+  const PROTECTED = 59; // Remarks row — never modified
+  const AVAIL = PROTECTED - DATA_START; // 20 template rows
+  const COLS = [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J",
+    "K",
+    "L",
+    "M",
+    "N",
+    "O",
+    "P",
+    "Q",
+  ];
 
   // ── XML helpers ──────────────────────────────────────────────────────
   const xmlEsc = (s: string) =>
-    s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
 
   // Find a cell by ref (e.g. "A39"), replace its value, keep its style attribute
-  const setCell = (xml: string, ref: string, value: string | number): string => {
+  const setCell = (
+    xml: string,
+    ref: string,
+    value: string | number
+  ): string => {
     const markerIdx = xml.indexOf(` r="${ref}"`);
-    if (markerIdx === -1) return xml;               // cell not in XML, skip
-    const cStart  = xml.lastIndexOf("<c", markerIdx);
+    if (markerIdx === -1) return xml; // cell not in XML, skip
+    const cStart = xml.lastIndexOf("<c", markerIdx);
     if (cStart === -1) return xml;
 
     // Locate end of this cell element
     const scIdx = xml.indexOf("/>", cStart);
     const fcIdx = xml.indexOf("</c>", cStart);
-    const cEnd  = scIdx !== -1 && (fcIdx === -1 || scIdx < fcIdx)
-      ? scIdx + 2 : fcIdx + 4;
+    const cEnd =
+      scIdx !== -1 && (fcIdx === -1 || scIdx < fcIdx) ? scIdx + 2 : fcIdx + 4;
 
     // Extract opening-tag attribute string, strip old type attr
     const tagClose = xml.indexOf(">", cStart);
-    let attrs = xml.slice(cStart + 2, tagClose)   // everything after "<c"
-      .replace(/\s*\/$/,"")                        // strip trailing /
-      .replace(/\s+t="[^"]*"/g, "");               // strip old type attr
+    let attrs = xml
+      .slice(cStart + 2, tagClose) // everything after "<c"
+      .replace(/\s*\/$/, "") // strip trailing /
+      .replace(/\s+t="[^"]*"/g, ""); // strip old type attr
 
     const v = String(value ?? "");
     let newCell: string;
@@ -1463,9 +3226,10 @@ async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string
   try {
     // ── 1. Fetch template ───────────────────────────────────────────────
     const res = await fetch("/DMR_Monthly_Report.xlsx");
-    if (!res.ok) throw new Error(
-      `HTTP ${res.status} — make sure DMR_Monthly_Report.xlsx is inside your project's public/ folder`
-    );
+    if (!res.ok)
+      throw new Error(
+        `HTTP ${res.status} — make sure DMR_Monthly_Report.xlsx is inside your project's public/ folder`
+      );
     const buf = await res.arrayBuffer();
 
     // ── 2. Unzip with fflate ────────────────────────────────────────────
@@ -1474,15 +3238,18 @@ async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string
 
     // ── 3. Locate worksheet XML ─────────────────────────────────────────
     const sheetKey = Object.keys(files).find(k =>
-      /^xl\/worksheets\/sheet\d+\.xml$/.test(k));
-    if (!sheetKey) throw new Error("Could not find worksheet XML inside template");
+      /^xl\/worksheets\/sheet\d+\.xml$/.test(k)
+    );
+    if (!sheetKey)
+      throw new Error("Could not find worksheet XML inside template");
 
     let xml = strFromU8(files[sheetKey]);
 
     // ── 4. Month label MMM-YYYY ─────────────────────────────────────────
-    const full  = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
+    const full = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
     const parts = full.split(" ");
-    const label = parts.length === 2 ? `${parts[0].slice(0,3)}-${parts[1]}` : full;
+    const label =
+      parts.length === 2 ? `${parts[0].slice(0, 3)}-${parts[1]}` : full;
     const safeName = label.replace(/[\/*?[\]:]/g, "-").slice(0, 31);
 
     // ── 5. Set Q5 (month value) ─────────────────────────────────────────
@@ -1492,9 +3259,14 @@ async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string
     const wbKey = "xl/workbook.xml";
     if (files[wbKey]) {
       let wbXml = strFromU8(files[wbKey]);
-      wbXml = wbXml.replace(/(<sheet\b[^>]*\bname=")[^"]*(")/,
-        `$1${xmlEsc(safeName)}$2`);
-      wbXml = wbXml.replace(/'Month-Year'!/g, `'${safeName.replace(/'/g, "''")}'!`);
+      wbXml = wbXml.replace(
+        /(<sheet\b[^>]*\bname=")[^"]*(")/,
+        `$1${xmlEsc(safeName)}$2`
+      );
+      wbXml = wbXml.replace(
+        /'Month-Year'!/g,
+        `'${safeName.replace(/'/g, "''")}'!`
+      );
       files[wbKey] = strToU8(wbXml);
     }
 
@@ -1504,45 +3276,60 @@ async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string
       const extra = needed - AVAIL;
 
       // Capture template data row using string search — avoids RegExp escape pitfalls
-      const tmplMarker    = ` r="${DATA_START}" `;
+      const tmplMarker = ` r="${DATA_START}" `;
       const tmplMarkerIdx = xml.indexOf(tmplMarker);
-      const tmplRowStart  = tmplMarkerIdx !== -1 ? xml.lastIndexOf("<row", tmplMarkerIdx) : -1;
-      const tmplRowEnd    = tmplRowStart  !== -1 ? xml.indexOf("</row>", tmplRowStart) + 6 : -1;
-      const tmplRow       = (tmplRowStart !== -1 && tmplRowEnd > 0)
-        ? xml.slice(tmplRowStart, tmplRowEnd) : "";
+      const tmplRowStart =
+        tmplMarkerIdx !== -1 ? xml.lastIndexOf("<row", tmplMarkerIdx) : -1;
+      const tmplRowEnd =
+        tmplRowStart !== -1 ? xml.indexOf("</row>", tmplRowStart) + 6 : -1;
+      const tmplRow =
+        tmplRowStart !== -1 && tmplRowEnd > 0
+          ? xml.slice(tmplRowStart, tmplRowEnd)
+          : "";
 
       // Shift rows >= PROTECTED: row elements, cell refs, mergeCells, dimension
       xml = xml
-        .replace(/(<row[^>]* r=")(\d+)(")/g,
-          (_m, a, n, b) => +n >= PROTECTED ? `${a}${+n+extra}${b}` : _m)
-        .replace(/(<c[^>]* r=")([A-Z]+)(\d+)(")/g,
-          (_m, a, col, n, b) => +n >= PROTECTED ? `${a}${col}${+n+extra}${b}` : _m)
-        .replace(/(<mergeCell ref=")([A-Z]+)(\d+)(:)([A-Z]+)(\d+)(")/g,
+        .replace(/(<row[^>]* r=")(\d+)(")/g, (_m, a, n, b) =>
+          +n >= PROTECTED ? `${a}${+n + extra}${b}` : _m
+        )
+        .replace(/(<c[^>]* r=")([A-Z]+)(\d+)(")/g, (_m, a, col, n, b) =>
+          +n >= PROTECTED ? `${a}${col}${+n + extra}${b}` : _m
+        )
+        .replace(
+          /(<mergeCell ref=")([A-Z]+)(\d+)(:)([A-Z]+)(\d+)(")/g,
           (_m, a, c1, r1, sep, c2, r2, b) =>
-            `${a}${c1}${+r1 >= PROTECTED ? +r1+extra : +r1}${sep}${c2}${+r2 >= PROTECTED ? +r2+extra : +r2}${b}`)
-        .replace(/(<dimension ref="[A-Z]+\d+:[A-Z]+)(\d+)(")/,
-          (_m, pre, n, post) => +n >= PROTECTED ? `${pre}${+n+extra}${post}` : _m);
+            `${a}${c1}${+r1 >= PROTECTED ? +r1 + extra : +r1}${sep}${c2}${+r2 >= PROTECTED ? +r2 + extra : +r2}${b}`
+        )
+        .replace(
+          /(<dimension ref="[A-Z]+\d+:[A-Z]+)(\d+)(")/,
+          (_m, pre, n, post) =>
+            +n >= PROTECTED ? `${pre}${+n + extra}${post}` : _m
+        );
 
       // Build blank clone rows and insert before the shifted protected row
       if (tmplRow) {
         const newRows = Array.from({ length: extra }, (_, i) => {
           const rn = DATA_START + AVAIL + i;
-          return tmplRow
-            .replace(/ r="(\d+)"/, ` r="${rn}"`)             // row r attr (first only)
-            .replace(/(<c[^>]* r=")([A-Z]+)\d+(")/g,
-              (_m2, a, col, b) => `${a}${col}${rn}${b}`)     // all cell refs in row
-            // Empty cloned cells must not keep stale values, formulas, or shared-string types.
-            // Excel can repair the worksheet with "Removed Records: Cell information"
-            // when blank template rows contain empty <v></v> nodes or invalid shared refs.
-            .replace(/<v>[^<]*<\/v>/g, "")
-            .replace(/<is>[\s\S]*?<\/is>/g, "")
-            .replace(/<f[^>]*\/>/g, "")
-            .replace(/<f[^>]*>[\s\S]*?<\/f>/g, "")
-            .replace(/\s+t="[^"]*"/g, "");
+          return (
+            tmplRow
+              .replace(/ r="(\d+)"/, ` r="${rn}"`) // row r attr (first only)
+              .replace(
+                /(<c[^>]* r=")([A-Z]+)\d+(")/g,
+                (_m2, a, col, b) => `${a}${col}${rn}${b}`
+              ) // all cell refs in row
+              // Empty cloned cells must not keep stale values, formulas, or shared-string types.
+              // Excel can repair the worksheet with "Removed Records: Cell information"
+              // when blank template rows contain empty <v></v> nodes or invalid shared refs.
+              .replace(/<v>[^<]*<\/v>/g, "")
+              .replace(/<is>[\s\S]*?<\/is>/g, "")
+              .replace(/<f[^>]*\/>/g, "")
+              .replace(/<f[^>]*>[\s\S]*?<\/f>/g, "")
+              .replace(/\s+t="[^"]*"/g, "")
+          );
         }).join("");
 
         // Find the shifted protected row using plain string search
-        const shiftedTag = ` r="${PROTECTED+extra}" `;
+        const shiftedTag = ` r="${PROTECTED + extra}" `;
         const shiftedIdx = xml.indexOf(shiftedTag);
         if (shiftedIdx !== -1) {
           const insertAt = xml.lastIndexOf("<row", shiftedIdx);
@@ -1555,89 +3342,117 @@ async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string
 
     // ── 8. Clear unused rows (fewer than 20 tickets) ────────────────────
     for (let r = DATA_START + needed; r < PROTECTED; r++) {
-      COLS.forEach(col => { xml = setCell(xml, `${col}${r}`, ""); });
+      COLS.forEach(col => {
+        xml = setCell(xml, `${col}${r}`, "");
+      });
     }
 
     // ── 9. Write ticket data ────────────────────────────────────────────
     tickets.forEach((ticket, i) => {
       const row = DATA_START + i;
-      const p   = ticket.primary;
+      const p = ticket.primary;
       const set = (col: string, val: string | number) => {
         xml = setCell(xml, `${col}${row}`, val);
       };
       set("A", i + 1);
       set("B", Array.from(ticket.siteIds).join(", "));
       set("C", Array.from(ticket.siteNames).join(", "));
-      set("D", p.managedResource           || "");
-      set("E", p.severity                  || "");
-      set("F", p.issue                     || "");
-      set("G", p.observationDate           || "");
-      set("H", p.observationTime           || "");
-      set("I", p.recoveryDate              || "");
-      set("J", p.recoveryTime              || "");
+      set("D", p.managedResource || "");
+      set("E", p.severity || "");
+      set("F", p.issue || "");
+      set("G", p.observationDate || "");
+      set("H", p.observationTime || "");
+      set("I", p.recoveryDate || "");
+      set("J", p.recoveryTime || "");
       set("K", p.escalatedForL3SupportDate || "");
       set("L", p.escalatedForL3SupportTime || "");
-      set("M", p.duration                  || "");
-      set("N", ticket.tt                   || "");
-      set("O", p.status                    || "");
-      set("P", p.escalatedTo               || "");
-      set("Q", p.actionTaken               || "");
+      set("M", p.duration || "");
+      set("N", ticket.tt || "");
+      set("O", p.status || "");
+      set("P", p.escalatedTo || "");
+      set("Q", p.actionTaken || "");
     });
 
     // ── 10. Repack and download ─────────────────────────────────────────
-    const ticketDataRows = Array.from({ length: tickets.length }, (_, i) => DATA_START + i);
+    const ticketDataRows = Array.from(
+      { length: tickets.length },
+      (_, i) => DATA_START + i
+    );
     xml = applyExcelColumnAlignment(
       files,
       { strFromU8, strToU8 },
       xml,
-      ticketDataRows.flatMap((r) => ["D", "E", "G", "H", "I", "J"].map((col) => `${col}${r}`)),
-      "center",
+      ticketDataRows.flatMap(r =>
+        ["D", "E", "G", "H", "I", "J"].map(col => `${col}${r}`)
+      ),
+      "center"
     );
     files[sheetKey] = strToU8(xml);
-    const output = zipSync(files, { level: 0 });          // store, no recompression
-    const blob   = new Blob([output], {
+    const output = zipSync(files, { level: 0 }); // store, no recompression
+    const blob = new Blob([output], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
     const url = URL.createObjectURL(blob);
-    const a   = document.createElement("a");
-    a.href = url; a.download = `DMR_Monthly_Report_${label}.xlsx`; a.click();
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `DMR_Monthly_Report_${label}.xlsx`;
+    a.click();
     URL.revokeObjectURL(url);
-
   } catch (err: any) {
     console.error("Template export failed:", err);
     alert(
       "Template export failed.\n\n" +
-      "Check:\n" +
-      "  • DMR_Monthly_Report.xlsx must be inside the  public/  folder\n" +
-      "    (not the project root — the sub-folder named  public)\n\n" +
-      "Error: " + (err?.message ?? String(err))
+        "Check:\n" +
+        "  • DMR_Monthly_Report.xlsx must be inside the  public/  folder\n" +
+        "    (not the project root — the sub-folder named  public)\n\n" +
+        "Error: " +
+        (err?.message ?? String(err))
     );
   }
 }
 
 async function exportPdf(rows: TicketAggregate[], monthKey: string) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
-  const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
+  const monthLabel =
+    monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   {
     const logos = await loadReportLogos();
-    const templateDoc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
+    const templateDoc = new jsPDF({
+      orientation: "landscape",
+      unit: "mm",
+      format: "a3",
+    });
     const templatePageW = templateDoc.internal.pageSize.getWidth();
     const templatePageH = templateDoc.internal.pageSize.getHeight();
     const C = TEMPLATE_PDF_COLORS;
     const ticketTableWidth = 363;
-    const ticketTableMargin = Math.max(12, (templatePageW - ticketTableWidth) / 2);
+    const ticketTableMargin = Math.max(
+      12,
+      (templatePageW - ticketTableWidth) / 2
+    );
     const drawTemplateHeader = () => {
       templateDoc.setFillColor(255, 255, 255);
       templateDoc.rect(0, 0, templatePageW, templatePageH, "F");
-      drawPdfReportHeader(templateDoc, templatePageW, "MONTHLY REPORT", "DMR SYSTEM | DMR Hytera", logos, C.title);
+      drawPdfReportHeader(
+        templateDoc,
+        templatePageW,
+        "MONTHLY REPORT",
+        "DMR SYSTEM | DMR Hytera",
+        logos,
+        C.title
+      );
       templateDoc.setFontSize(10);
       templateDoc.setTextColor(...C.text);
       templateDoc.setFont("helvetica", "bold");
       templateDoc.text("DMR SYSTEM", 12, 26);
 
-      const info = [["Region", ""], ["Network", "DMR Hytera"], ["Month", monthLabel]];
+      const info = [
+        ["Region", ""],
+        ["Network", "DMR Hytera"],
+        ["Month", monthLabel],
+      ];
       templateDoc.setFontSize(8);
       info.forEach((pair, i) => {
         const x = 12 + i * 60;
@@ -1666,8 +3481,25 @@ async function exportPdf(rows: TicketAggregate[], monthKey: string) {
       head: TICKET_TEMPLATE_PDF_HEAD,
       body: distinctReportRows(rows),
       theme: "grid",
-      styles: { fontSize: 6.6, cellPadding: 1.35, overflow: "linebreak", halign: "center", valign: "middle", textColor: C.text, fillColor: [255, 255, 255], lineColor: C.border, lineWidth: 0.15 },
-      headStyles: { fillColor: C.header, textColor: C.text, fontStyle: "bold", fontSize: 6.8, halign: "center", valign: "middle" },
+      styles: {
+        fontSize: 6.6,
+        cellPadding: 1.35,
+        overflow: "linebreak",
+        halign: "center",
+        valign: "middle",
+        textColor: C.text,
+        fillColor: [255, 255, 255],
+        lineColor: C.border,
+        lineWidth: 0.15,
+      },
+      headStyles: {
+        fillColor: C.header,
+        textColor: C.text,
+        fontStyle: "bold",
+        fontSize: 6.8,
+        halign: "center",
+        valign: "middle",
+      },
       alternateRowStyles: { fillColor: [248, 248, 248] },
       columnStyles: {
         0: { cellWidth: 8, halign: "center" },
@@ -1688,114 +3520,173 @@ async function exportPdf(rows: TicketAggregate[], monthKey: string) {
         15: { cellWidth: 22, halign: "center" },
         16: { cellWidth: 44, halign: "center" },
       },
-      margin: { left: ticketTableMargin, right: ticketTableMargin, top: 56, bottom: 10 },
+      margin: {
+        left: ticketTableMargin,
+        right: ticketTableMargin,
+        top: 56,
+        bottom: 10,
+      },
       willDrawPage: drawTemplateHeader,
-      didParseCell: (d) => {
+      didParseCell: d => {
         if (d.section === "body" && d.column.index === 4) {
           const v = String(d.cell.raw ?? "").toLowerCase();
-          d.cell.styles.textColor = v.includes("critical") || v.includes("p1") ? C.warn : C.text;
+          d.cell.styles.textColor =
+            v.includes("critical") || v.includes("p1") ? C.warn : C.text;
         }
         if (d.section === "body" && d.column.index === 14) {
           const v = String(d.cell.raw ?? "").toLowerCase();
-          d.cell.styles.textColor = v.includes("closed") || v.includes("resolved") ? C.ok : v ? C.warn : C.text;
+          d.cell.styles.textColor =
+            v.includes("closed") || v.includes("resolved")
+              ? C.ok
+              : v
+                ? C.warn
+                : C.text;
         }
       },
-      didDrawPage: (d) => {
+      didDrawPage: d => {
         templateDoc.setFont("helvetica", "normal");
         templateDoc.setFontSize(7);
         templateDoc.setTextColor(...C.muted);
-        templateDoc.text(`DMR Monthly Report - ${monthLabel} | Page ${d.pageNumber}`, templatePageW / 2, templatePageH - 5, { align: "center" });
+        templateDoc.text(
+          `DMR Monthly Report - ${monthLabel} | Page ${d.pageNumber}`,
+          templatePageW / 2,
+          templatePageH - 5,
+          { align: "center" }
+        );
       },
     });
-    const suffix = monthKey !== "all" ? `-${monthLabel.replace(/ /g, "-")}` : "";
+    const suffix =
+      monthKey !== "all" ? `-${monthLabel.replace(/ /g, "-")}` : "";
     templateDoc.save(`DMR-Monthly-Tickets${suffix}.pdf`);
     return;
   }
 
   // ── Theme (mirrors PPT palette) ───────────────────────────────────────
   const C = {
-    bg:    [10,  22,  40]  as [number,number,number],
-    card:  [15,  31,  56]  as [number,number,number],
-    card2: [10,  25,  48]  as [number,number,number],
-    cyan:  [34,  211, 238] as [number,number,number],
-    white: [248, 250, 252] as [number,number,number],
-    muted: [148, 163, 184] as [number,number,number],
-    green: [16,  185, 129] as [number,number,number],
-    red:   [220, 38,  38]  as [number,number,number],
-    amber: [217, 119, 6]   as [number,number,number],
-    border:[30,  58,  95]  as [number,number,number],
+    bg: [10, 22, 40] as [number, number, number],
+    card: [15, 31, 56] as [number, number, number],
+    card2: [10, 25, 48] as [number, number, number],
+    cyan: [34, 211, 238] as [number, number, number],
+    white: [248, 250, 252] as [number, number, number],
+    muted: [148, 163, 184] as [number, number, number],
+    green: [16, 185, 129] as [number, number, number],
+    red: [220, 38, 38] as [number, number, number],
+    amber: [217, 119, 6] as [number, number, number],
+    border: [30, 58, 95] as [number, number, number],
   };
 
   // ── Page 1 background + header ────────────────────────────────────────
-  doc.setFillColor(...C.bg); doc.rect(0, 0, pageW, pageH, "F");
-  doc.setFillColor(...C.cyan); doc.rect(0, 0, pageW, 2, "F");
-  doc.setFontSize(14); doc.setFont("helvetica", "bold"); doc.setTextColor(...C.white);
+  doc.setFillColor(...C.bg);
+  doc.rect(0, 0, pageW, pageH, "F");
+  doc.setFillColor(...C.cyan);
+  doc.rect(0, 0, pageW, 2, "F");
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...C.white);
   doc.text(`DMR Monthly Tickets Report`, 14, 12);
-  doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(...C.cyan);
-  doc.text(`Month: ${monthLabel}  ·  Tickets: ${rows.length}  ·  ${new Date().toLocaleDateString()}`, pageW - 14, 12, { align: "right" });
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...C.cyan);
+  doc.text(
+    `Month: ${monthLabel}  ·  Tickets: ${rows.length}  ·  ${new Date().toLocaleDateString()}`,
+    pageW - 14,
+    12,
+    { align: "right" }
+  );
 
   autoTable(doc, {
     startY: 18,
     head: [DISTINCT_REPORT_HEADERS],
     body: distinctReportRows(rows),
     styles: {
-      fontSize: 7, cellPadding: 1.8, overflow: "linebreak", valign: "middle",
-      fillColor: C.card, textColor: C.white,
-      lineColor: C.border, lineWidth: 0.2,
+      fontSize: 7,
+      cellPadding: 1.8,
+      overflow: "linebreak",
+      valign: "middle",
+      fillColor: C.card,
+      textColor: C.white,
+      lineColor: C.border,
+      lineWidth: 0.2,
     },
     headStyles: {
-      fillColor: C.cyan, textColor: C.bg,
-      fontStyle: "bold", fontSize: 7.5, cellPadding: 2.5,
+      fillColor: C.cyan,
+      textColor: C.bg,
+      fontStyle: "bold",
+      fontSize: 7.5,
+      cellPadding: 2.5,
     },
     alternateRowStyles: { fillColor: C.card2 },
     columnStyles: {
-      0:  { cellWidth: 8,  halign: "center" },
-      1:  { cellWidth: 18 },
-      2:  { cellWidth: 22 },
-      3:  { cellWidth: 26, halign: "center" },
-      4:  { cellWidth: 14, halign: "center", fontStyle: "bold" },
-      5:  { cellWidth: 30 },
-      6:  { cellWidth: 18, halign: "center" },
-      7:  { cellWidth: 16, halign: "center" },
-      8:  { cellWidth: 18, halign: "center" },
-      9:  { cellWidth: 16, halign: "center" },
+      0: { cellWidth: 8, halign: "center" },
+      1: { cellWidth: 18 },
+      2: { cellWidth: 22 },
+      3: { cellWidth: 26, halign: "center" },
+      4: { cellWidth: 14, halign: "center", fontStyle: "bold" },
+      5: { cellWidth: 30 },
+      6: { cellWidth: 18, halign: "center" },
+      7: { cellWidth: 16, halign: "center" },
+      8: { cellWidth: 18, halign: "center" },
+      9: { cellWidth: 16, halign: "center" },
       10: { cellWidth: 22 },
       11: { cellWidth: 20 },
       12: { cellWidth: 22 },
-      13: { cellWidth: 14, fontStyle: "bold", textColor: C.cyan as [number,number,number] },
+      13: {
+        cellWidth: 14,
+        fontStyle: "bold",
+        textColor: C.cyan as [number, number, number],
+      },
       14: { cellWidth: 14, halign: "center", fontStyle: "bold" },
       15: { cellWidth: 18 },
       16: { cellWidth: 36 },
     },
     margin: { left: 10, right: 10, top: 20 },
-    didParseCell: (d) => {
+    didParseCell: d => {
       if (d.section === "body" && d.column.index === 4) {
         const v = String(d.cell.raw ?? "").toLowerCase();
-        if (v.includes("critical") || v.includes("p1")) d.cell.styles.textColor = C.red;
-        else if (v.includes("major") || v.includes("p2")) d.cell.styles.textColor = C.amber;
-        else if (v.includes("minor") || v.includes("p3")) d.cell.styles.textColor = C.green;
+        if (v.includes("critical") || v.includes("p1"))
+          d.cell.styles.textColor = C.red;
+        else if (v.includes("major") || v.includes("p2"))
+          d.cell.styles.textColor = C.amber;
+        else if (v.includes("minor") || v.includes("p3"))
+          d.cell.styles.textColor = C.green;
         else d.cell.styles.textColor = C.muted;
       }
       if (d.section === "body" && d.column.index === 14) {
         const v = String(d.cell.raw ?? "").toLowerCase();
-        if (v.includes("open") || v.includes("pending")) d.cell.styles.textColor = C.red;
-        else if (v.includes("progress") || v.includes("in-progress")) d.cell.styles.textColor = C.amber;
-        else if (v.includes("closed") || v.includes("resolved")) d.cell.styles.textColor = C.green;
+        if (v.includes("open") || v.includes("pending"))
+          d.cell.styles.textColor = C.red;
+        else if (v.includes("progress") || v.includes("in-progress"))
+          d.cell.styles.textColor = C.amber;
+        else if (v.includes("closed") || v.includes("resolved"))
+          d.cell.styles.textColor = C.green;
         else d.cell.styles.textColor = C.muted;
       }
     },
-    didDrawPage: (data) => {
+    didDrawPage: data => {
       if (data.pageNumber > 1) {
         // Redraw dark header area on continuation pages (margin.top:20 keeps rows below)
-        doc.setFillColor(...C.bg); doc.rect(0, 0, pageW, 20, "F");
-        doc.setFillColor(...C.cyan); doc.rect(0, 0, pageW, 2, "F");
-        doc.setFontSize(11); doc.setFont("helvetica", "bold"); doc.setTextColor(...C.white);
+        doc.setFillColor(...C.bg);
+        doc.rect(0, 0, pageW, 20, "F");
+        doc.setFillColor(...C.cyan);
+        doc.rect(0, 0, pageW, 2, "F");
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...C.white);
         doc.text("DMR Monthly Tickets Report", 14, 11);
-        doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(...C.cyan);
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...C.cyan);
         doc.text(`${monthLabel} (cont.)`, pageW - 14, 11, { align: "right" });
       }
-      doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(...C.muted);
-      doc.text(`DMR Monthly Tickets Report — ${monthLabel}  |  Page ${data.pageNumber}`, pageW / 2, pageH - 4, { align: "center" });
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...C.muted);
+      doc.text(
+        `DMR Monthly Tickets Report — ${monthLabel}  |  Page ${data.pageNumber}`,
+        pageW / 2,
+        pageH - 4,
+        { align: "center" }
+      );
     },
   });
 
@@ -1823,8 +3714,27 @@ function StatCard({
   style?: CSSProperties;
 }) {
   return (
-    <div className={`stat-card ${className}`.trim()} style={{ ["--tone" as string]: tone, cursor: onClick ? "pointer" : undefined, ...style }} onClick={onClick} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined} onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") onClick(); } : undefined}>
-      <div className="stat-icon"><Icon size={28} /></div>
+    <div
+      className={`stat-card ${className}`.trim()}
+      style={{
+        ["--tone" as string]: tone,
+        cursor: onClick ? "pointer" : undefined,
+        ...style,
+      }}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? e => {
+              if (e.key === "Enter" || e.key === " ") onClick();
+            }
+          : undefined
+      }
+    >
+      <div className="stat-icon">
+        <Icon size={28} />
+      </div>
       <span>{label}</span>
       <strong>{value}</strong>
       <small>{note}</small>
@@ -1834,18 +3744,36 @@ function StatCard({
 
 function PartnerLogoStrip() {
   return (
-    <div className="header-logo-group header-logo-group--left" aria-label="Saudi Energy and National Grid logos">
-      <img src={seLogoSrc} alt="Saudi Energy" className="header-logo-img se-logo" />
+    <div
+      className="header-logo-group header-logo-group--left"
+      aria-label="Saudi Energy and National Grid logos"
+    >
+      <img
+        src={seLogoSrc}
+        alt="Saudi Energy"
+        className="header-logo-img se-logo"
+      />
       <span className="logo-divider" aria-hidden="true" />
-      <img src={ngLogoSrc} alt="National Grid SA" className="header-logo-img ng-logo" />
+      <img
+        src={ngLogoSrc}
+        alt="National Grid SA"
+        className="header-logo-img ng-logo"
+      />
     </div>
   );
 }
 
 function HeaderRightLogo() {
   return (
-    <div className="header-logo-group header-logo-group--right" aria-label="NASCO logo">
-      <img src={nascoLogoSrc} alt="NASCO" className="header-logo-img nasco-logo" />
+    <div
+      className="header-logo-group header-logo-group--right"
+      aria-label="NASCO logo"
+    >
+      <img
+        src={nascoLogoSrc}
+        alt="NASCO"
+        className="header-logo-img nasco-logo"
+      />
     </div>
   );
 }
@@ -1854,7 +3782,13 @@ function HeaderRightLogo() {
  * SelectFilter using a portal-based dropdown so it is never clipped
  * by overflow:hidden containers (hero panel, export card).
  */
-function SelectFilter({ label, value, options, optionLabels, onChange }: {
+function SelectFilter({
+  label,
+  value,
+  options,
+  optionLabels,
+  onChange,
+}: {
   label: string;
   value: string;
   options: string[];
@@ -1870,7 +3804,11 @@ function SelectFilter({ label, value, options, optionLabels, onChange }: {
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Node;
-      if (!wrapRef.current?.contains(target) && !dropdownRef.current?.contains(target)) setOpen(false);
+      if (
+        !wrapRef.current?.contains(target) &&
+        !dropdownRef.current?.contains(target)
+      )
+        setOpen(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -1883,15 +3821,27 @@ function SelectFilter({ label, value, options, optionLabels, onChange }: {
     const left = Math.min(rect.left, window.innerWidth - dropW - 8);
     const spaceBelow = window.innerHeight - rect.bottom;
     if (spaceBelow >= 160) {
-      setDropdownStyle({ position: "fixed", top: rect.bottom + 4, left, width: dropW, zIndex: 99999 });
+      setDropdownStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left,
+        width: dropW,
+        zIndex: 99999,
+      });
     } else {
-      setDropdownStyle({ position: "fixed", bottom: window.innerHeight - rect.top + 4, left, width: dropW, zIndex: 99999 });
+      setDropdownStyle({
+        position: "fixed",
+        bottom: window.innerHeight - rect.top + 4,
+        left,
+        width: dropW,
+        zIndex: 99999,
+      });
     }
   }
 
   function handleOpen() {
     if (!open) computePosition();
-    setOpen((o) => !o);
+    setOpen(o => !o);
   }
 
   useEffect(() => {
@@ -1903,46 +3853,84 @@ function SelectFilter({ label, value, options, optionLabels, onChange }: {
       window.removeEventListener("scroll", update, true);
       window.removeEventListener("resize", update);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const displayLabel = value === "all" || value === "ALL"
-    ? "All"
-    : (optionLabels?.[value] ?? value);
+  const displayLabel =
+    value === "all" || value === "ALL"
+      ? "All"
+      : (optionLabels?.[value] ?? value);
 
-  const dropdown = open ? createPortal(
-    <div
-      ref={dropdownRef}
-      className="multi-select-dropdown"
-      style={dropdownStyle}
-    >
-      <label className="multi-select-option" onClick={() => { onChange("all"); setOpen(false); }}>
-        <input type="radio" readOnly checked={value === "all" || value === "ALL"} />
-        <span>All</span>
-      </label>
-      {options.map((opt) => (
-        <label key={opt} className="multi-select-option" onClick={() => { onChange(opt); setOpen(false); }}>
-          <input type="radio" readOnly checked={value === opt} />
-          <span>{optionLabels?.[opt] ?? opt}</span>
-        </label>
-      ))}
-    </div>,
-    document.body
-  ) : null;
+  const dropdown = open
+    ? createPortal(
+        <div
+          ref={dropdownRef}
+          className="multi-select-dropdown"
+          style={dropdownStyle}
+        >
+          <label
+            className="multi-select-option"
+            onClick={() => {
+              onChange("all");
+              setOpen(false);
+            }}
+          >
+            <input
+              type="radio"
+              readOnly
+              checked={value === "all" || value === "ALL"}
+            />
+            <span>All</span>
+          </label>
+          {options.map(opt => (
+            <label
+              key={opt}
+              className="multi-select-option"
+              onClick={() => {
+                onChange(opt);
+                setOpen(false);
+              }}
+            >
+              <input type="radio" readOnly checked={value === opt} />
+              <span>{optionLabels?.[opt] ?? opt}</span>
+            </label>
+          ))}
+        </div>,
+        document.body
+      )
+    : null;
 
   return (
     <div className="filter-field multi-select-filter" ref={wrapRef}>
       <span>{label}</span>
-      <button type="button" className="multi-select-trigger" ref={triggerRef} onClick={handleOpen}>
+      <button
+        type="button"
+        className="multi-select-trigger"
+        ref={triggerRef}
+        onClick={handleOpen}
+      >
         <span className="multi-select-value">{displayLabel}</span>
-        <ChevronDown size={14} style={{ transform: open ? "rotate(180deg)" : undefined, transition: "transform .15s" }} />
+        <ChevronDown
+          size={14}
+          style={{
+            transform: open ? "rotate(180deg)" : undefined,
+            transition: "transform .15s",
+          }}
+        />
       </button>
       {dropdown}
     </div>
   );
 }
 
-function MultiSelectFilter({ label, value, options, optionLabels, onChange, showAllOption }: {
+function MultiSelectFilter({
+  label,
+  value,
+  options,
+  optionLabels,
+  onChange,
+  showAllOption,
+}: {
   label: string;
   value: string[];
   options: string[];
@@ -1975,15 +3963,27 @@ function MultiSelectFilter({ label, value, options, optionLabels, onChange, show
     const spaceBelow = window.innerHeight - rect.bottom;
     const left = Math.min(rect.left, window.innerWidth - dropW - 8);
     if (spaceBelow >= dropH || spaceBelow >= 160) {
-      setDropdownStyle({ position: "fixed", top: rect.bottom + 4, left, width: dropW, zIndex: 99999 });
+      setDropdownStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left,
+        width: dropW,
+        zIndex: 99999,
+      });
     } else {
-      setDropdownStyle({ position: "fixed", bottom: window.innerHeight - rect.top + 4, left, width: dropW, zIndex: 99999 });
+      setDropdownStyle({
+        position: "fixed",
+        bottom: window.innerHeight - rect.top + 4,
+        left,
+        width: dropW,
+        zIndex: 99999,
+      });
     }
   }
 
   function handleOpen() {
     if (!open) computePosition();
-    setOpen((o) => !o);
+    setOpen(o => !o);
   }
 
   useEffect(() => {
@@ -1995,49 +3995,95 @@ function MultiSelectFilter({ label, value, options, optionLabels, onChange, show
       window.removeEventListener("scroll", update, true);
       window.removeEventListener("resize", update);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const allSelected = value.length === 0;
   const toggle = (opt: string) => {
     // If All is currently active, selecting an option means: pick just that option
-    if (allSelected) { onChange([opt]); return; }
+    if (allSelected) {
+      onChange([opt]);
+      return;
+    }
     if (value.includes(opt)) {
-      const next = value.filter((v) => v !== opt);
+      const next = value.filter(v => v !== opt);
       // If deselecting last item, revert to All
       onChange(next);
     } else {
       onChange([...value, opt]);
     }
   };
-  const displayLabel = allSelected ? "All" : value.length === 1 ? (optionLabels?.[value[0]] ?? value[0]) : `${value.length} selected`;
-  const dropdown = open ? createPortal(
-    <div className="multi-select-dropdown" style={dropdownStyle} ref={dropdownRef}>
-      {showAllOption && (
-        <label className="multi-select-option multi-select-option-all" onClick={() => { onChange([]); }}>
-          <input type="checkbox" readOnly checked={allSelected} />
-          <span style={{ fontWeight: allSelected ? 700 : undefined, color: allSelected ? "#22d3ee" : undefined }}>All</span>
-        </label>
-      )}
-      {!showAllOption && value.length > 0 && (
-        <button type="button" className="multi-select-clear" onClick={() => onChange([])}>✕ Clear</button>
-      )}
-      {options.map((opt) => (
-        <label key={opt} className="multi-select-option">
-          <input type="checkbox" checked={value.includes(opt)} onChange={() => toggle(opt)} />
-          <span>{optionLabels?.[opt] ?? opt}</span>
-        </label>
-      ))}
-    </div>,
-    document.body
-  ) : null;
+  const displayLabel = allSelected
+    ? "All"
+    : value.length === 1
+      ? (optionLabels?.[value[0]] ?? value[0])
+      : `${value.length} selected`;
+  const dropdown = open
+    ? createPortal(
+        <div
+          className="multi-select-dropdown"
+          style={dropdownStyle}
+          ref={dropdownRef}
+        >
+          {showAllOption && (
+            <label
+              className="multi-select-option multi-select-option-all"
+              onClick={() => {
+                onChange([]);
+              }}
+            >
+              <input type="checkbox" readOnly checked={allSelected} />
+              <span
+                style={{
+                  fontWeight: allSelected ? 700 : undefined,
+                  color: allSelected ? "#22d3ee" : undefined,
+                }}
+              >
+                All
+              </span>
+            </label>
+          )}
+          {!showAllOption && value.length > 0 && (
+            <button
+              type="button"
+              className="multi-select-clear"
+              onClick={() => onChange([])}
+            >
+              ✕ Clear
+            </button>
+          )}
+          {options.map(opt => (
+            <label key={opt} className="multi-select-option">
+              <input
+                type="checkbox"
+                checked={value.includes(opt)}
+                onChange={() => toggle(opt)}
+              />
+              <span>{optionLabels?.[opt] ?? opt}</span>
+            </label>
+          ))}
+        </div>,
+        document.body
+      )
+    : null;
 
   return (
     <div className="filter-field multi-select-filter" ref={wrapRef}>
       <span>{label}</span>
-      <button type="button" className="multi-select-trigger" ref={triggerRef} onClick={handleOpen}>
+      <button
+        type="button"
+        className="multi-select-trigger"
+        ref={triggerRef}
+        onClick={handleOpen}
+      >
         <span className="multi-select-value">{displayLabel}</span>
-        <ChevronDown size={14} style={{ transform: open ? "rotate(180deg)" : undefined, transition: "transform .15s" }} />
+        <ChevronDown
+          size={14}
+          style={{
+            transform: open ? "rotate(180deg)" : undefined,
+            transition: "transform .15s",
+          }}
+        />
       </button>
       {dropdown}
     </div>
@@ -2073,49 +4119,55 @@ export default function Home() {
 
   // ── Tickets table — one entry per header in DISTINCT_REPORT_HEADERS ───────
   const TICKETS_COLUMN_WIDTHS: Record<string, number> = {
-    "#":                              56,  // width =
-    "Site ID":                       110,  // width =
-    "Site Name":                     220,  // width =
-    "Managed Resource":              150,  // width =
-    "Severity":                      110,  // width =
-    "Issues":                        430,  // width =
-    "Observation Date":              130,  // width =
-    "Observation Time":              100,  // width =
-    "Recovery Date":                 130,  // width =
-    "Recovery Time":                 100,  // width =
-    "Escalated for L3 Support Date": 160,  // width =
-    "Escalated for L3 Support Time": 130,  // width =
-    "Total Duration Days/Hours":     250,  // width =
-    "TT":                             90,  // width =
-    "Status":                        110,  // width =
-    "Escalated to":                  130,  // width =
-    "Action":                        400,  // width =
+    "#": 56, // width =
+    "Site ID": 110, // width =
+    "Site Name": 220, // width =
+    "Managed Resource": 150, // width =
+    Severity: 110, // width =
+    Issues: 430, // width =
+    "Observation Date": 130, // width =
+    "Observation Time": 100, // width =
+    "Recovery Date": 130, // width =
+    "Recovery Time": 100, // width =
+    "Escalated for L3 Support Date": 160, // width =
+    "Escalated for L3 Support Time": 130, // width =
+    "Total Duration Days/Hours": 250, // width =
+    TT: 90, // width =
+    Status: 110, // width =
+    "Escalated to": 130, // width =
+    Action: 400, // width =
   };
 
   // ── Performance table — one entry per header in PERF_REPORT_HEADERS ───────
   const PERF_COLUMN_WIDTHS: Record<string, number> = {
-    "S No":                         20,   // width =
-    "Site ID":                      80,   // width =
-    "Site Name":                    200,   // width =
-    "Site Availability, Hrs":       120,   // width =
-    "Site Availability, days":      120,   // width =
-    "Channel Busy Count":           100,   // width =
-    "MW link Performance, Hrs":     100,   // width =
-    "DMR Reliability":              120,   // width =
-    "Sites Down, hrs":              120,   // width =
+    "S No": 20, // width =
+    "Site ID": 80, // width =
+    "Site Name": 200, // width =
+    "Site Availability, Hrs": 120, // width =
+    "Site Availability, days": 120, // width =
+    "Channel Busy Count": 100, // width =
+    "MW link Performance, Hrs": 100, // width =
+    "DMR Reliability": 120, // width =
+    "Sites Down, hrs": 120, // width =
   };
 
   // ── Runtime override maps — populated by drag handles, fall through to config above
-  const [ticketColumnWidths, setTicketColumnWidths] = useState<Record<string, number>>({});
-  const [perfColumnWidths,   setPerfColumnWidths]   = useState<Record<string, number>>({});
+  const [ticketColumnWidths, setTicketColumnWidths] = useState<
+    Record<string, number>
+  >({});
+  const [perfColumnWidths, setPerfColumnWidths] = useState<
+    Record<string, number>
+  >({});
 
-  const getTicketColumnWidth = (h: string): number => ticketColumnWidths[h] ?? TICKETS_COLUMN_WIDTHS[h] ?? 130;
-  const getPerfColumnWidth   = (h: string): number => perfColumnWidths[h]   ?? PERF_COLUMN_WIDTHS[h]   ?? 130;
+  const getTicketColumnWidth = (h: string): number =>
+    ticketColumnWidths[h] ?? TICKETS_COLUMN_WIDTHS[h] ?? 130;
+  const getPerfColumnWidth = (h: string): number =>
+    perfColumnWidths[h] ?? PERF_COLUMN_WIDTHS[h] ?? 130;
 
   // Shared resize handler factory — wires a header name to the right state setter.
   function createResizeHandler(
     setWidths: React.Dispatch<React.SetStateAction<Record<string, number>>>,
-    getCurrent: (h: string) => number,
+    getCurrent: (h: string) => number
   ) {
     return (header: string) => (e: React.MouseEvent) => {
       e.preventDefault();
@@ -2124,7 +4176,7 @@ export default function Home() {
       const startW = getCurrent(header);
       const onMove = (ev: MouseEvent) => {
         const next = Math.max(40, startW + (ev.clientX - startX));
-        setWidths((prev) => ({ ...prev, [header]: next }));
+        setWidths(prev => ({ ...prev, [header]: next }));
       };
       const onUp = () => {
         window.removeEventListener("mousemove", onMove);
@@ -2138,8 +4190,14 @@ export default function Home() {
       document.body.style.userSelect = "none";
     };
   }
-  const startTicketColumnResize = createResizeHandler(setTicketColumnWidths, getTicketColumnWidth);
-  const startPerfColumnResize   = createResizeHandler(setPerfColumnWidths,   getPerfColumnWidth);
+  const startTicketColumnResize = createResizeHandler(
+    setTicketColumnWidths,
+    getTicketColumnWidth
+  );
+  const startPerfColumnResize = createResizeHandler(
+    setPerfColumnWidths,
+    getPerfColumnWidth
+  );
 
   async function handleFile(file?: File) {
     if (!file) return;
@@ -2149,7 +4207,9 @@ export default function Home() {
       const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
       const parsed = parseRows(workbook, file.name);
       if (!parsed.rows.length || !parsed.uniqueTickets.length) {
-        throw new Error("No ticket rows with TT numbers were found. Please upload the Follow-Up Sheets workbook with the Tickets_Data sheet.");
+        throw new Error(
+          "No ticket rows with TT numbers were found. Please upload the Follow-Up Sheets workbook with the Tickets_Data sheet."
+        );
       }
       setData(parsed);
       setRegions([parsed]);
@@ -2161,7 +4221,9 @@ export default function Home() {
       setTablePage(1);
       if (inputRef.current) inputRef.current.value = "";
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to read this workbook.");
+      setError(
+        err instanceof Error ? err.message : "Unable to read this workbook."
+      );
     }
   }
 
@@ -2173,17 +4235,25 @@ export default function Home() {
       const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
       const parsed = parseRows(workbook, file.name);
       if (!parsed.rows.length || !parsed.uniqueTickets.length) {
-        throw new Error("No ticket rows with TT numbers were found in the additional workbook.");
+        throw new Error(
+          "No ticket rows with TT numbers were found in the additional workbook."
+        );
       }
-      setRegions((prev) => {
+      setRegions(prev => {
         const updated = [...prev, parsed];
-        const allRows = updated.flatMap((r) => r.rows);
+        const allRows = updated.flatMap(r => r.rows);
         const ttMap = new Map<string, TicketAggregate>();
         for (const row of allRows) {
           if (!row.tt) continue;
           const existing = ttMap.get(row.tt);
           if (!existing) {
-            ttMap.set(row.tt, { tt: row.tt, primary: row, siteIds: new Set([row.siteId].filter(Boolean)), siteNames: new Set([row.siteName].filter(Boolean)), rows: [row] });
+            ttMap.set(row.tt, {
+              tt: row.tt,
+              primary: row,
+              siteIds: new Set([row.siteId].filter(Boolean)),
+              siteNames: new Set([row.siteName].filter(Boolean)),
+              rows: [row],
+            });
           } else {
             existing.rows.push(row);
             if (row.siteId) existing.siteIds.add(row.siteId);
@@ -2192,12 +4262,17 @@ export default function Home() {
         }
         // Merge site orders: use first region's order, append any new entries from additional regions
         const mergedSiteOrder = [...updated[0].siteOrder];
-        const mergedIds = new Set(mergedSiteOrder.map((s) => s.siteId));
-        updated.slice(1).forEach((r) => {
-          r.siteOrder.forEach((s) => { if (!mergedIds.has(s.siteId)) { mergedIds.add(s.siteId); mergedSiteOrder.push(s); } });
+        const mergedIds = new Set(mergedSiteOrder.map(s => s.siteId));
+        updated.slice(1).forEach(r => {
+          r.siteOrder.forEach(s => {
+            if (!mergedIds.has(s.siteId)) {
+              mergedIds.add(s.siteId);
+              mergedSiteOrder.push(s);
+            }
+          });
         });
         const merged: DashboardData = {
-          fileName: updated.map((r) => r.fileName).join(" + "),
+          fileName: updated.map(r => r.fileName).join(" + "),
           sheetName: updated[0].sheetName,
           generatedAt: new Date().toLocaleString(),
           rows: allRows,
@@ -2210,24 +4285,49 @@ export default function Home() {
       setTablePage(1);
       if (addRegionRef.current) addRegionRef.current.value = "";
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to read the additional workbook.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to read the additional workbook."
+      );
     }
   }
 
   const uniqueRows = data?.uniqueTickets ?? [];
   const allDataRows = data?.rows ?? [];
   const filterOptions = useMemo(() => {
-    const primaryRows = uniqueRows.map((ticket) => ticket.primary);
-    const uniq = (field: keyof TicketRecord) => Array.from(new Set(primaryRows.map((row) => clean(row[field])).filter(Boolean))).sort();
-    const openingMonths = Array.from(new Set(primaryRows.map((row) => row.openingMonthKey || openingMonthKey(row.observationDate)).filter(Boolean))).sort((a, b) => {
+    const primaryRows = uniqueRows.map(ticket => ticket.primary);
+    const uniq = (field: keyof TicketRecord) =>
+      Array.from(
+        new Set(primaryRows.map(row => clean(row[field])).filter(Boolean))
+      ).sort();
+    const openingMonths = Array.from(
+      new Set(
+        primaryRows
+          .map(
+            row => row.openingMonthKey || openingMonthKey(row.observationDate)
+          )
+          .filter(Boolean)
+      )
+    ).sort((a, b) => {
       if (a === "Unknown") return 1;
       if (b === "Unknown") return -1;
       return a.localeCompare(b);
     });
-    const exportMonths = Array.from(new Set(uniqueRows.flatMap((ticket) =>
-      ticket.rows.flatMap((row) => coveredMonthKeys(row)),
-    ).filter((key) => key && key !== "Unknown"))).sort((a, b) => a.localeCompare(b));
-    const rcaFamilyOptions = Array.from(new Set(primaryRows.map((row) => row.rcaFamily || getRcaFamily(row.rca)).filter(Boolean))).sort() as string[];
+    const exportMonths = Array.from(
+      new Set(
+        uniqueRows
+          .flatMap(ticket => ticket.rows.flatMap(row => coveredMonthKeys(row)))
+          .filter(key => key && key !== "Unknown")
+      )
+    ).sort((a, b) => a.localeCompare(b));
+    const rcaFamilyOptions = Array.from(
+      new Set(
+        primaryRows
+          .map(row => row.rcaFamily || getRcaFamily(row.rca))
+          .filter(Boolean)
+      )
+    ).sort() as string[];
     return {
       status: uniq("status"),
       severity: uniq("severity"),
@@ -2235,88 +4335,152 @@ export default function Home() {
       impact: uniq("impact"),
       site: uniq("siteId"),
       openingMonth: openingMonths,
-      openingMonthLabels: Object.fromEntries(openingMonths.map((key) => [key, openingMonthLabel(key)])),
+      openingMonthLabels: Object.fromEntries(
+        openingMonths.map(key => [key, openingMonthLabel(key)])
+      ),
       exportMonth: exportMonths,
-      exportMonthLabels: Object.fromEntries(exportMonths.map((key) => [key, openingMonthLabel(key)])),
+      exportMonthLabels: Object.fromEntries(
+        exportMonths.map(key => [key, openingMonthLabel(key)])
+      ),
       rcaFamily: rcaFamilyOptions,
     };
   }, [uniqueRows]);
 
   // Reset page when filters change
-  useEffect(() => { setTablePage(1); }, [filters]);
-  useEffect(() => { setPerfPage(1); }, [perfMonths, perfRegions, filters.openingMonth]);
+  useEffect(() => {
+    setTablePage(1);
+  }, [filters]);
+  useEffect(() => {
+    setPerfPage(1);
+  }, [perfMonths, perfRegions, filters.openingMonth]);
 
   const filteredTickets = useMemo(() => {
     const q = filters.search.toLowerCase().trim();
-    return uniqueRows.filter((ticket) => {
+    return uniqueRows.filter(ticket => {
       const row = ticket.primary;
       const allSites = Array.from(ticket.siteIds).join(" ");
       const allSiteNames = Array.from(ticket.siteNames).join(" ");
       const haystack = [
-        ticket.tt, row.siteId, row.siteName, allSites, allSiteNames,
-        row.managedResource, row.issue, row.status, row.severity, row.region,
-        row.impact, row.escalationLevel, row.escalatedTo, row.rca,
+        ticket.tt,
+        row.siteId,
+        row.siteName,
+        allSites,
+        allSiteNames,
+        row.managedResource,
+        row.issue,
+        row.status,
+        row.severity,
+        row.region,
+        row.impact,
+        row.escalationLevel,
+        row.escalatedTo,
+        row.rca,
         row.rcaFamily || getRcaFamily(row.rca),
-        row.responsibleTeam || getResponsibleTeam(row.rcaFamily || getRcaFamily(row.rca)),
-        row.escalatedForL3SupportDate, row.escalatedForL3SupportTime,
-      ].join(" ").toLowerCase();
+        row.responsibleTeam ||
+          getResponsibleTeam(row.rcaFamily || getRcaFamily(row.rca)),
+        row.escalatedForL3SupportDate,
+        row.escalatedForL3SupportTime,
+      ]
+        .join(" ")
+        .toLowerCase();
       return (
         (!q || haystack.includes(q)) &&
         (!filters.status.length || filters.status.includes(row.status)) &&
         (!filters.severity.length || filters.severity.includes(row.severity)) &&
         (!filters.region.length || filters.region.includes(row.region)) &&
         (!filters.impact.length || filters.impact.includes(row.impact)) &&
-        (!filters.openingMonth.length || filters.openingMonth.includes(row.openingMonthKey || openingMonthKey(row.observationDate))) &&
-        (!filters.site.length || filters.site.some((s) => ticket.siteIds.has(s))) &&
-        (!filters.rcaFamily.length || filters.rcaFamily.includes(row.rcaFamily || getRcaFamily(row.rca)))
+        (!filters.openingMonth.length ||
+          filters.openingMonth.includes(
+            row.openingMonthKey || openingMonthKey(row.observationDate)
+          )) &&
+        (!filters.site.length ||
+          filters.site.some(s => ticket.siteIds.has(s))) &&
+        (!filters.rcaFamily.length ||
+          filters.rcaFamily.includes(row.rcaFamily || getRcaFamily(row.rca)))
       );
     });
   }, [filters, uniqueRows]);
 
   const monthlyExportBaseTickets = useMemo(() => {
     const q = filters.search.toLowerCase().trim();
-    return uniqueRows.filter((ticket) => {
+    return uniqueRows.filter(ticket => {
       const row = ticket.primary;
       const allSites = Array.from(ticket.siteIds).join(" ");
       const allSiteNames = Array.from(ticket.siteNames).join(" ");
       const haystack = [
-        ticket.tt, row.siteId, row.siteName, allSites, allSiteNames,
-        row.managedResource, row.issue, row.status, row.severity, row.region,
-        row.impact, row.escalationLevel, row.escalatedTo, row.rca,
+        ticket.tt,
+        row.siteId,
+        row.siteName,
+        allSites,
+        allSiteNames,
+        row.managedResource,
+        row.issue,
+        row.status,
+        row.severity,
+        row.region,
+        row.impact,
+        row.escalationLevel,
+        row.escalatedTo,
+        row.rca,
         row.rcaFamily || getRcaFamily(row.rca),
-        row.responsibleTeam || getResponsibleTeam(row.rcaFamily || getRcaFamily(row.rca)),
-        row.escalatedForL3SupportDate, row.escalatedForL3SupportTime,
-      ].join(" ").toLowerCase();
+        row.responsibleTeam ||
+          getResponsibleTeam(row.rcaFamily || getRcaFamily(row.rca)),
+        row.escalatedForL3SupportDate,
+        row.escalatedForL3SupportTime,
+      ]
+        .join(" ")
+        .toLowerCase();
       return (
         (!q || haystack.includes(q)) &&
         (!filters.severity.length || filters.severity.includes(row.severity)) &&
         (!filters.region.length || filters.region.includes(row.region)) &&
         (!filters.impact.length || filters.impact.includes(row.impact)) &&
-        (!filters.site.length || filters.site.some((s) => ticket.siteIds.has(s))) &&
-        (!filters.rcaFamily.length || filters.rcaFamily.includes(row.rcaFamily || getRcaFamily(row.rca)))
+        (!filters.site.length ||
+          filters.site.some(s => ticket.siteIds.has(s))) &&
+        (!filters.rcaFamily.length ||
+          filters.rcaFamily.includes(row.rcaFamily || getRcaFamily(row.rca)))
       );
     });
-  }, [filters.impact, filters.rcaFamily, filters.region, filters.search, filters.severity, filters.site, uniqueRows]);
+  }, [
+    filters.impact,
+    filters.rcaFamily,
+    filters.region,
+    filters.search,
+    filters.severity,
+    filters.site,
+    uniqueRows,
+  ]);
 
   const monthlyExportTickets = useMemo(() => {
     // Apply export region filter
-    const regionFiltered = exportRegions.length === 0
-      ? monthlyExportBaseTickets
-      : monthlyExportBaseTickets.filter((ticket) => exportRegions.includes(ticket.primary.region));
+    const regionFiltered =
+      exportRegions.length === 0
+        ? monthlyExportBaseTickets
+        : monthlyExportBaseTickets.filter(ticket =>
+            exportRegions.includes(ticket.primary.region)
+          );
     // Apply export month filter
     if (exportMonths.length === 0) return regionFiltered;
-    return regionFiltered.filter((ticket) => exportMonths.some((m) => ticketMatchesMonthlyExport(ticket, m)));
+    return regionFiltered.filter(ticket =>
+      exportMonths.some(m => ticketMatchesMonthlyExport(ticket, m))
+    );
   }, [exportMonths, exportRegions, monthlyExportBaseTickets]);
 
-  const selectedExportMonthLabel = exportMonths.length === 0 ? "All export-eligible TT" : exportMonths.length === 1 ? openingMonthLabel(exportMonths[0]) : `${exportMonths.length} months`;
+  const selectedExportMonthLabel =
+    exportMonths.length === 0
+      ? "All export-eligible TT"
+      : exportMonths.length === 1
+        ? openingMonthLabel(exportMonths[0])
+        : `${exportMonths.length} months`;
 
   // Monthly Performance rows -- computed from raw rows (not aggregated tickets)
   const siteOrder = data?.siteOrder ?? [];
   const perfRows = useMemo(() => {
     // Filter by region
-    const sourceRows = perfRegions.length === 0
-      ? allDataRows
-      : allDataRows.filter((r) => perfRegions.includes(r.region));
+    const sourceRows =
+      perfRegions.length === 0
+        ? allDataRows
+        : allDataRows.filter(r => perfRegions.includes(r.region));
     // For multi-month: pass "all" if none selected, or the first month if one selected,
     // or compute combined rows for multiple months
     if (perfMonths.length === 0) {
@@ -2326,21 +4490,26 @@ export default function Home() {
     } else {
       // Sum down hours across all selected months per site
       const combined = new Map<string, PerfRow>();
-      perfMonths.forEach((mk) => {
+      perfMonths.forEach(mk => {
         const rows = computePerfRows(sourceRows, mk, siteOrder);
-        rows.forEach((r) => {
+        rows.forEach(r => {
           const existing = combined.get(r.perfKey);
           if (!existing) {
             combined.set(r.perfKey, { ...r });
           } else {
-            existing.sitesDownHours = Math.round((existing.sitesDownHours + r.sitesDownHours) * 10) / 10;
+            existing.sitesDownHours =
+              Math.round((existing.sitesDownHours + r.sitesDownHours) * 10) /
+              10;
             // availHours: recalculate based on total month hours across selected months
           }
         });
       });
       // Recalculate availHours for combined rows
-      const totalMonthHours = perfMonths.reduce((s, mk) => s + totalHoursInMonth(mk), 0);
-      return Array.from(combined.values()).map((r) => {
+      const totalMonthHours = perfMonths.reduce(
+        (s, mk) => s + totalHoursInMonth(mk),
+        0
+      );
+      return Array.from(combined.values()).map(r => {
         const availHours = Math.max(0, totalMonthHours - r.sitesDownHours);
         const totalHrs = availHours + r.sitesDownHours;
         const reliability = totalHrs > 0 ? availHours / totalHrs : 1;
@@ -2360,23 +4529,41 @@ export default function Home() {
 
   const performanceKpiRows = useMemo(() => {
     const q = filters.search.toLowerCase().trim();
-    const sourceRows = allDataRows.filter((row) => {
+    const sourceRows = allDataRows.filter(row => {
       const haystack = [
-        row.tt, row.siteId, row.siteName, row.managedResource, row.issue,
-        row.status, row.severity, row.region, row.impact, row.escalationLevel,
-        row.escalatedTo, row.rca, row.rcaFamily || getRcaFamily(row.rca),
-        row.responsibleTeam || getResponsibleTeam(row.rcaFamily || getRcaFamily(row.rca)),
-        row.escalatedForL3SupportDate, row.escalatedForL3SupportTime,
-      ].join(" ").toLowerCase();
+        row.tt,
+        row.siteId,
+        row.siteName,
+        row.managedResource,
+        row.issue,
+        row.status,
+        row.severity,
+        row.region,
+        row.impact,
+        row.escalationLevel,
+        row.escalatedTo,
+        row.rca,
+        row.rcaFamily || getRcaFamily(row.rca),
+        row.responsibleTeam ||
+          getResponsibleTeam(row.rcaFamily || getRcaFamily(row.rca)),
+        row.escalatedForL3SupportDate,
+        row.escalatedForL3SupportTime,
+      ]
+        .join(" ")
+        .toLowerCase();
       return (
         (!q || haystack.includes(q)) &&
         (!filters.status.length || filters.status.includes(row.status)) &&
         (!filters.severity.length || filters.severity.includes(row.severity)) &&
         (!filters.region.length || filters.region.includes(row.region)) &&
         (!filters.impact.length || filters.impact.includes(row.impact)) &&
-        (!filters.openingMonth.length || filters.openingMonth.includes(row.openingMonthKey || openingMonthKey(row.observationDate))) &&
+        (!filters.openingMonth.length ||
+          filters.openingMonth.includes(
+            row.openingMonthKey || openingMonthKey(row.observationDate)
+          )) &&
         (!filters.site.length || filters.site.includes(row.siteId)) &&
-        (!filters.rcaFamily.length || filters.rcaFamily.includes(row.rcaFamily || getRcaFamily(row.rca)))
+        (!filters.rcaFamily.length ||
+          filters.rcaFamily.includes(row.rcaFamily || getRcaFamily(row.rca)))
       );
     });
 
@@ -2388,19 +4575,24 @@ export default function Home() {
     }
 
     const combined = new Map<string, PerfRow>();
-    filters.openingMonth.forEach((monthKey) => {
-      computePerfRows(sourceRows, monthKey, siteOrder).forEach((row) => {
+    filters.openingMonth.forEach(monthKey => {
+      computePerfRows(sourceRows, monthKey, siteOrder).forEach(row => {
         const existing = combined.get(row.perfKey);
         if (!existing) {
           combined.set(row.perfKey, { ...row });
         } else {
-          existing.sitesDownHours = Math.round((existing.sitesDownHours + row.sitesDownHours) * 10) / 10;
+          existing.sitesDownHours =
+            Math.round((existing.sitesDownHours + row.sitesDownHours) * 10) /
+            10;
         }
       });
     });
 
-    const totalMonthHours = filters.openingMonth.reduce((sum, monthKey) => sum + totalHoursInMonth(monthKey), 0);
-    return Array.from(combined.values()).map((row) => {
+    const totalMonthHours = filters.openingMonth.reduce(
+      (sum, monthKey) => sum + totalHoursInMonth(monthKey),
+      0
+    );
+    return Array.from(combined.values()).map(row => {
       const availHours = Math.max(0, totalMonthHours - row.sitesDownHours);
       const totalHrs = availHours + row.sitesDownHours;
       const reliability = totalHrs > 0 ? availHours / totalHrs : 1;
@@ -2418,37 +4610,45 @@ export default function Home() {
   }, [allDataRows, filters, siteOrder]);
 
   const analytics = useMemo(() => {
-    const primaryRows = filteredTickets.map((ticket) => ticket.primary);
+    const primaryRows = filteredTickets.map(ticket => ticket.primary);
     const totalUnique = filteredTickets.length;
-    const status = countBy(primaryRows, (row) => row.status);
-    const severity = countBy(primaryRows, (row) => row.severity);
-    const region = countBy(primaryRows, (row) => row.region);
-    const impact = countBy(primaryRows, (row) => row.impact);
-    const escalation = countBy(primaryRows, (row) => row.escalationLevel);
+    const status = countBy(primaryRows, row => row.status);
+    const severity = countBy(primaryRows, row => row.severity);
+    const region = countBy(primaryRows, row => row.region);
+    const impact = countBy(primaryRows, row => row.impact);
+    const escalation = countBy(primaryRows, row => row.escalationLevel);
     const trendGrain = filters.openingMonth.length === 0 ? "month" : "week";
-    const trendMap = new Map<string, { key: string; name: string; opened: number; resolved: number }>();
+    const trendMap = new Map<
+      string,
+      { key: string; name: string; opened: number; resolved: number }
+    >();
     const ensureTrendBucket = (key: string) => {
       const fallbackKey = key || "Unknown";
       if (!trendMap.has(fallbackKey)) {
         trendMap.set(fallbackKey, {
           key: fallbackKey,
-          name: trendGrain === "month" ? openingMonthLabel(fallbackKey) : weekLabel(fallbackKey),
+          name:
+            trendGrain === "month"
+              ? openingMonthLabel(fallbackKey)
+              : weekLabel(fallbackKey),
           opened: 0,
           resolved: 0,
         });
       }
       return trendMap.get(fallbackKey)!;
     };
-    primaryRows.forEach((row) => {
-      const openedKey = trendGrain === "month"
-        ? (row.openingMonthKey || openingMonthKey(row.observationDate))
-        : weekKey(row.observationDate);
+    primaryRows.forEach(row => {
+      const openedKey =
+        trendGrain === "month"
+          ? row.openingMonthKey || openingMonthKey(row.observationDate)
+          : weekKey(row.observationDate);
       ensureTrendBucket(openedKey).opened += 1;
 
       if (clean(row.status).toLowerCase().includes("resolved")) {
-        const resolvedKey = trendGrain === "month"
-          ? recordDateMonthKey(row.recoveryDate || row.observationDate)
-          : weekKey(row.recoveryDate || row.observationDate);
+        const resolvedKey =
+          trendGrain === "month"
+            ? recordDateMonthKey(row.recoveryDate || row.observationDate)
+            : weekKey(row.recoveryDate || row.observationDate);
         ensureTrendBucket(resolvedKey).resolved += 1;
       }
     });
@@ -2459,31 +4659,47 @@ export default function Home() {
         return a.localeCompare(b);
       })
       .map(([, value]) => value);
-    const replyTimeTrend = monthly.map((bucket) => {
-      const rowsInBucket = primaryRows.filter((row) => {
-        const key = trendGrain === "month"
-          ? (row.openingMonthKey || openingMonthKey(row.observationDate))
-          : weekKey(row.observationDate);
+    const replyTimeTrend = monthly.map(bucket => {
+      const rowsInBucket = primaryRows.filter(row => {
+        const key =
+          trendGrain === "month"
+            ? row.openingMonthKey || openingMonthKey(row.observationDate)
+            : weekKey(row.observationDate);
         return key === bucket.key;
       });
       return {
         name: bucket.name,
-        frt: Math.round(average(rowsInBucket.map((row) => row.frtHours)) * 10) / 10,
-        response: Math.round(average(rowsInBucket.map((row) => row.responseHours)) * 10) / 10,
-        resolution: Math.round(average(rowsInBucket.map((row) => row.resolutionHours)) * 10) / 10,
+        frt:
+          Math.round(average(rowsInBucket.map(row => row.frtHours)) * 10) / 10,
+        response:
+          Math.round(average(rowsInBucket.map(row => row.responseHours)) * 10) /
+          10,
+        resolution:
+          Math.round(
+            average(rowsInBucket.map(row => row.resolutionHours)) * 10
+          ) / 10,
       };
     });
-    
-    const monthlyResolutionMap = new Map<string, { sum: number; count: number; label: string }>();
-    primaryRows.forEach((row) => {
-      const s = String(row.status ?? "").toLowerCase().trim();
+
+    const monthlyResolutionMap = new Map<
+      string,
+      { sum: number; count: number; label: string }
+    >();
+    primaryRows.forEach(row => {
+      const s = String(row.status ?? "")
+        .toLowerCase()
+        .trim();
       if (s !== "closed" && s !== "resolved") return;
       const hours = parseDurationHours(row.duration);
       if (hours === null || !Number.isFinite(hours) || hours <= 0) return;
       const key = row.openingMonthKey || openingMonthKey(row.observationDate);
       if (!key || key === "Unknown") return;
       const label = openingMonthLabel(key);
-      const bucket = monthlyResolutionMap.get(key) ?? { sum: 0, count: 0, label };
+      const bucket = monthlyResolutionMap.get(key) ?? {
+        sum: 0,
+        count: 0,
+        label,
+      };
       bucket.sum += hours;
       bucket.count += 1;
       monthlyResolutionMap.set(key, bucket);
@@ -2493,8 +4709,8 @@ export default function Home() {
     const nowDate = new Date();
     const currentMonthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, "0")}`;
     const pendingSamples = primaryRows
-      .filter((row) => isPendingStatus(row.status))
-      .map((row) => {
+      .filter(row => isPendingStatus(row.status))
+      .map(row => {
         const obs = combineDateTime(row.observationDate, row.observationTime);
         if (!obs) return null;
         const hours = (nowDate.getTime() - obs.getTime()) / (1000 * 60 * 60);
@@ -2503,7 +4719,9 @@ export default function Home() {
       .filter((v): v is number => v !== null);
 
     const pendingTotal = pendingSamples.reduce((s, v) => s + v, 0);
-    const pendingAvg   = pendingSamples.length ? pendingTotal / pendingSamples.length : 0;
+    const pendingAvg = pendingSamples.length
+      ? pendingTotal / pendingSamples.length
+      : 0;
 
     // Merge both series into a single chart-ready array (one row per month).
     const monthlyResolutionTime = (() => {
@@ -2511,27 +4729,31 @@ export default function Home() {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([key, b]) => ({
           key,
-          name:        b.label,
-          avgHours:    Math.round((b.sum / b.count) * 100) / 100,
-          totalHours:  Math.round(b.sum * 100) / 100,
-          count:       b.count,
-          pendingAvg:   0,
+          name: b.label,
+          avgHours: Math.round((b.sum / b.count) * 100) / 100,
+          totalHours: Math.round(b.sum * 100) / 100,
+          count: b.count,
+          pendingAvg: 0,
           pendingTotal: 0,
           pendingCount: 0,
         }));
       if (pendingSamples.length) {
-        let idx = arr.findIndex((m) => m.key === currentMonthKey);
+        let idx = arr.findIndex(m => m.key === currentMonthKey);
         if (idx === -1) {
           arr.push({
             key: currentMonthKey,
             name: openingMonthLabel(currentMonthKey),
-            avgHours: 0, totalHours: 0, count: 0,
-            pendingAvg: 0, pendingTotal: 0, pendingCount: 0,
+            avgHours: 0,
+            totalHours: 0,
+            count: 0,
+            pendingAvg: 0,
+            pendingTotal: 0,
+            pendingCount: 0,
           });
           arr.sort((a, b) => a.key.localeCompare(b.key));
-          idx = arr.findIndex((m) => m.key === currentMonthKey);
+          idx = arr.findIndex(m => m.key === currentMonthKey);
         }
-        arr[idx].pendingAvg   = Math.round(pendingAvg * 100) / 100;
+        arr[idx].pendingAvg = Math.round(pendingAvg * 100) / 100;
         arr[idx].pendingTotal = Math.round(pendingTotal * 100) / 100;
         arr[idx].pendingCount = pendingSamples.length;
       }
@@ -2540,27 +4762,39 @@ export default function Home() {
 
     // Grand mean retained for any consumer that still wants a single number.
     const resolutionSamples = primaryRows
-      .filter((row) => {
-        const s = String(row.status ?? "").toLowerCase().trim();
+      .filter(row => {
+        const s = String(row.status ?? "")
+          .toLowerCase()
+          .trim();
         return s === "closed" || s === "resolved";
       })
-      .map((row) => parseDurationHours(row.duration))
+      .map(row => parseDurationHours(row.duration))
       .filter((v): v is number => v !== null && Number.isFinite(v) && v > 0);
 
     const avgReplyTime = {
-      frt:        average(primaryRows.map((row) => row.frtHours)),
-      response:   average(primaryRows.map((row) => row.responseHours)),
+      frt: average(primaryRows.map(row => row.frtHours)),
+      response: average(primaryRows.map(row => row.responseHours)),
       resolution: resolutionSamples.length
-        ? resolutionSamples.reduce((sum, v) => sum + v, 0) / resolutionSamples.length
+        ? resolutionSamples.reduce((sum, v) => sum + v, 0) /
+          resolutionSamples.length
         : 0,
     };
 
-    const avgHoursSource = primaryRows.map((row) => parseDurationHours(row.duration)).filter((value): value is number => value !== null);
-    const avgHours = avgHoursSource.length ? avgHoursSource.reduce((sum, value) => sum + value, 0) / avgHoursSource.length : 0;
-    const uniqueSites = new Set(performanceKpiRows.map((row) => normalizeSiteId(clean(row.siteId)).toUpperCase()).filter(isRfSiteId)).size;
+    const avgHoursSource = primaryRows
+      .map(row => parseDurationHours(row.duration))
+      .filter((value): value is number => value !== null);
+    const avgHours = avgHoursSource.length
+      ? avgHoursSource.reduce((sum, value) => sum + value, 0) /
+        avgHoursSource.length
+      : 0;
+    const uniqueSites = new Set(
+      performanceKpiRows
+        .map(row => normalizeSiteId(clean(row.siteId)).toUpperCase())
+        .filter(isRfSiteId)
+    ).size;
     const sourceSiteSets = new Map<string, Set<string>>();
-    filteredTickets.forEach((ticket) => {
-      ticket.rows.forEach((row) => {
+    filteredTickets.forEach(ticket => {
+      ticket.rows.forEach(row => {
         const siteId = normalizeSiteId(clean(row.siteId)).toUpperCase();
         if (!isRfSiteId(siteId)) return;
         const source = row.region || row.sourceFile || "Workbook";
@@ -2568,39 +4802,74 @@ export default function Home() {
         sourceSiteSets.get(source)!.add(siteId);
       });
     });
-    const regionSiteTotal = Array.from(sourceSiteSets.values()).reduce((sum, siteIds) => sum + siteIds.size, 0);
-    const rootCauseUpdated = primaryRows.filter((row) => row.actionTaken || !rcaNotProvided(row.rca)).length;
-    const totalSiteAffected = filteredTickets.reduce((sum, ticket) => sum + Math.max(ticket.siteIds.size, ticket.primary.siteId ? 1 : 0), 0);
-    const rcaByCount = countBy(primaryRows, (row) => rcaNotProvided(row.rca) ? "RCA not Provided" : row.rca);
+    const regionSiteTotal = Array.from(sourceSiteSets.values()).reduce(
+      (sum, siteIds) => sum + siteIds.size,
+      0
+    );
+    const rootCauseUpdated = primaryRows.filter(
+      row => row.actionTaken || !rcaNotProvided(row.rca)
+    ).length;
+    const totalSiteAffected = filteredTickets.reduce(
+      (sum, ticket) =>
+        sum + Math.max(ticket.siteIds.size, ticket.primary.siteId ? 1 : 0),
+      0
+    );
+    const rcaByCount = countBy(primaryRows, row =>
+      rcaNotProvided(row.rca) ? "RCA not Provided" : row.rca
+    );
     const topRcaByCount = rcaByCount[0] ?? { name: "", value: 0 };
-    const downtimeByRcaMap = new Map<string, { name: string; value: number; count: number }>();
-    primaryRows.forEach((row) => {
+    const downtimeByRcaMap = new Map<
+      string,
+      { name: string; value: number; count: number }
+    >();
+    primaryRows.forEach(row => {
       const name = rcaNotProvided(row.rca) ? "RCA not Provided" : row.rca;
       const hours = parseDurationHours(row.duration) ?? 0;
-      const current = downtimeByRcaMap.get(name) ?? { name, value: 0, count: 0 };
+      const current = downtimeByRcaMap.get(name) ?? {
+        name,
+        value: 0,
+        count: 0,
+      };
       current.value += hours;
       if (hours) current.count += 1;
       downtimeByRcaMap.set(name, current);
     });
-    const downtimeByRca = Array.from(downtimeByRcaMap.values()).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+    const downtimeByRca = Array.from(downtimeByRcaMap.values()).sort(
+      (a, b) => b.value - a.value || a.name.localeCompare(b.name)
+    );
     const mttrByRca = Array.from(downtimeByRcaMap.values())
-      .map((item) => ({ name: item.name, value: item.count ? item.value / item.count : 0, count: item.count }))
+      .map(item => ({
+        name: item.name,
+        value: item.count ? item.value / item.count : 0,
+        count: item.count,
+      }))
       .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
     const repeatedSiteRcaMap = new Map<string, number>();
-    primaryRows.forEach((row) => {
+    primaryRows.forEach(row => {
       const site = row.siteId || "Blank";
       const rca = rcaNotProvided(row.rca) ? "RCA not Provided" : row.rca;
       const key = `${site}||${rca}`;
       repeatedSiteRcaMap.set(key, (repeatedSiteRcaMap.get(key) ?? 0) + 1);
     });
-    const repeatedRcaSites = Array.from(repeatedSiteRcaMap.values()).filter((value) => value > 1).length;
-    const rcaNotProvidedCount = primaryRows.filter((row) => rcaNotProvided(row.rca)).length;
-    const preventableCount = primaryRows.filter((row) => (row.preventability || getPreventability(row.rca)) === "Preventable").length;
-    const rcaFamily = countBy(primaryRows, (row) => row.rcaFamily || getRcaFamily(row.rca));
+    const repeatedRcaSites = Array.from(repeatedSiteRcaMap.values()).filter(
+      value => value > 1
+    ).length;
+    const rcaNotProvidedCount = primaryRows.filter(row =>
+      rcaNotProvided(row.rca)
+    ).length;
+    const preventableCount = primaryRows.filter(
+      row =>
+        (row.preventability || getPreventability(row.rca)) === "Preventable"
+    ).length;
+    const rcaFamily = countBy(
+      primaryRows,
+      row => row.rcaFamily || getRcaFamily(row.rca)
+    );
     const siteNameById = new Map<string, string>();
-    filteredTickets.forEach((ticket) => {
-      ticket.rows.forEach((row) => {
-        if (row.siteId && row.siteName && !siteNameById.has(row.siteId)) siteNameById.set(row.siteId, row.siteName);
+    filteredTickets.forEach(ticket => {
+      ticket.rows.forEach(row => {
+        if (row.siteId && row.siteName && !siteNameById.has(row.siteId))
+          siteNameById.set(row.siteId, row.siteName);
       });
     });
     const siteLabel = (siteId: string) => {
@@ -2608,30 +4877,56 @@ export default function Home() {
       if (!siteId || siteId === "Blank") return "Blank";
       return siteName ? `${siteId} -- ${siteName}` : siteId;
     };
-    const siteMap = new Map<string, { name: string; value: number; exposure?: number }>();
-    filteredTickets.forEach((ticket) => {
-      const sites = ticket.siteIds.size ? Array.from(ticket.siteIds) : [ticket.primary.siteId || "Blank"];
-      sites.forEach((site) => {
-        const current = siteMap.get(site) ?? { name: siteLabel(site), value: 0 };
+    const siteMap = new Map<
+      string,
+      { name: string; value: number; exposure?: number }
+    >();
+    filteredTickets.forEach(ticket => {
+      const sites = ticket.siteIds.size
+        ? Array.from(ticket.siteIds)
+        : [ticket.primary.siteId || "Blank"];
+      sites.forEach(site => {
+        const current = siteMap.get(site) ?? {
+          name: siteLabel(site),
+          value: 0,
+        };
         current.value += 1;
         siteMap.set(site, current);
       });
     });
-    const topSites = Array.from(siteMap.values()).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name)).slice(0, 12);
+    const topSites = Array.from(siteMap.values())
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
+      .slice(0, 12);
     const preventableBreakdown = [
       { name: "Preventable", value: preventableCount },
       { name: "Non-preventable", value: primaryRows.length - preventableCount },
-    ].filter((item) => item.value > 0);
+    ].filter(item => item.value > 0);
 
-    const RCA_FAMILIES = ["Power & Environment", "Fiber & Physical", "Transmission & Link", "Hardware & Device", "Configuration / Software", "Human / Process / Planned", "Other / Review"];
-    const monthlyRcaFamilyMap = new Map<string, Record<string, string | number>>();
-    primaryRows.forEach((row) => {
+    const RCA_FAMILIES = [
+      "Power & Environment",
+      "Fiber & Physical",
+      "Transmission & Link",
+      "Hardware & Device",
+      "Configuration / Software",
+      "Human / Process / Planned",
+      "Other / Review",
+    ];
+    const monthlyRcaFamilyMap = new Map<
+      string,
+      Record<string, string | number>
+    >();
+    primaryRows.forEach(row => {
       const key = row.openingMonthKey || openingMonthKey(row.observationDate);
       if (!key || key === "Unknown") return;
       const family = row.rcaFamily || getRcaFamily(row.rca);
       if (!monthlyRcaFamilyMap.has(key)) {
-        const entry: Record<string, string | number> = { monthKey: key, name: openingMonthLabel(key) };
-        RCA_FAMILIES.forEach((f) => { entry[f] = 0; });
+        const entry: Record<string, string | number> = {
+          monthKey: key,
+          name: openingMonthLabel(key),
+        };
+        RCA_FAMILIES.forEach(f => {
+          entry[f] = 0;
+        });
         monthlyRcaFamilyMap.set(key, entry);
       }
       const entry = monthlyRcaFamilyMap.get(key)!;
@@ -2641,19 +4936,50 @@ export default function Home() {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([, value]) => value);
 
-    const managedResourceByCount = countBy(primaryRows, (row) => row.managedResource || "Unknown");
+    const managedResourceByCount = countBy(
+      primaryRows,
+      row => row.managedResource || "Unknown"
+    );
     const topManagedResources = managedResourceByCount.slice(0, 12);
 
     return {
-      totalUnique, status, severity, region, impact, escalation, monthly, trendGrain, replyTimeTrend, avgReplyTime, monthlyResolutionTime, avgHours,
-      uniqueSites, regionSiteTotal, rootCauseUpdated, totalSiteAffected, topSites, rcaByCount, rcaFamily,
+      totalUnique,
+      status,
+      severity,
+      region,
+      impact,
+      escalation,
+      monthly,
+      trendGrain,
+      replyTimeTrend,
+      avgReplyTime,
+      monthlyResolutionTime,
+      avgHours,
+      uniqueSites,
+      regionSiteTotal,
+      rootCauseUpdated,
+      totalSiteAffected,
+      topSites,
+      rcaByCount,
+      rcaFamily,
       topRcaByCount,
       topRcaByDowntime: downtimeByRca[0] ?? { name: "", value: 0, count: 0 },
       highestMttrRca: mttrByRca[0] ?? { name: "", value: 0, count: 0 },
-      repeatedRcaSites, rcaNotProvidedCount, preventableCount,
-      rcaByDowntime: downtimeByRca.map((item) => ({ name: item.name, value: Math.round(item.value * 10) / 10 })),
-      rcaByMttr: mttrByRca.map((item) => ({ name: item.name, value: Math.round(item.value * 10) / 10 })),
-      preventableBreakdown, monthlyRcaFamily, rcaFamilyKeys: RCA_FAMILIES, topManagedResources,
+      repeatedRcaSites,
+      rcaNotProvidedCount,
+      preventableCount,
+      rcaByDowntime: downtimeByRca.map(item => ({
+        name: item.name,
+        value: Math.round(item.value * 10) / 10,
+      })),
+      rcaByMttr: mttrByRca.map(item => ({
+        name: item.name,
+        value: Math.round(item.value * 10) / 10,
+      })),
+      preventableBreakdown,
+      monthlyRcaFamily,
+      rcaFamilyKeys: RCA_FAMILIES,
+      topManagedResources,
     };
   }, [filteredTickets, filters.openingMonth, performanceKpiRows]);
 
@@ -2665,8 +4991,14 @@ export default function Home() {
   const minor = metricValue(analytics.severity, "Minor");
   const serviceImpact = metricValue(analytics.impact, "Service Impact");
   const nonServiceImpact = metricValue(analytics.impact, "Non-Service Impact");
-  const rcaNotProvidedPct = pct(analytics.rcaNotProvidedCount, analytics.totalUnique);
-  const preventableRcaPct = pct(analytics.preventableCount, analytics.totalUnique);
+  const rcaNotProvidedPct = pct(
+    analytics.rcaNotProvidedCount,
+    analytics.totalUnique
+  );
+  const preventableRcaPct = pct(
+    analytics.preventableCount,
+    analytics.totalUnique
+  );
   function scrollToTopCards() {
     // Scroll to the filters card. Fall back to the stats grid if filters
     // aren't mounted (e.g. before a workbook is loaded).
@@ -2679,27 +5011,43 @@ export default function Home() {
   }
 
   const ticketExportMetrics = useMemo(() => {
-    const closedOrResolved = monthlyExportTickets.filter((ticket) => {
+    const closedOrResolved = monthlyExportTickets.filter(ticket => {
       const status = clean(ticket.primary.status).toLowerCase();
       return status === "closed" || status === "resolved";
     }).length;
-    const pendingCount = monthlyExportTickets.filter((ticket) => clean(ticket.primary.status).toLowerCase() === "pending").length;
-    const criticalCount = monthlyExportTickets.filter((ticket) => clean(ticket.primary.severity).toLowerCase() === "critical").length;
+    const pendingCount = monthlyExportTickets.filter(
+      ticket => clean(ticket.primary.status).toLowerCase() === "pending"
+    ).length;
+    const criticalCount = monthlyExportTickets.filter(
+      ticket => clean(ticket.primary.severity).toLowerCase() === "critical"
+    ).length;
     return { closedOrResolved, pendingCount, criticalCount };
   }, [monthlyExportTickets]);
 
   const performanceExportMetrics = useMemo(() => {
-    const scopedSourceRows = allDataRows.filter((row) => {
-      const regionMatch = perfRegions.length === 0 || perfRegions.includes(row.region);
-      const monthMatch = perfMonths.length === 0 || coveredMonthKeys(row).some((monthKey) => perfMonths.includes(monthKey));
+    const scopedSourceRows = allDataRows.filter(row => {
+      const regionMatch =
+        perfRegions.length === 0 || perfRegions.includes(row.region);
+      const monthMatch =
+        perfMonths.length === 0 ||
+        coveredMonthKeys(row).some(monthKey => perfMonths.includes(monthKey));
       return regionMatch && monthMatch;
     });
-    const scopedSiteIds = new Set(scopedSourceRows.map((row) => clean(row.siteId)).filter(isRfSiteId));
+    const scopedSiteIds = new Set(
+      scopedSourceRows.map(row => clean(row.siteId)).filter(isRfSiteId)
+    );
     const rfPerfRows = scopedSiteIds.size
-      ? perfRows.filter((row) => scopedSiteIds.has(clean(row.siteId)))
-      : perfRows.filter((row) => isRfSiteId(row.siteId));
-    const rfSiteIds = new Set(rfPerfRows.map((row) => clean(row.siteId)).filter(isRfSiteId));
-    const affectedIds = new Set(rfPerfRows.filter((row) => row.sitesDownHours > 0).map((row) => clean(row.siteId)).filter(isRfSiteId));
+      ? perfRows.filter(row => scopedSiteIds.has(clean(row.siteId)))
+      : perfRows.filter(row => isRfSiteId(row.siteId));
+    const rfSiteIds = new Set(
+      rfPerfRows.map(row => clean(row.siteId)).filter(isRfSiteId)
+    );
+    const affectedIds = new Set(
+      rfPerfRows
+        .filter(row => row.sitesDownHours > 0)
+        .map(row => clean(row.siteId))
+        .filter(isRfSiteId)
+    );
     return {
       totalSites: rfSiteIds.size,
       affectedSites: affectedIds.size,
@@ -2725,19 +5073,84 @@ export default function Home() {
         <Search size={16} />
         <input
           value={filters.search}
-          onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
+          onChange={event =>
+            setFilters(prev => ({ ...prev, search: event.target.value }))
+          }
           placeholder="Search..."
           style={{ width: "100%" }}
         />
       </label>
-      <div style={{ width: "100%", overflow: "hidden" }}><MultiSelectFilter label="Status" value={filters.status} options={filterOptions.status} onChange={(value) => setFilters((prev) => ({ ...prev, status: value }))} /></div>
-      <div style={{ width: "100%", overflow: "hidden" }}><MultiSelectFilter label="Severity" value={filters.severity} options={filterOptions.severity} onChange={(value) => setFilters((prev) => ({ ...prev, severity: value }))} /></div>
-      <div style={{ width: "100%", overflow: "hidden" }}><MultiSelectFilter label="Region" value={filters.region} options={filterOptions.region} onChange={(value) => setFilters((prev) => ({ ...prev, region: value }))} /></div>
-      <div style={{ width: "100%", overflow: "hidden" }}><MultiSelectFilter label="Impact" value={filters.impact} options={filterOptions.impact} onChange={(value) => setFilters((prev) => ({ ...prev, impact: value }))} /></div>
-      <div style={{ width: "100%", overflow: "hidden" }}><MultiSelectFilter label="Opening Month" value={filters.openingMonth} options={filterOptions.openingMonth} optionLabels={filterOptions.openingMonthLabels} onChange={(value) => setFilters((prev) => ({ ...prev, openingMonth: value }))} /></div>
-      <div style={{ width: "100%", overflow: "hidden" }}><MultiSelectFilter label="Site" value={filters.site} options={filterOptions.site} onChange={(value) => setFilters((prev) => ({ ...prev, site: value }))} /></div>
-      <div style={{ width: "100%", overflow: "hidden" }}><MultiSelectFilter label="RCA Family" value={filters.rcaFamily} options={filterOptions.rcaFamily} onChange={(value) => setFilters((prev) => ({ ...prev, rcaFamily: value }))} /></div>
-      <button className="ghost-button" style={{ margin: 0, whiteSpace: "nowrap" }} onClick={() => { setFilters(EMPTY_FILTERS); setTablePage(1); }}><Filter size={16} /> Clear</button>
+      <div style={{ width: "100%", overflow: "hidden" }}>
+        <MultiSelectFilter
+          label="Status"
+          value={filters.status}
+          options={filterOptions.status}
+          onChange={value => setFilters(prev => ({ ...prev, status: value }))}
+        />
+      </div>
+      <div style={{ width: "100%", overflow: "hidden" }}>
+        <MultiSelectFilter
+          label="Severity"
+          value={filters.severity}
+          options={filterOptions.severity}
+          onChange={value => setFilters(prev => ({ ...prev, severity: value }))}
+        />
+      </div>
+      <div style={{ width: "100%", overflow: "hidden" }}>
+        <MultiSelectFilter
+          label="Region"
+          value={filters.region}
+          options={filterOptions.region}
+          onChange={value => setFilters(prev => ({ ...prev, region: value }))}
+        />
+      </div>
+      <div style={{ width: "100%", overflow: "hidden" }}>
+        <MultiSelectFilter
+          label="Impact"
+          value={filters.impact}
+          options={filterOptions.impact}
+          onChange={value => setFilters(prev => ({ ...prev, impact: value }))}
+        />
+      </div>
+      <div style={{ width: "100%", overflow: "hidden" }}>
+        <MultiSelectFilter
+          label="Opening Month"
+          value={filters.openingMonth}
+          options={filterOptions.openingMonth}
+          optionLabels={filterOptions.openingMonthLabels}
+          onChange={value =>
+            setFilters(prev => ({ ...prev, openingMonth: value }))
+          }
+        />
+      </div>
+      <div style={{ width: "100%", overflow: "hidden" }}>
+        <MultiSelectFilter
+          label="Site"
+          value={filters.site}
+          options={filterOptions.site}
+          onChange={value => setFilters(prev => ({ ...prev, site: value }))}
+        />
+      </div>
+      <div style={{ width: "100%", overflow: "hidden" }}>
+        <MultiSelectFilter
+          label="RCA Family"
+          value={filters.rcaFamily}
+          options={filterOptions.rcaFamily}
+          onChange={value =>
+            setFilters(prev => ({ ...prev, rcaFamily: value }))
+          }
+        />
+      </div>
+      <button
+        className="ghost-button"
+        style={{ margin: 0, whiteSpace: "nowrap" }}
+        onClick={() => {
+          setFilters(EMPTY_FILTERS);
+          setTablePage(1);
+        }}
+      >
+        <Filter size={16} /> Clear
+      </button>
     </section>
   ) : null;
 
@@ -2762,58 +5175,79 @@ export default function Home() {
             <HeaderRightLogo />
           </div>
           <div className="topbar-actions">
-            {data && <button className="ghost-button" onClick={() => addRegionRef.current?.click()}><UploadCloud size={30} /> Add region</button>}
-            {data && <button className="ghost-button" onClick={() => inputRef.current?.click()}><RefreshCw size={30} /> New workbook</button>}
-            {data && <button className="primary-button" onClick={() => window.print()}><Printer size={30} /> Dashboard PDF</button>} 
+            {data && (
+              <button
+                className="ghost-button"
+                onClick={() => addRegionRef.current?.click()}
+              >
+                <UploadCloud size={30} /> Add region
+              </button>
+            )}
+            {data && (
+              <button
+                className="ghost-button"
+                onClick={() => inputRef.current?.click()}
+              >
+                <RefreshCw size={30} /> New workbook
+              </button>
+            )}
+            {data && (
+              <button className="primary-button" onClick={() => window.print()}>
+                <Printer size={30} /> Dashboard PDF
+              </button>
+            )}
           </div>
         </nav>
         {filtersPanel}
-        
+
         {data && (
           <>
-            <div 
-              className="hero-export-row no-print export-row-dual" 
-              style={{ 
-                display: "grid", 
-                gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", 
-                gap: "18px",                                                   
-                justifyContent: "center",                                      
+            <div
+              className="hero-export-row no-print export-row-dual"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+                gap: "18px",
+                justifyContent: "center",
                 width: "100%",
                 marginBottom: "-12px", // Pulls up the next sibling element (KPIs)
-                marginTop: "0px" 
+                marginTop: "0px",
               }}
             >
+              {/* ===== CARD 1: Monthly Tickets Table ===== */}
+              <aside
+                className="hero-export-card hero-export-card--5col report-export-card report-export-card--tickets"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  width: "100%",
+                }}
+              >
+                <div
+                  className="hero-export-copy"
+                  style={{
+                    marginBottom: "2px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    textAlign: "center",
+                    width: "100%",
+                  }}
+                >
+                  <span>Monthly Tickets Export</span>
 
-{/* ===== CARD 1: Monthly Tickets Table ===== */}
-<aside 
-  className="hero-export-card hero-export-card--5col report-export-card report-export-card--tickets" 
-  style={{ display: "flex", flexDirection: "column", width: "100%" }}
->
-  <div 
-    className="hero-export-copy" 
-    style={{ 
-      marginBottom: "2px",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      textAlign: "center",
-      width: "100%"
-    }}
-  >
+                  <strong>
+                    Total Tickets —{" "}
+                    {exportMonths.length === 0
+                      ? "All Months"
+                      : exportMonths.length === 1
+                        ? (filterOptions.exportMonthLabels?.[exportMonths[0]] ??
+                          exportMonths[0])
+                        : `${exportMonths.length} months`}
+                  </strong>
+                </div>
 
-<span>Monthly Tickets Export</span>
-
-<strong>
-  Total Tickets — {exportMonths.length === 0
-    ? "All Months"
-    : exportMonths.length === 1
-    ? filterOptions.exportMonthLabels?.[exportMonths[0]] ?? exportMonths[0]
-    : `${exportMonths.length} months`}
-</strong>
-
-</div>
-
-{/* Report card chips paused until final layout decision.
+                {/* Report card chips paused until final layout decision.
 <div className="report-export-metrics">
   <span><b>{monthlyExportTickets.length}</b>Total TT</span>
   <span><b>{ticketExportMetrics.closedOrResolved}</b>Resolved</span>
@@ -2822,73 +5256,114 @@ export default function Home() {
 </div>
 */}
 
-<div className="report-export-filters">
-  <div style={{ flex: 1, minWidth: 0 }}>
-    <MultiSelectFilter
-      label="Report Month"
-      value={exportMonths}
-      options={filterOptions.exportMonth}
-      optionLabels={filterOptions.exportMonthLabels}
-      onChange={setExportMonths}
-      showAllOption
-    />
-  </div>
-  <div style={{ flex: 1, minWidth: 0 }}>
-    <MultiSelectFilter
-      label="Region"
-      value={exportRegions}
-      options={filterOptions.region}
-      onChange={setExportRegions}
-      showAllOption
-    />
-  </div>
-</div>
+                <div className="report-export-filters">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <MultiSelectFilter
+                      label="Report Month"
+                      value={exportMonths}
+                      options={filterOptions.exportMonth}
+                      optionLabels={filterOptions.exportMonthLabels}
+                      onChange={setExportMonths}
+                      showAllOption
+                    />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <MultiSelectFilter
+                      label="Region"
+                      value={exportRegions}
+                      options={filterOptions.region}
+                      onChange={setExportRegions}
+                      showAllOption
+                    />
+                  </div>
+                </div>
 
-{/* Swapped marginTop auto to 4px to force-close the layout gap */}
-<div 
-  className="hero-export-actions report-export-actions" 
-  style={{ 
-    display: "flex",
-    justifyContent: "center", 
-    alignItems: "center",
-    width: "100%"
-  }}
->
-  <button className="ghost-button" onClick={() => exportTicketTemplate(monthlyExportTickets, exportMonths[0] ?? "all")}><FileSpreadsheet size={16} /> Excel</button>
-  <button className="ghost-button" onClick={() => exportPdf(monthlyExportTickets, exportMonths[0] ?? "all")}><Printer size={16} /> PDF</button>
-  {/* ====== ADD YOUR NEW PPT BUTTON HERE ====== */}
-  <button className="ghost-button" onClick={() => {const currentMonthLabel = exportMonths.length === 1 ? (filterOptions.exportMonthLabels?.[exportMonths[0]] ?? exportMonths[0]) : "All"; exportTicketsPpt(monthlyExportTickets, currentMonthLabel); }}                 style={{ display: "flex", alignItems: "center", gap: "8px" }}> <Presentation size={16} /> PPT </button>
-</div>
-                
-</aside>
+                {/* Swapped marginTop auto to 4px to force-close the layout gap */}
+                <div
+                  className="hero-export-actions report-export-actions"
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    width: "100%",
+                  }}
+                >
+                  <button
+                    className="ghost-button"
+                    onClick={() =>
+                      exportTicketTemplate(
+                        monthlyExportTickets,
+                        exportMonths[0] ?? "all"
+                      )
+                    }
+                  >
+                    <FileSpreadsheet size={16} /> Excel
+                  </button>
+                  <button
+                    className="ghost-button"
+                    onClick={() =>
+                      exportPdf(monthlyExportTickets, exportMonths[0] ?? "all")
+                    }
+                  >
+                    <Printer size={16} /> PDF
+                  </button>
+                  {/* ====== ADD YOUR NEW PPT BUTTON HERE ====== */}
+                  <button
+                    className="ghost-button"
+                    onClick={() => {
+                      const currentMonthLabel =
+                        exportMonths.length === 1
+                          ? (filterOptions.exportMonthLabels?.[
+                              exportMonths[0]
+                            ] ?? exportMonths[0])
+                          : "All";
+                      exportTicketsPpt(monthlyExportTickets, currentMonthLabel);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    {" "}
+                    <Presentation size={16} /> PPT{" "}
+                  </button>
+                </div>
+              </aside>
 
-{/* ===== CARD 2: Monthly Performance Table ===== */}
-  <aside 
-    className="hero-export-card hero-export-card--5col report-export-card report-export-card--performance" 
-    style={{ display: "flex", flexDirection: "column", width: "100%" }}
-  >
-    <div 
-      className="hero-export-copy" 
-      style={{ 
-        marginBottom: "2px",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        textAlign: "center",
-        width: "100%"
-      }}
-    >
-      <span>Monthly Performance</span>
-      <strong>
-        Sites Performance — {perfMonths.length === 0
-          ? "All Months"
-          : perfMonths.length === 1
-          ? filterOptions.exportMonthLabels?.[perfMonths[0]] ?? perfMonths[0]
-          : `${perfMonths.length} months`}
-      </strong>
-    </div>
+              {/* ===== CARD 2: Monthly Performance Table ===== */}
+              <aside
+                className="hero-export-card hero-export-card--5col report-export-card report-export-card--performance"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  width: "100%",
+                }}
+              >
+                <div
+                  className="hero-export-copy"
+                  style={{
+                    marginBottom: "2px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    textAlign: "center",
+                    width: "100%",
+                  }}
+                >
+                  <span>Monthly Performance</span>
+                  <strong>
+                    Sites Performance —{" "}
+                    {perfMonths.length === 0
+                      ? "All Months"
+                      : perfMonths.length === 1
+                        ? (filterOptions.exportMonthLabels?.[perfMonths[0]] ??
+                          perfMonths[0])
+                        : `${perfMonths.length} months`}
+                  </strong>
+                </div>
 
-    {/* Report card chips paused until final layout decision.
+                {/* Report card chips paused until final layout decision.
     <div className="report-export-metrics">
       <span><b>{performanceExportMetrics.totalSites}</b>Total RF Sites</span>
       <span><b>{performanceExportMetrics.affectedSites}</b>Affected</span>
@@ -2897,107 +5372,231 @@ export default function Home() {
     </div>
     */}
 
-    <div className="report-export-filters">
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <MultiSelectFilter
-          label="Report Month"
-          value={perfMonths}
-          options={filterOptions.exportMonth}
-          optionLabels={filterOptions.exportMonthLabels}
-          onChange={setPerfMonths}
-          showAllOption
-        />
-      </div>
+                <div className="report-export-filters">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <MultiSelectFilter
+                      label="Report Month"
+                      value={perfMonths}
+                      options={filterOptions.exportMonth}
+                      optionLabels={filterOptions.exportMonthLabels}
+                      onChange={setPerfMonths}
+                      showAllOption
+                    />
+                  </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <MultiSelectFilter
-          label="Region"
-          value={perfRegions}
-          options={filterOptions.region}
-          onChange={setPerfRegions}
-          showAllOption
-        />
-      </div>
-    </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <MultiSelectFilter
+                      label="Region"
+                      value={perfRegions}
+                      options={filterOptions.region}
+                      onChange={setPerfRegions}
+                      showAllOption
+                    />
+                  </div>
+                </div>
 
-    <div 
-      className="hero-export-actions report-export-actions" 
-      style={{ 
-        display: "flex",
-        justifyContent: "center", 
-        alignItems: "center",
-        width: "100%"
-      }}
-    >
-      <button className="ghost-button" onClick={() => exportPerfTemplate(perfRows, perfMonths[0] ?? "all", perfRegions)}><FileSpreadsheet size={16} /> Excel</button>
-      <button className="ghost-button" onClick={() => exportPerfPdf(perfRows, perfMonths[0] ?? "all")}><Printer size={16} /> PDF</button>
-      <button className="ghost-button" onClick={() => { const lbl = perfMonths.length === 1 ? (filterOptions.exportMonthLabels?.[perfMonths[0]] ?? perfMonths[0]) : perfMonths.length > 1 ? `${perfMonths.length} months` : "All"; exportPerfPpt(perfRows, lbl);}}><Presentation size={16} /> PPT</button>
-    </div>
-  </aside>
-</div>
+                <div
+                  className="hero-export-actions report-export-actions"
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    width: "100%",
+                  }}
+                >
+                  <button
+                    className="ghost-button"
+                    onClick={() =>
+                      exportPerfTemplate(
+                        perfRows,
+                        perfMonths[0] ?? "all",
+                        perfRegions
+                      )
+                    }
+                  >
+                    <FileSpreadsheet size={16} /> Excel
+                  </button>
+                  <button
+                    className="ghost-button"
+                    onClick={() =>
+                      exportPerfPdf(perfRows, perfMonths[0] ?? "all")
+                    }
+                  >
+                    <Printer size={16} /> PDF
+                  </button>
+                  <button
+                    className="ghost-button"
+                    onClick={() => {
+                      const lbl =
+                        perfMonths.length === 1
+                          ? (filterOptions.exportMonthLabels?.[perfMonths[0]] ??
+                            perfMonths[0])
+                          : perfMonths.length > 1
+                            ? `${perfMonths.length} months`
+                            : "All";
+                      exportPerfPpt(perfRows, lbl);
+                    }}
+                  >
+                    <Presentation size={16} /> PPT
+                  </button>
+                </div>
+              </aside>
+            </div>
 
-{/* KPI Summary tiles -- live with dashboard filters */}
-{performanceKpiRows.length > 0 && (() => {
-  const kpi = computePerfKPIs(performanceKpiRows);
-  return (
-  <div className="hero-export-row no-print" style={{ paddingBottom: 0, paddingTop: 0, marginTop: "4px" }}>
-    {/* Added justify-content: center to align tiles horizontally */}
-    <div className="perf-kpi-row" style={{ display: "flex", justifyContent: "center", gap: "24px", flexWrap: "wrap" }}>
-      {([
-        { label: "% Availability", value: kpi.pctAvailability, color: "#ff0000" },
-        { label: "MTTR", value: kpi.mttr, color: "#f59e0b" },
-        { label: "MTBF", value: kpi.mtbf, color: "#3b82f6" },
-        { label: "MTTF", value: kpi.mttf, color: "#a78bfa" },
-        { label: "Affected Sites", value: String(kpi.affectedSites), color: "#f43f5e" },
-        { label: "Non-Affected Sites", value: String(kpi.nonAffectedSites), color: "#10b981" },
-        { label: "Total Down", value: kpi.totalDownHrs, color: "#fb923c" },
-      ] as { label: string; value: string; color: string }[]).map(({ label, value, color }) => (
-        <div 
-          key={label} 
-          className="perf-kpi-tile" 
-          style={{ ["--kpi-color" as string]: color, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}
-        >
-          <div className="perf-kpi-label" style={{ fontSize: "16px", fontWeight: 1000 }}>
-            {label}
-          </div>
-          <div className="perf-kpi-value" style={{ color, fontSize: "24px", fontWeight: 1000 }}>
-            {value || "--"}
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
-);
-})()}
-
+            {/* KPI Summary tiles -- live with dashboard filters */}
+            {performanceKpiRows.length > 0 &&
+              (() => {
+                const kpi = computePerfKPIs(performanceKpiRows);
+                return (
+                  <div
+                    className="hero-export-row no-print"
+                    style={{
+                      paddingBottom: 0,
+                      paddingTop: 0,
+                      marginTop: "4px",
+                    }}
+                  >
+                    {/* Added justify-content: center to align tiles horizontally */}
+                    <div
+                      className="perf-kpi-row"
+                      style={{
+                        display: "flex",
+                        justifyContent: "center",
+                        gap: "24px",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {(
+                        [
+                          {
+                            label: "% Availability",
+                            value: kpi.pctAvailability,
+                            color: "#ff0000",
+                          },
+                          { label: "MTTR", value: kpi.mttr, color: "#f59e0b" },
+                          { label: "MTBF", value: kpi.mtbf, color: "#3b82f6" },
+                          { label: "MTTF", value: kpi.mttf, color: "#a78bfa" },
+                          {
+                            label: "Affected Sites",
+                            value: String(kpi.affectedSites),
+                            color: "#f43f5e",
+                          },
+                          {
+                            label: "Non-Affected Sites",
+                            value: String(kpi.nonAffectedSites),
+                            color: "#10b981",
+                          },
+                          {
+                            label: "Total Down",
+                            value: kpi.totalDownHrs,
+                            color: "#fb923c",
+                          },
+                        ] as { label: string; value: string; color: string }[]
+                      ).map(({ label, value, color }) => (
+                        <div
+                          key={label}
+                          className="perf-kpi-tile"
+                          style={{
+                            ["--kpi-color" as string]: color,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            textAlign: "center",
+                          }}
+                        >
+                          <div
+                            className="perf-kpi-label"
+                            style={{ fontSize: "16px", fontWeight: 1000 }}
+                          >
+                            {label}
+                          </div>
+                          <div
+                            className="perf-kpi-value"
+                            style={{
+                              color,
+                              fontSize: "24px",
+                              fontWeight: 1000,
+                            }}
+                          >
+                            {value || "--"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
           </>
         )}
       </section>
 
-      <input ref={inputRef} className="sr-only" type="file" accept=".xlsx,.xls,.xlsm" onChange={(event) => handleFile(event.target.files?.[0])} />
-      <input ref={addRegionRef} className="sr-only" type="file" accept=".xlsx,.xls,.xlsm" onChange={(event) => handleAddRegion(event.target.files?.[0])} />
+      <input
+        ref={inputRef}
+        className="sr-only"
+        type="file"
+        accept=".xlsx,.xls,.xlsm"
+        onChange={event => handleFile(event.target.files?.[0])}
+      />
+      <input
+        ref={addRegionRef}
+        className="sr-only"
+        type="file"
+        accept=".xlsx,.xls,.xlsm"
+        onChange={event => handleAddRegion(event.target.files?.[0])}
+      />
 
       {!data ? (
         <section className="upload-stage no-print">
           <div
             className={`upload-card ${isDragging ? "dragging" : ""}`}
-            onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
+            onDragOver={event => {
+              event.preventDefault();
+              setIsDragging(true);
+            }}
             onDragLeave={() => setIsDragging(false)}
-            onDrop={(event) => { event.preventDefault(); setIsDragging(false); handleFile(event.dataTransfer.files?.[0]); }}
+            onDrop={event => {
+              event.preventDefault();
+              setIsDragging(false);
+              handleFile(event.dataTransfer.files?.[0]);
+            }}
           >
             <div className="upload-copy">
-              <span className="section-kicker"><UploadCloud size={14} /> Workbooks Upload</span>
+              <span className="section-kicker">
+                <UploadCloud size={14} /> Workbooks Upload
+              </span>
               <h2>Load the tickets workbook</h2>
-              <p>Start with the main Follow-Up Sheets workbook, then add regional workbooks from the dashboard header after the first file is loaded.</p>
-              {error && <div className="error-banner"><AlertTriangle size={16} /> {error}</div>}
+              <p>
+                Start with the main Follow-Up Sheets workbook, then add regional
+                workbooks from the dashboard header after the first file is
+                loaded.
+              </p>
+              {error && (
+                <div className="error-banner">
+                  <AlertTriangle size={16} /> {error}
+                </div>
+              )}
               <div className="upload-actions">
-                <button className="primary-button large" onClick={() => inputRef.current?.click()}><FileSpreadsheet size={20} /> Select Excel workbook</button>
+                <button
+                  className="primary-button large"
+                  onClick={() => inputRef.current?.click()}
+                >
+                  <FileSpreadsheet size={20} /> Select Excel workbook
+                </button>
                 <span>or drop the workbook here</span>
               </div>
               <div className="upload-checks" aria-label="Workbook readiness">
-                <div><CheckCircle2 size={18} /><span>Tickets_Data</span></div>
-                <div><Layers3 size={18} /><span>Regional merge</span></div>
-                <div><BarChart3 size={18} /><span>Charts & reports</span></div>
+                <div>
+                  <CheckCircle2 size={18} />
+                  <span>Tickets_Data</span>
+                </div>
+                <div>
+                  <Layers3 size={18} />
+                  <span>Regional merge</span>
+                </div>
+                <div>
+                  <BarChart3 size={18} />
+                  <span>Charts & reports</span>
+                </div>
               </div>
             </div>
             <div className="upload-visual">
@@ -3005,7 +5604,9 @@ export default function Home() {
               <div className="upload-preview-card">
                 <span>Ready For</span>
                 <strong>Excel · PDF · PPT</strong>
-                <small>Tickets, performance, RCA, and site availability reports</small>
+                <small>
+                  Tickets, performance, RCA, and site availability reports
+                </small>
               </div>
             </div>
           </div>
@@ -3027,157 +5628,576 @@ export default function Home() {
               alignItems: "stretch",
             }}
           >
-          {/* Standard StatCards */}
+            {/* Standard StatCards */}
             <StatCard
-              label={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#00ff15" }}>{`Total TT's`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: "bold", color: "#ff0000" }}>{analytics.totalUnique.toLocaleString()}</span>}
+              label={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Total TT's`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: "bold",
+                    color: "#ff0000",
+                  }}
+                >
+                  {analytics.totalUnique.toLocaleString()}
+                </span>
+              }
               // note={<span style={{ fontSize: "14px", fontWeight: 500, color: "#00ff15" }}> TT's Opened</span>}
-              icon={Layers3} tone="#fff200"
-              onClick={() => { setFilters(EMPTY_FILTERS); setTablePage(1); }}
-            style={{ gridColumn: "span 6" }}
+              icon={Layers3}
+              tone="#fff200"
+              onClick={() => {
+                setFilters(EMPTY_FILTERS);
+                setTablePage(1);
+              }}
+              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Closed TT's`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: "bold", color: "#ff0000" }}>{closed.toLocaleString()}</span>}
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Closed TT's`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: "bold",
+                    color: "#ff0000",
+                  }}
+                >
+                  {closed.toLocaleString()}
+                </span>
+              }
               // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Closed TT's</span>}
-              icon={CheckCircle2} tone="#34d399"
-              onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Closed"] }); setTablePage(1); }}
-            style={{ gridColumn: "span 6" }}
+              icon={CheckCircle2}
+              tone="#34d399"
+              onClick={() => {
+                setFilters({ ...EMPTY_FILTERS, status: ["Closed"] });
+                setTablePage(1);
+              }}
+              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Pending TT's`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: "bold", color: "#ff0000" }}>{pending.toLocaleString()}</span>}
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Pending TT's`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: "bold",
+                    color: "#ff0000",
+                  }}
+                >
+                  {pending.toLocaleString()}
+                </span>
+              }
               // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Pending TT's</span>}
-              icon={ShieldAlert} tone="#f59e0b"
-              onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Pending"] }); setTablePage(1); }}
-            style={{ gridColumn: "span 6" }}
+              icon={ShieldAlert}
+              tone="#f59e0b"
+              onClick={() => {
+                setFilters({ ...EMPTY_FILTERS, status: ["Pending"] });
+                setTablePage(1);
+              }}
+              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Resolved TT's`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: "bold", color: "#ff0000" }}>{resolved.toLocaleString()}</span>}
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Resolved TT's`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: "bold",
+                    color: "#ff0000",
+                  }}
+                >
+                  {resolved.toLocaleString()}
+                </span>
+              }
               // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Resolved TT's</span>}
-              icon={CheckCircle2} tone="#60a5fa"
-              onClick={() => { setFilters({ ...EMPTY_FILTERS, status: ["Resolved"] }); setTablePage(1); }}
-            style={{ gridColumn: "span 6" }}
+              icon={CheckCircle2}
+              tone="#60a5fa"
+              onClick={() => {
+                setFilters({ ...EMPTY_FILTERS, status: ["Resolved"] });
+                setTablePage(1);
+              }}
+              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Critical TT's`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: "bold", color: "#ff0000" }}>{critical.toLocaleString()}</span>}
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Critical TT's`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: "bold",
+                    color: "#ff0000",
+                  }}
+                >
+                  {critical.toLocaleString()}
+                </span>
+              }
               // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Critical TT's</span>}
-              icon={AlertTriangle} tone="#ef4444"
-              onClick={() => { setFilters({ ...EMPTY_FILTERS, severity: ["Critical"] }); setTablePage(1); }}
-            style={{ gridColumn: "span 6" }}
+              icon={AlertTriangle}
+              tone="#ef4444"
+              onClick={() => {
+                setFilters({ ...EMPTY_FILTERS, severity: ["Critical"] });
+                setTablePage(1);
+              }}
+              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Major TT's`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: "bold", color: "#ff0000" }}>{major.toLocaleString()}</span>}
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Major TT's`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: "bold",
+                    color: "#ff0000",
+                  }}
+                >
+                  {major.toLocaleString()}
+                </span>
+              }
               // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Major TT's</span>}
-              icon={Activity} tone="#f59e0b"
-              onClick={() => { setFilters({ ...EMPTY_FILTERS, severity: ["Major"] }); setTablePage(1); }}
-            style={{ gridColumn: "span 6" }}
+              icon={Activity}
+              tone="#f59e0b"
+              onClick={() => {
+                setFilters({ ...EMPTY_FILTERS, severity: ["Major"] });
+                setTablePage(1);
+              }}
+              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Minor TT's`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: "bold", color: "#ff0000" }}>{minor !== undefined && minor !== null ? minor.toLocaleString() : "0"}</span>}
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Minor TT's`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: "bold",
+                    color: "#ff0000",
+                  }}
+                >
+                  {minor !== undefined && minor !== null
+                    ? minor.toLocaleString()
+                    : "0"}
+                </span>
+              }
               // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Minor TT's</span>}
-              icon={CircleDot} tone="#22d3ee"
-              onClick={() => { setFilters({ ...EMPTY_FILTERS, severity: ["Minor"] }); setTablePage(1); }}
-            style={{ gridColumn: "span 6" }}
+              icon={CircleDot}
+              tone="#22d3ee"
+              onClick={() => {
+                setFilters({ ...EMPTY_FILTERS, severity: ["Minor"] });
+                setTablePage(1);
+              }}
+              style={{ gridColumn: "span 6" }}
             />
-            
+
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Region Sites`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000" }}>{analytics.regionSiteTotal.toLocaleString()}</span>}
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Region Sites`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: 1000,
+                    color: "#ff0000",
+                  }}
+                >
+                  {analytics.regionSiteTotal.toLocaleString()}
+                </span>
+              }
               // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>{`${analytics.uniqueSites.toLocaleString()} Unique RF Sites`}</span>}
-              icon={BarChart3} tone="#60a5fa"
-            style={{ gridColumn: "span 6" }}
+              icon={BarChart3}
+              tone="#60a5fa"
+              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Regions`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000" }}>{analytics.region.length.toLocaleString()}</span>}
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Regions`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: 1000,
+                    color: "#ff0000",
+                  }}
+                >
+                  {analytics.region.length.toLocaleString()}
+                </span>
+              }
               // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Total Regions</span>}
-              icon={CircleDot} tone="#60a5fa"
-            style={{ gridColumn: "span 6" }}
+              icon={CircleDot}
+              tone="#60a5fa"
+              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Non-Service Impact`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000" }}>{nonServiceImpact.toLocaleString()}</span>}
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Non-Service Impact`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: 1000,
+                    color: "#ff0000",
+                  }}
+                >
+                  {nonServiceImpact.toLocaleString()}
+                </span>
+              }
               // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>No Service Impact</span>}
-              icon={CloudOff} tone="#94a3b8"
-              onClick={() => { setFilters({ ...EMPTY_FILTERS, impact: ["Non-Service Impact"] }); setTablePage(1); }}
-            style={{ gridColumn: "span 6" }}
+              icon={CloudOff}
+              tone="#94a3b8"
+              onClick={() => {
+                setFilters({
+                  ...EMPTY_FILTERS,
+                  impact: ["Non-Service Impact"],
+                });
+                setTablePage(1);
+              }}
+              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Service Impact`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000" }}>{serviceImpact.toLocaleString()}</span>}
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Service Impact`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: 1000,
+                    color: "#ff0000",
+                  }}
+                >
+                  {serviceImpact.toLocaleString()}
+                </span>
+              }
               // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Exact Service Impact</span>}
-              icon={Network} tone="#ef4444"
-              onClick={() => { setFilters({ ...EMPTY_FILTERS, impact: ["Service Impact"] }); setTablePage(1); }}
-            style={{ gridColumn: "span 6" }}
+              icon={Network}
+              tone="#ef4444"
+              onClick={() => {
+                setFilters({ ...EMPTY_FILTERS, impact: ["Service Impact"] });
+                setTablePage(1);
+              }}
+              style={{ gridColumn: "span 6" }}
             />
-            
+
             {/* Top RCA by Tickets Count — direct grid child so it stretches to the same height as siblings */}
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Top RCA / TT's`}</span>}
-              value={<span style={{ fontSize: "18px", fontWeight: 1000, color: "#ff0000", display: "block", wordBreak: "keep-all", whiteSpace: "normal", lineHeight: "1.3" }}>{analytics.topRcaByCount.name || "N/A"}</span>}
-              note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15", marginTop: "4px", display: "block" }}>{analytics.topRcaByCount.value ? `${analytics.topRcaByCount.value.toLocaleString()} Tickets` : ""}</span>}
-              icon={BarChart3} tone="#22d3ee"
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Top RCA / TT's`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: 1000,
+                    color: "#ff0000",
+                    display: "block",
+                    wordBreak: "keep-all",
+                    whiteSpace: "normal",
+                    lineHeight: "1.3",
+                  }}
+                >
+                  {analytics.topRcaByCount.name || "N/A"}
+                </span>
+              }
+              note={
+                <span
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                    marginTop: "4px",
+                    display: "block",
+                  }}
+                >
+                  {analytics.topRcaByCount.value
+                    ? `${analytics.topRcaByCount.value.toLocaleString()} Tickets`
+                    : ""}
+                </span>
+              }
+              icon={BarChart3}
+              tone="#22d3ee"
               className="rca-inline-fix"
-              style={{ gridColumn: "span 6", alignSelf: "stretch", height: "auto" }}
+              style={{
+                gridColumn: "span 6",
+                alignSelf: "stretch",
+                height: "auto",
+              }}
             />
 
-          {/* Top RCA by Downtime */}
+            {/* Top RCA by Downtime */}
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Top RCA / Downtime`}</span>}
-              value={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#ff0000", display: "block", wordBreak: "keep-all", whiteSpace: "normal", lineHeight: "1.3" }}>{analytics.topRcaByDowntime.name || "N/A"}</span>}
-              note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15", marginTop: "4px", display: "block" }}>{formatHours(analytics.topRcaByDowntime.value)}</span>}
-              icon={Activity} tone="#f59e0b"
-            style={{ gridColumn: "span 6" }}
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Top RCA / Downtime`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#ff0000",
+                    display: "block",
+                    wordBreak: "keep-all",
+                    whiteSpace: "normal",
+                    lineHeight: "1.3",
+                  }}
+                >
+                  {analytics.topRcaByDowntime.name || "N/A"}
+                </span>
+              }
+              note={
+                <span
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                    marginTop: "4px",
+                    display: "block",
+                  }}
+                >
+                  {formatHours(analytics.topRcaByDowntime.value)}
+                </span>
+              }
+              icon={Activity}
+              tone="#f59e0b"
+              style={{ gridColumn: "span 6" }}
             />
 
-          {/* Highest MTTR RCA */}
+            {/* Highest MTTR RCA */}
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`Highest MTTR RCA`}</span>}
-              value={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#ff0000", display: "block", wordBreak: "keep-all", whiteSpace: "normal", lineHeight: "1.3" }}>{analytics.highestMttrRca.name || "N/A"}</span>}
-              note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15", marginTop: "4px", display: "block" }}>{formatHours(analytics.highestMttrRca.value)}</span>}
-              icon={AlertTriangle} tone="#ef4444"
-            style={{ gridColumn: "span 6" }}
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Highest MTTR RCA`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#ff0000",
+                    display: "block",
+                    wordBreak: "keep-all",
+                    whiteSpace: "normal",
+                    lineHeight: "1.3",
+                  }}
+                >
+                  {analytics.highestMttrRca.name || "N/A"}
+                </span>
+              }
+              note={
+                <span
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                    marginTop: "4px",
+                    display: "block",
+                  }}
+                >
+                  {formatHours(analytics.highestMttrRca.value)}
+                </span>
+              }
+              icon={AlertTriangle}
+              tone="#ef4444"
+              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={<span style={{ fontSize: "20px", fontWeight: 1000, color: "#00ff15" }}>{`Repeated RCA/Sites`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000", display: "block", wordBreak: "keep-all", whiteSpace: "normal", lineHeight: "1.3" }}>{analytics.repeatedRcaSites.toLocaleString()}</span>}
+              label={
+                <span
+                  style={{
+                    fontSize: "20px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`Repeated RCA/Sites`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: 1000,
+                    color: "#ff0000",
+                    display: "block",
+                    wordBreak: "keep-all",
+                    whiteSpace: "normal",
+                    lineHeight: "1.3",
+                  }}
+                >
+                  {analytics.repeatedRcaSites.toLocaleString()}
+                </span>
+              }
               note={<span />}
-              icon={Network} tone="#a78bfa"
-            style={{ gridColumn: "span 6" }}
+              icon={Network}
+              tone="#a78bfa"
+              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={<span style={{ fontSize: "16px", fontWeight: 1000, color: "#00ff15" }}>{`RCA not Provided %`}</span>}
-              value={<span style={{ fontSize: "30px", fontWeight: 1000, color: "#ff0000", display: "block", wordBreak: "keep-all", whiteSpace: "normal", lineHeight: "1.3" }}>{analytics.rcaNotProvidedCount.toLocaleString()}</span>}
+              label={
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 1000,
+                    color: "#00ff15",
+                  }}
+                >{`RCA not Provided %`}</span>
+              }
+              value={
+                <span
+                  style={{
+                    fontSize: "30px",
+                    fontWeight: 1000,
+                    color: "#ff0000",
+                    display: "block",
+                    wordBreak: "keep-all",
+                    whiteSpace: "normal",
+                    lineHeight: "1.3",
+                  }}
+                >
+                  {analytics.rcaNotProvidedCount.toLocaleString()}
+                </span>
+              }
               note={<span />}
-              icon={ShieldAlert} tone="#ff0000"
-            style={{ gridColumn: "span 6" }}
+              icon={ShieldAlert}
+              tone="#ff0000"
+              style={{ gridColumn: "span 6" }}
             />
           </section>
 
-{/* ══ Charts ══ */}
+          {/* ══ Charts ══ */}
           <div className="chart-2col dashboard-chart-grid">
-
             {/* ── Column 1 — five charts, one per row ─────────────────────────── */}
-            <article className="glass-card" style={{ gridColumn: "1 / 7", gridRow: 2 }}>
-              <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>{analytics.trendGrain === "month" ? "Tickets per month" : "Tickets per week"}</h3> <BarChart3 size={18} /></div>
+            <article
+              className="glass-card"
+              style={{ gridColumn: "1 / 7", gridRow: 2 }}
+            >
+              <div
+                className="card-heading"
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                {" "}
+                <h3>
+                  {analytics.trendGrain === "month"
+                    ? "Tickets per month"
+                    : "Tickets per week"}
+                </h3>{" "}
+                <BarChart3 size={18} />
+              </div>
               <ResponsiveContainer width="100%" height={290}>
-                <LineChart data={analytics.monthly} margin={{ left: 0, right: 22, top: 16, bottom: 8 }}>
+                <LineChart
+                  data={analytics.monthly}
+                  margin={{ left: 0, right: 22, top: 16, bottom: 8 }}
+                >
                   <defs>
                     <linearGradient id="openedLine" x1="0" y1="0" x2="1" y2="0">
                       <stop offset="0%" stopColor="#38bdf8" />
@@ -3185,76 +6205,264 @@ export default function Home() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
-                  <XAxis dataKey="name" stroke={CHART_AXIS_STROKE} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#aac0dc" }} />
-                  <YAxis stroke={CHART_AXIS_STROKE} tickLine={false} axisLine={false} allowDecimals={false} tick={{ fontSize: 11, fill: "#aac0dc" }} />
-                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ stroke: "rgba(125, 211, 252, .28)", strokeWidth: 1 }} />
+                  <XAxis
+                    dataKey="name"
+                    stroke={CHART_AXIS_STROKE}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 11, fill: "#aac0dc" }}
+                  />
+                  <YAxis
+                    stroke={CHART_AXIS_STROKE}
+                    tickLine={false}
+                    axisLine={false}
+                    allowDecimals={false}
+                    tick={{ fontSize: 11, fill: "#aac0dc" }}
+                  />
+                  <Tooltip
+                    contentStyle={CHART_TOOLTIP_STYLE}
+                    cursor={{
+                      stroke: "rgba(125, 211, 252, .28)",
+                      strokeWidth: 1,
+                    }}
+                  />
                   <Legend wrapperStyle={CHART_LEGEND_STYLE} iconType="circle" />
-                  <Line type="monotone" name="Opened" dataKey="opened" stroke="url(#openedLine)" strokeWidth={3.5} dot={{ r: 3, fill: "#071426", stroke: "#67e8f9", strokeWidth: 2 }} activeDot={{ r: 6, fill: "#22d3ee", stroke: "#ecfeff", strokeWidth: 2 }}>
-                    <LabelList dataKey="opened" position="top" fill={CHART_LABEL_FILL} fontSize={11} />
+                  <Line
+                    type="monotone"
+                    name="Opened"
+                    dataKey="opened"
+                    stroke="url(#openedLine)"
+                    strokeWidth={3.5}
+                    dot={{
+                      r: 3,
+                      fill: "#071426",
+                      stroke: "#67e8f9",
+                      strokeWidth: 2,
+                    }}
+                    activeDot={{
+                      r: 6,
+                      fill: "#22d3ee",
+                      stroke: "#ecfeff",
+                      strokeWidth: 2,
+                    }}
+                  >
+                    <LabelList
+                      dataKey="opened"
+                      position="top"
+                      fill={CHART_LABEL_FILL}
+                      fontSize={11}
+                    />
                   </Line>
                 </LineChart>
               </ResponsiveContainer>
             </article>
 
-            <article className="glass-card" style={{ gridColumn: "1 / 7", gridRow: 3 }}>
-              <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Top sites by unique Tickets</h3> <BarChart3 size={18} /></div>
+            <article
+              className="glass-card"
+              style={{ gridColumn: "1 / 7", gridRow: 3 }}
+            >
+              <div
+                className="card-heading"
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                {" "}
+                <h3>Top sites by unique Tickets</h3> <BarChart3 size={18} />
+              </div>
               <ResponsiveContainer width="100%" height={290}>
-                <BarChart data={analytics.topSites.slice(0, 10)} layout="vertical" margin={{ left: 18, right: 44, top: 8, bottom: 8 }}>
+                <BarChart
+                  data={analytics.topSites.slice(0, 10)}
+                  layout="vertical"
+                  margin={{ left: 18, right: 44, top: 8, bottom: 8 }}
+                >
                   <defs>
-                    <linearGradient id="topSitesBar" x1="0" y1="0" x2="1" y2="0">
+                    <linearGradient
+                      id="topSitesBar"
+                      x1="0"
+                      y1="0"
+                      x2="1"
+                      y2="0"
+                    >
                       <stop offset="0%" stopColor="#0ea5e9" />
                       <stop offset="100%" stopColor="#67e8f9" />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke={CHART_GRID_STROKE} horizontal={false} />
-                  <XAxis type="number" stroke={CHART_AXIS_STROKE} allowDecimals={false} tick={{ fontSize: 11, fill: "#aac0dc" }} />
-                  <YAxis dataKey="name" type="category" stroke={CHART_AXIS_STROKE} width={210} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#d8e6f7" }} interval={0} />
-                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: "rgba(125, 211, 252, .06)" }} />
-                  <Bar dataKey="value" radius={BAR_RADIUS} fill="url(#topSitesBar)" maxBarSize={18}>
-                    <LabelList dataKey="value" position="right" fill={CHART_LABEL_FILL} fontSize={12} />
+                  <CartesianGrid
+                    stroke={CHART_GRID_STROKE}
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    stroke={CHART_AXIS_STROKE}
+                    allowDecimals={false}
+                    tick={{ fontSize: 11, fill: "#aac0dc" }}
+                  />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    stroke={CHART_AXIS_STROKE}
+                    width={210}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 11, fill: "#d8e6f7" }}
+                    interval={0}
+                  />
+                  <Tooltip
+                    contentStyle={CHART_TOOLTIP_STYLE}
+                    cursor={{ fill: "rgba(125, 211, 252, .06)" }}
+                  />
+                  <Bar
+                    dataKey="value"
+                    radius={BAR_RADIUS}
+                    fill="url(#topSitesBar)"
+                    maxBarSize={18}
+                  >
+                    <LabelList
+                      dataKey="value"
+                      position="right"
+                      fill={CHART_LABEL_FILL}
+                      fontSize={12}
+                    />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </article>
 
             <article className="glass-card" style={{ display: "none" }}>
-              <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Top 10 RCA by unique Tickets count</h3> <BarChart3 size={18} /></div>
+              <div
+                className="card-heading"
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                {" "}
+                <h3>Top 10 RCA by unique Tickets count</h3>{" "}
+                <BarChart3 size={18} />
+              </div>
               <ResponsiveContainer width="100%" height={290}>
-                <BarChart data={analytics.rcaByCount.slice(0, 10)} layout="vertical" margin={{ left: 18, right: 56, top: 8, bottom: 8 }}>
+                <BarChart
+                  data={analytics.rcaByCount.slice(0, 10)}
+                  layout="vertical"
+                  margin={{ left: 18, right: 56, top: 8, bottom: 8 }}
+                >
                   <defs>
-                    <linearGradient id="rcaCountBar" x1="0" y1="0" x2="1" y2="0">
+                    <linearGradient
+                      id="rcaCountBar"
+                      x1="0"
+                      y1="0"
+                      x2="1"
+                      y2="0"
+                    >
                       <stop offset="0%" stopColor="#2563eb" />
                       <stop offset="100%" stopColor="#22d3ee" />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke={CHART_GRID_STROKE} horizontal={false} />
-                  <XAxis type="number" stroke={CHART_AXIS_STROKE} allowDecimals={false} tick={{ fontSize: 11, fill: "#aac0dc" }} />
-                  <YAxis dataKey="name" type="category" stroke={CHART_AXIS_STROKE} width={200} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#d8e6f7" }} interval={0} />
-                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: "rgba(125, 211, 252, .06)" }} />
-                  <Bar dataKey="value" radius={BAR_RADIUS} fill="url(#rcaCountBar)" maxBarSize={18}>
-                    <LabelList dataKey="value" position="right" fill={CHART_LABEL_FILL} fontSize={13} />
+                  <CartesianGrid
+                    stroke={CHART_GRID_STROKE}
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    stroke={CHART_AXIS_STROKE}
+                    allowDecimals={false}
+                    tick={{ fontSize: 11, fill: "#aac0dc" }}
+                  />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    stroke={CHART_AXIS_STROKE}
+                    width={200}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 12, fill: "#d8e6f7" }}
+                    interval={0}
+                  />
+                  <Tooltip
+                    contentStyle={CHART_TOOLTIP_STYLE}
+                    cursor={{ fill: "rgba(125, 211, 252, .06)" }}
+                  />
+                  <Bar
+                    dataKey="value"
+                    radius={BAR_RADIUS}
+                    fill="url(#rcaCountBar)"
+                    maxBarSize={18}
+                  >
+                    <LabelList
+                      dataKey="value"
+                      position="right"
+                      fill={CHART_LABEL_FILL}
+                      fontSize={13}
+                    />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </article>
 
             <article className="glass-card" style={{ display: "none" }}>
-              <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Operational families - Tickets distribution</h3> <BarChart3 size={18} /></div>
+              <div
+                className="card-heading"
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                {" "}
+                <h3>Operational families - Tickets distribution</h3>{" "}
+                <BarChart3 size={18} />
+              </div>
               <div className="rca-family-layout">
                 <ResponsiveContainer width="100%" height={290}>
                   <PieChart>
-                    <Pie data={analytics.rcaFamily} dataKey="value" nameKey="name" innerRadius={68} outerRadius={110} paddingAngle={4} labelLine={false} label={renderPieLabel}>
-                      {analytics.rcaFamily.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
+                    <Pie
+                      data={analytics.rcaFamily}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={68}
+                      outerRadius={110}
+                      paddingAngle={4}
+                      labelLine={false}
+                      label={renderPieLabel}
+                    >
+                      {analytics.rcaFamily.map((entry, index) => (
+                        <Cell
+                          key={entry.name}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
                     </Pie>
-                    <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                    <Tooltip
+                      contentStyle={{
+                        background: "#071426",
+                        border: "1px solid rgba(34,211,238,.25)",
+                        borderRadius: 14,
+                        color: "#e2e8f0",
+                      }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="rca-family-legend">
                   {analytics.rcaFamily.map((entry, index) => (
                     <div key={entry.name} className="rca-legend-row">
-                      <span className="rca-legend-dot" style={{ background: COLORS[index % COLORS.length] }} />
+                      <span
+                        className="rca-legend-dot"
+                        style={{ background: COLORS[index % COLORS.length] }}
+                      />
                       <span className="rca-legend-name">{entry.name}</span>
-                      <strong className="rca-legend-val">{entry.value} <small>({pct(entry.value, analytics.totalUnique)})</small></strong>
+                      <strong className="rca-legend-val">
+                        {entry.value}{" "}
+                        <small>
+                          ({pct(entry.value, analytics.totalUnique)})
+                        </small>
+                      </strong>
                     </div>
                   ))}
                 </div>
@@ -3263,28 +6471,115 @@ export default function Home() {
 
             <article className="glass-card full" style={{ display: "none" }}>
               {/* Row 5 of column 1 is split 50/50 horizontally: Top Managed Resources | Average Ticket Resolution Time. */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", height: "100%" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "16px",
+                  height: "100%",
+                }}
+              >
                 <article className="glass-card" style={{ margin: 0 }}>
-                  <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Top Managed Resources by Ticket Count</h3> <BarChart3 size={18} /></div>
+                  <div
+                    className="card-heading"
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      gap: "10px",
+                    }}
+                  >
+                    {" "}
+                    <h3>Top Managed Resources by Ticket Count</h3>{" "}
+                    <BarChart3 size={18} />
+                  </div>
                   <ResponsiveContainer width="100%" height={290}>
-                    <BarChart data={analytics.topManagedResources} layout="vertical" margin={{ left: 18, right: 72, top: 8, bottom: 8 }}>
-                      <CartesianGrid stroke="rgba(148,163,184,.12)" horizontal={false} />
-                      <XAxis type="number" stroke="#94a3b8" allowDecimals={false} />
-                      <YAxis dataKey="name" type="category" stroke="#cbd5e1" width={220} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} interval={0} />
-                      <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} formatter={(v: number) => [v.toLocaleString(), "Tickets"]} />
-                      <Bar dataKey="value" radius={[0, 10, 10, 0]} fill="#22d3ee">
-                        <LabelList dataKey="value" position="right" fill="#e2e8f0" fontSize={12} />
+                    <BarChart
+                      data={analytics.topManagedResources}
+                      layout="vertical"
+                      margin={{ left: 18, right: 72, top: 8, bottom: 8 }}
+                    >
+                      <CartesianGrid
+                        stroke="rgba(148,163,184,.12)"
+                        horizontal={false}
+                      />
+                      <XAxis
+                        type="number"
+                        stroke="#94a3b8"
+                        allowDecimals={false}
+                      />
+                      <YAxis
+                        dataKey="name"
+                        type="category"
+                        stroke="#cbd5e1"
+                        width={220}
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fontSize: 12 }}
+                        interval={0}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          background: "#071426",
+                          border: "1px solid rgba(34,211,238,.25)",
+                          borderRadius: 14,
+                          color: "#e2e8f0",
+                        }}
+                        formatter={(v: number) => [
+                          v.toLocaleString(),
+                          "Tickets",
+                        ]}
+                      />
+                      <Bar
+                        dataKey="value"
+                        radius={[0, 10, 10, 0]}
+                        fill="#22d3ee"
+                      >
+                        <LabelList
+                          dataKey="value"
+                          position="right"
+                          fill="#e2e8f0"
+                          fontSize={12}
+                        />
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </article>
 
-                <article className="glass-card" style={{ margin: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
-                  <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Average Ticket Resolution Time</h3> <Activity size={18} /></div>
+                <article
+                  className="glass-card"
+                  style={{
+                    margin: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    minHeight: 0,
+                  }}
+                >
+                  <div
+                    className="card-heading"
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      gap: "10px",
+                    }}
+                  >
+                    {" "}
+                    <h3>Average Ticket Resolution Time</h3>{" "}
+                    <Activity size={18} />
+                  </div>
                   <div style={{ padding: "0 8px 8px", flex: 1, minHeight: 0 }}>
                     {(analytics.monthlyResolutionTime ?? []).length === 0 ? (
-                      <div style={{ color: "#94a3b8", fontSize: "12px", textAlign: "center", padding: "12px" }}>
-                        No closed / resolved tickets with a duration in the current selection.
+                      <div
+                        style={{
+                          color: "#94a3b8",
+                          fontSize: "12px",
+                          textAlign: "center",
+                          padding: "12px",
+                        }}
+                      >
+                        No closed / resolved tickets with a duration in the
+                        current selection.
                       </div>
                     ) : (
                       <ResponsiveContainer width="100%" height={280}>
@@ -3292,7 +6587,11 @@ export default function Home() {
                           data={analytics.monthlyResolutionTime}
                           margin={{ top: 4, right: 18, left: 0, bottom: 36 }}
                         >
-                          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke="#1e293b"
+                            vertical={false}
+                          />
                           <XAxis
                             dataKey="name"
                             tick={{ fill: "#cbd5e1", fontSize: 10 }}
@@ -3307,15 +6606,39 @@ export default function Home() {
                             width={42}
                           />
                           <Tooltip
-                            contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, fontSize: 12 }}
+                            contentStyle={{
+                              background: "#0f172a",
+                              border: "1px solid #334155",
+                              borderRadius: 8,
+                              fontSize: 12,
+                            }}
                             labelStyle={{ color: "#e2e8f0", fontWeight: 700 }}
-                            formatter={(value: number, name: string, props: { payload?: { count?: number; totalHours?: number; pendingCount?: number; pendingTotal?: number } }) => {
+                            formatter={(
+                              value: number,
+                              name: string,
+                              props: {
+                                payload?: {
+                                  count?: number;
+                                  totalHours?: number;
+                                  pendingCount?: number;
+                                  pendingTotal?: number;
+                                };
+                              }
+                            ) => {
                               const p = props.payload ?? {};
                               if (name === "Resolution (avg h)") {
-                                return [`${value.toFixed(2)} h (n=${p.count ?? 0}, total ${p.totalHours ?? 0} h)`, name];
+                                return [
+                                  `${value.toFixed(2)} h (n=${p.count ?? 0}, total ${p.totalHours ?? 0} h)`,
+                                  name,
+                                ];
                               }
                               if (name === "Pending (avg h)") {
-                                return value > 0 ? [`${value.toFixed(2)} h (n=${p.pendingCount ?? 0}, total ${p.pendingTotal ?? 0} h)`, name] : ["—", name];
+                                return value > 0
+                                  ? [
+                                      `${value.toFixed(2)} h (n=${p.pendingCount ?? 0}, total ${p.pendingTotal ?? 0} h)`,
+                                      name,
+                                    ]
+                                  : ["—", name];
                               }
                               return [value, name];
                             }}
@@ -3323,12 +6646,34 @@ export default function Home() {
                           <Legend
                             verticalAlign="top"
                             height={22}
-                            wrapperStyle={{ fontSize: "10px", color: "#cbd5e1", paddingBottom: 2 }}
+                            wrapperStyle={{
+                              fontSize: "10px",
+                              color: "#cbd5e1",
+                              paddingBottom: 2,
+                            }}
                             iconType="circle"
                             iconSize={8}
                           />
-                          <Line type="monotone" dataKey="avgHours" name="Resolution (avg h)" stroke="#93c5fd" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} isAnimationActive={false} />
-                          <Line type="monotone" dataKey="pendingAvg" name="Pending (avg h)" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} isAnimationActive={false} />
+                          <Line
+                            type="monotone"
+                            dataKey="avgHours"
+                            name="Resolution (avg h)"
+                            stroke="#93c5fd"
+                            strokeWidth={2.5}
+                            dot={{ r: 4 }}
+                            activeDot={{ r: 6 }}
+                            isAnimationActive={false}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="pendingAvg"
+                            name="Pending (avg h)"
+                            stroke="#f59e0b"
+                            strokeWidth={2.5}
+                            dot={{ r: 4 }}
+                            activeDot={{ r: 6 }}
+                            isAnimationActive={false}
+                          />
                         </LineChart>
                       </ResponsiveContainer>
                     )}
@@ -3343,643 +6688,1635 @@ export default function Home() {
                 display: "contents",
               }}
             >
-              <article className="glass-card" style={{ gridColumn: "7 / 10", gridRow: 2 }}>
-                <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Status</h3> <BarChart3 size={18} /></div>
+              <article
+                className="glass-card"
+                style={{ gridColumn: "7 / 10", gridRow: 2 }}
+              >
+                <div
+                  className="card-heading"
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    gap: "10px",
+                  }}
+                >
+                  {" "}
+                  <h3>Status</h3> <BarChart3 size={18} />
+                </div>
                 <ResponsiveContainer width="100%" height={290}>
                   <PieChart>
-                    <Pie data={analytics.status} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={4} cornerRadius={7} labelLine={false} label={renderPieLabel}>
-                      {analytics.status.map((entry, index) => <Cell key={entry.name} fill={STATUS_COLORS[entry.name] ?? COLORS[index % COLORS.length]} />)}
+                    <Pie
+                      data={analytics.status}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={48}
+                      outerRadius={76}
+                      paddingAngle={4}
+                      cornerRadius={7}
+                      labelLine={false}
+                      label={renderPieLabel}
+                    >
+                      {analytics.status.map((entry, index) => (
+                        <Cell
+                          key={entry.name}
+                          fill={
+                            STATUS_COLORS[entry.name] ??
+                            COLORS[index % COLORS.length]
+                          }
+                        />
+                      ))}
                     </Pie>
                     <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                    <Legend wrapperStyle={CHART_LEGEND_STYLE} iconType="circle" iconSize={8} />
+                    <Legend
+                      wrapperStyle={CHART_LEGEND_STYLE}
+                      iconType="circle"
+                      iconSize={8}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </article>
 
-              <article className="glass-card" style={{ gridColumn: "10 / 13", gridRow: 2 }}>
-                <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Severity</h3> <BarChart3 size={18} /></div>
+              <article
+                className="glass-card"
+                style={{ gridColumn: "10 / 13", gridRow: 2 }}
+              >
+                <div
+                  className="card-heading"
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    gap: "10px",
+                  }}
+                >
+                  {" "}
+                  <h3>Severity</h3> <BarChart3 size={18} />
+                </div>
                 <ResponsiveContainer width="100%" height={290}>
                   <PieChart>
-                    <Pie data={analytics.severity} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={4} cornerRadius={7} labelLine={false} label={renderPieLabel}>
-                      {analytics.severity.map((entry, index) => <Cell key={entry.name} fill={SEVERITY_COLORS[entry.name] ?? COLORS[index % COLORS.length]} />)}
+                    <Pie
+                      data={analytics.severity}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={48}
+                      outerRadius={76}
+                      paddingAngle={4}
+                      cornerRadius={7}
+                      labelLine={false}
+                      label={renderPieLabel}
+                    >
+                      {analytics.severity.map((entry, index) => (
+                        <Cell
+                          key={entry.name}
+                          fill={
+                            SEVERITY_COLORS[entry.name] ??
+                            COLORS[index % COLORS.length]
+                          }
+                        />
+                      ))}
                     </Pie>
                     <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                    <Legend wrapperStyle={CHART_LEGEND_STYLE} iconType="circle" iconSize={8} />
+                    <Legend
+                      wrapperStyle={CHART_LEGEND_STYLE}
+                      iconType="circle"
+                      iconSize={8}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </article>
 
-              <article className="glass-card" style={{ gridColumn: "7 / 10", gridRow: 3 }}>
-                <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Region</h3> <BarChart3 size={18} /></div>
+              <article
+                className="glass-card"
+                style={{ gridColumn: "7 / 10", gridRow: 3 }}
+              >
+                <div
+                  className="card-heading"
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    gap: "10px",
+                  }}
+                >
+                  {" "}
+                  <h3>Region</h3> <BarChart3 size={18} />
+                </div>
                 <ResponsiveContainer width="100%" height={290}>
                   <PieChart>
-                    <Pie data={analytics.region} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={4} cornerRadius={7} labelLine={false} label={renderPieLabel}>
-                      {analytics.region.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
+                    <Pie
+                      data={analytics.region}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={48}
+                      outerRadius={76}
+                      paddingAngle={4}
+                      cornerRadius={7}
+                      labelLine={false}
+                      label={renderPieLabel}
+                    >
+                      {analytics.region.map((entry, index) => (
+                        <Cell
+                          key={entry.name}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
                     </Pie>
                     <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                    <Legend wrapperStyle={CHART_LEGEND_STYLE} iconType="circle" iconSize={8} />
+                    <Legend
+                      wrapperStyle={CHART_LEGEND_STYLE}
+                      iconType="circle"
+                      iconSize={8}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </article>
 
-              <article className="glass-card" style={{ gridColumn: "10 / 13", gridRow: 3 }}>
-                <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Escalation level</h3> <BarChart3 size={18} /></div>
+              <article
+                className="glass-card"
+                style={{ gridColumn: "10 / 13", gridRow: 3 }}
+              >
+                <div
+                  className="card-heading"
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    gap: "10px",
+                  }}
+                >
+                  {" "}
+                  <h3>Escalation level</h3> <BarChart3 size={18} />
+                </div>
                 <ResponsiveContainer width="100%" height={290}>
                   <PieChart>
-                    <Pie data={analytics.escalation} dataKey="value" nameKey="name" innerRadius={48} outerRadius={76} paddingAngle={4} cornerRadius={7} labelLine={false} label={renderPieLabel}>
-                      {analytics.escalation.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
+                    <Pie
+                      data={analytics.escalation}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={48}
+                      outerRadius={76}
+                      paddingAngle={4}
+                      cornerRadius={7}
+                      labelLine={false}
+                      label={renderPieLabel}
+                    >
+                      {analytics.escalation.map((entry, index) => (
+                        <Cell
+                          key={entry.name}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
                     </Pie>
                     <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                    <Legend wrapperStyle={CHART_LEGEND_STYLE} iconType="circle" iconSize={8} />
+                    <Legend
+                      wrapperStyle={CHART_LEGEND_STYLE}
+                      iconType="circle"
+                      iconSize={8}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </article>
 
               <article className="glass-card" style={{ display: "none" }}>
-                <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Service impact</h3> <BarChart3 size={18} /></div>
+                <div
+                  className="card-heading"
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    gap: "10px",
+                  }}
+                >
+                  {" "}
+                  <h3>Service impact</h3> <BarChart3 size={18} />
+                </div>
                 <ResponsiveContainer width="100%" height={290}>
-                  <BarChart data={analytics.impact} margin={{ left: 0, right: 24, top: 18, bottom: 42 }}>
-                    <CartesianGrid stroke="rgba(148,163,184,.12)" vertical={false} />
-                    <XAxis dataKey="name" stroke="#cbd5e1" tickLine={false} axisLine={false} interval={0} angle={-18} textAnchor="end" height={58} tick={{ fontSize: 11 }} />
-                    <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} allowDecimals={false} />
-                    <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                  <BarChart
+                    data={analytics.impact}
+                    margin={{ left: 0, right: 24, top: 18, bottom: 42 }}
+                  >
+                    <CartesianGrid
+                      stroke="rgba(148,163,184,.12)"
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="name"
+                      stroke="#cbd5e1"
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      angle={-18}
+                      textAnchor="end"
+                      height={58}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <YAxis
+                      stroke="#94a3b8"
+                      tickLine={false}
+                      axisLine={false}
+                      allowDecimals={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "#071426",
+                        border: "1px solid rgba(34,211,238,.25)",
+                        borderRadius: 14,
+                        color: "#e2e8f0",
+                      }}
+                    />
                     <Bar dataKey="value" radius={[10, 10, 0, 0]} fill="#a78bfa">
-                      <LabelList dataKey="value" position="top" fill="#e2e8f0" fontSize={12} />
-                      {analytics.impact.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
+                      <LabelList
+                        dataKey="value"
+                        position="top"
+                        fill="#e2e8f0"
+                        fontSize={12}
+                      />
+                      {analytics.impact.map((entry, index) => (
+                        <Cell
+                          key={entry.name}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </article>
             </div>
-
-          </div>{/* /chart-2col */}
+          </div>
+          {/* /chart-2col */}
           {/* ══ Full-width + bottom-row charts ═══════════════════════════════════ */}
           <section className="chart-mosaic">
             <article className="glass-card" style={{ gridColumn: "1 / 5" }}>
-              <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Top 10 RCA by unique Tickets count</h3> <BarChart3 size={18} /></div>
+              <div
+                className="card-heading"
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                {" "}
+                <h3>Top 10 RCA by unique Tickets count</h3>{" "}
+                <BarChart3 size={18} />
+              </div>
               <ResponsiveContainer width="100%" height={290}>
-                <BarChart data={analytics.rcaByCount.slice(0, 10)} layout="vertical" margin={{ left: 18, right: 56, top: 8, bottom: 8 }}>
-                  <CartesianGrid stroke="rgba(148,163,184,.12)" horizontal={false} />
+                <BarChart
+                  data={analytics.rcaByCount.slice(0, 10)}
+                  layout="vertical"
+                  margin={{ left: 18, right: 56, top: 8, bottom: 8 }}
+                >
+                  <CartesianGrid
+                    stroke="rgba(148,163,184,.12)"
+                    horizontal={false}
+                  />
                   <XAxis type="number" stroke="#94a3b8" allowDecimals={false} />
-                  <YAxis dataKey="name" type="category" stroke="#cbd5e1" width={200} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} interval={0} />
-                  <Tooltip contentStyle={{ background: "#071426", border: "1px solid rgba(34,211,238,.25)", borderRadius: 14, color: "#e2e8f0" }} />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    stroke="#cbd5e1"
+                    width={200}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 12 }}
+                    interval={0}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: "#071426",
+                      border: "1px solid rgba(34,211,238,.25)",
+                      borderRadius: 14,
+                      color: "#e2e8f0",
+                    }}
+                  />
                   <Bar dataKey="value" radius={[0, 10, 10, 0]} fill="#22d3ee">
-                    <LabelList dataKey="value" position="right" fill="#e2e8f0" fontSize={13} />
+                    <LabelList
+                      dataKey="value"
+                      position="right"
+                      fill="#e2e8f0"
+                      fontSize={13}
+                    />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </article>
 
             <article className="glass-card" style={{ gridColumn: "5 / 9" }}>
-                <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Top 10 RCA by total downtime (hrs)</h3> <BarChart3 size={18} /></div>
-                <ResponsiveContainer width="100%" height={290}>
-                <BarChart data={analytics.rcaByDowntime.slice(0, 10)} layout="vertical" margin={{ left: 18, right: 72, top: 8, bottom: 8 }}>
-                <defs>
-                  <linearGradient id="rcaDowntimeBar" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#f97316" />
-                    <stop offset="100%" stopColor="#facc15" />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke={CHART_GRID_STROKE} horizontal={false} />
-                <XAxis type="number" stroke={CHART_AXIS_STROKE} allowDecimals={false} tick={{ fontSize: 11, fill: "#aac0dc" }} />
-                <YAxis dataKey="name" type="category" stroke={CHART_AXIS_STROKE} width={200} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#d8e6f7" }} interval={0} />
-                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => [`${v.toLocaleString()} hrs`, "Downtime"]} cursor={{ fill: "rgba(250, 204, 21, .06)" }} />
-                <Bar dataKey="value" radius={BAR_RADIUS} fill="url(#rcaDowntimeBar)" maxBarSize={18}>
-                <LabelList dataKey="value" position="right" fill={CHART_LABEL_FILL} fontSize={12} formatter={(v: number) => `${v.toLocaleString()}h`} />
-                </Bar>
-                </BarChart>
-                </ResponsiveContainer>
-              </article>
-
-          <article className="glass-card" style={{ gridColumn: "9 / 13" }}>
-            <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Highest MTTR by RCA</h3> <BarChart3 size={18} /></div>
+              <div
+                className="card-heading"
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                {" "}
+                <h3>Top 10 RCA by total downtime (hrs)</h3>{" "}
+                <BarChart3 size={18} />
+              </div>
               <ResponsiveContainer width="100%" height={290}>
-                <BarChart data={analytics.rcaByMttr.slice(0, 8)} layout="vertical" margin={{ left: 18, right: 72, top: 8, bottom: 8 }}>
+                <BarChart
+                  data={analytics.rcaByDowntime.slice(0, 10)}
+                  layout="vertical"
+                  margin={{ left: 18, right: 72, top: 8, bottom: 8 }}
+                >
+                  <defs>
+                    <linearGradient
+                      id="rcaDowntimeBar"
+                      x1="0"
+                      y1="0"
+                      x2="1"
+                      y2="0"
+                    >
+                      <stop offset="0%" stopColor="#f97316" />
+                      <stop offset="100%" stopColor="#facc15" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    stroke={CHART_GRID_STROKE}
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    stroke={CHART_AXIS_STROKE}
+                    allowDecimals={false}
+                    tick={{ fontSize: 11, fill: "#aac0dc" }}
+                  />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    stroke={CHART_AXIS_STROKE}
+                    width={200}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 12, fill: "#d8e6f7" }}
+                    interval={0}
+                  />
+                  <Tooltip
+                    contentStyle={CHART_TOOLTIP_STYLE}
+                    formatter={(v: number) => [
+                      `${v.toLocaleString()} hrs`,
+                      "Downtime",
+                    ]}
+                    cursor={{ fill: "rgba(250, 204, 21, .06)" }}
+                  />
+                  <Bar
+                    dataKey="value"
+                    radius={BAR_RADIUS}
+                    fill="url(#rcaDowntimeBar)"
+                    maxBarSize={18}
+                  >
+                    <LabelList
+                      dataKey="value"
+                      position="right"
+                      fill={CHART_LABEL_FILL}
+                      fontSize={12}
+                      formatter={(v: number) => `${v.toLocaleString()}h`}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </article>
+
+            <article className="glass-card" style={{ gridColumn: "9 / 13" }}>
+              <div
+                className="card-heading"
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                {" "}
+                <h3>Highest MTTR by RCA</h3> <BarChart3 size={18} />
+              </div>
+              <ResponsiveContainer width="100%" height={290}>
+                <BarChart
+                  data={analytics.rcaByMttr.slice(0, 8)}
+                  layout="vertical"
+                  margin={{ left: 18, right: 72, top: 8, bottom: 8 }}
+                >
                   <defs>
                     <linearGradient id="mttrBar" x1="0" y1="0" x2="1" y2="0">
                       <stop offset="0%" stopColor="#dc2626" />
                       <stop offset="100%" stopColor="#fb7185" />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke={CHART_GRID_STROKE} horizontal={false} />
-                  <XAxis type="number" stroke={CHART_AXIS_STROKE} allowDecimals={false} tick={{ fontSize: 11, fill: "#aac0dc" }} />
-                  <YAxis dataKey="name" type="category" stroke={CHART_AXIS_STROKE} width={200} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#d8e6f7" }} interval={0} />
-                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => [`${v.toLocaleString()} hrs avg`, "MTTR"]} cursor={{ fill: "rgba(248, 113, 113, .06)" }} />
-                  <Bar dataKey="value" radius={BAR_RADIUS} fill="url(#mttrBar)" maxBarSize={18}>
-                  <LabelList dataKey="value" position="right" fill={CHART_LABEL_FILL} fontSize={12} formatter={(v: number) => `${v.toLocaleString()}h`} />
+                  <CartesianGrid
+                    stroke={CHART_GRID_STROKE}
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    stroke={CHART_AXIS_STROKE}
+                    allowDecimals={false}
+                    tick={{ fontSize: 11, fill: "#aac0dc" }}
+                  />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    stroke={CHART_AXIS_STROKE}
+                    width={200}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 12, fill: "#d8e6f7" }}
+                    interval={0}
+                  />
+                  <Tooltip
+                    contentStyle={CHART_TOOLTIP_STYLE}
+                    formatter={(v: number) => [
+                      `${v.toLocaleString()} hrs avg`,
+                      "MTTR",
+                    ]}
+                    cursor={{ fill: "rgba(248, 113, 113, .06)" }}
+                  />
+                  <Bar
+                    dataKey="value"
+                    radius={BAR_RADIUS}
+                    fill="url(#mttrBar)"
+                    maxBarSize={18}
+                  >
+                    <LabelList
+                      dataKey="value"
+                      position="right"
+                      fill={CHART_LABEL_FILL}
+                      fontSize={12}
+                      formatter={(v: number) => `${v.toLocaleString()}h`}
+                    />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-          </article>
+            </article>
 
-          <article className="glass-card" style={{ gridColumn: "1 / 7" }}>
-            <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Top Managed Resources by Ticket Count</h3> <BarChart3 size={18} /></div>
-            <ResponsiveContainer width="100%" height={290}>
-              <BarChart data={analytics.topManagedResources} layout="vertical" margin={{ left: 18, right: 72, top: 8, bottom: 8 }}>
-                <defs>
-                  <linearGradient id="managedResourceBar" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#0891b2" />
-                    <stop offset="100%" stopColor="#5eead4" />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke={CHART_GRID_STROKE} horizontal={false} />
-                <XAxis type="number" stroke={CHART_AXIS_STROKE} allowDecimals={false} tick={{ fontSize: 11, fill: "#aac0dc" }} />
-                <YAxis dataKey="name" type="category" stroke={CHART_AXIS_STROKE} width={220} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#d8e6f7" }} interval={0} />
-                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => [v.toLocaleString(), "Tickets"]} cursor={{ fill: "rgba(45, 212, 191, .06)" }} />
-                <Bar dataKey="value" radius={BAR_RADIUS} fill="url(#managedResourceBar)" maxBarSize={18}>
-                  <LabelList dataKey="value" position="right" fill={CHART_LABEL_FILL} fontSize={12} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </article>
-
-          <article className="glass-card" style={{ gridColumn: "7 / 13", display: "flex", flexDirection: "column", minHeight: 0 }}>
-            <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Average Ticket Resolution Time</h3> <Activity size={18} /></div>
-            <div style={{ padding: "0 8px 8px", flex: 1, minHeight: 0 }}>
-              {(analytics.monthlyResolutionTime ?? []).length === 0 ? (
-                <div style={{ color: "#94a3b8", fontSize: "12px", textAlign: "center", padding: "12px" }}>
-                  No closed / resolved tickets with a duration in the current selection.
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart
-                    data={analytics.monthlyResolutionTime}
-                    margin={{ top: 4, right: 18, left: 0, bottom: 36 }}
+            <article className="glass-card" style={{ gridColumn: "1 / 7" }}>
+              <div
+                className="card-heading"
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                {" "}
+                <h3>Top Managed Resources by Ticket Count</h3>{" "}
+                <BarChart3 size={18} />
+              </div>
+              <ResponsiveContainer width="100%" height={290}>
+                <BarChart
+                  data={analytics.topManagedResources}
+                  layout="vertical"
+                  margin={{ left: 18, right: 72, top: 8, bottom: 8 }}
+                >
+                  <defs>
+                    <linearGradient
+                      id="managedResourceBar"
+                      x1="0"
+                      y1="0"
+                      x2="1"
+                      y2="0"
+                    >
+                      <stop offset="0%" stopColor="#0891b2" />
+                      <stop offset="100%" stopColor="#5eead4" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    stroke={CHART_GRID_STROKE}
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    stroke={CHART_AXIS_STROKE}
+                    allowDecimals={false}
+                    tick={{ fontSize: 11, fill: "#aac0dc" }}
+                  />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    stroke={CHART_AXIS_STROKE}
+                    width={220}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 12, fill: "#d8e6f7" }}
+                    interval={0}
+                  />
+                  <Tooltip
+                    contentStyle={CHART_TOOLTIP_STYLE}
+                    formatter={(v: number) => [v.toLocaleString(), "Tickets"]}
+                    cursor={{ fill: "rgba(45, 212, 191, .06)" }}
+                  />
+                  <Bar
+                    dataKey="value"
+                    radius={BAR_RADIUS}
+                    fill="url(#managedResourceBar)"
+                    maxBarSize={18}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} vertical={false} />
+                    <LabelList
+                      dataKey="value"
+                      position="right"
+                      fill={CHART_LABEL_FILL}
+                      fontSize={12}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </article>
+
+            <article
+              className="glass-card"
+              style={{
+                gridColumn: "7 / 13",
+                display: "flex",
+                flexDirection: "column",
+                minHeight: 0,
+              }}
+            >
+              <div
+                className="card-heading"
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                {" "}
+                <h3>Average Ticket Resolution Time</h3> <Activity size={18} />
+              </div>
+              <div style={{ padding: "0 8px 8px", flex: 1, minHeight: 0 }}>
+                {(analytics.monthlyResolutionTime ?? []).length === 0 ? (
+                  <div
+                    style={{
+                      color: "#94a3b8",
+                      fontSize: "12px",
+                      textAlign: "center",
+                      padding: "12px",
+                    }}
+                  >
+                    No closed / resolved tickets with a duration in the current
+                    selection.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <LineChart
+                      data={analytics.monthlyResolutionTime}
+                      margin={{ top: 4, right: 18, left: 0, bottom: 36 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={CHART_GRID_STROKE}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fill: "#aac0dc", fontSize: 10 }}
+                        angle={-40}
+                        textAnchor="end"
+                        interval={0}
+                        height={40}
+                      />
+                      <YAxis
+                        tick={{ fill: "#aac0dc", fontSize: 10 }}
+                        tickFormatter={(v: number) => `${v}h`}
+                        width={42}
+                      />
+                      <Tooltip
+                        contentStyle={CHART_TOOLTIP_STYLE}
+                        labelStyle={{ color: "#e2e8f0", fontWeight: 700 }}
+                        formatter={(
+                          value: number,
+                          name: string,
+                          props: {
+                            payload?: {
+                              count?: number;
+                              totalHours?: number;
+                              pendingCount?: number;
+                              pendingTotal?: number;
+                            };
+                          }
+                        ) => {
+                          const p = props.payload ?? {};
+                          if (name === "Resolution (avg h)") {
+                            return [
+                              `${value.toFixed(2)} h (n=${p.count ?? 0}, total ${p.totalHours ?? 0} h)`,
+                              name,
+                            ];
+                          }
+                          if (name === "Pending (avg h)") {
+                            return value > 0
+                              ? [
+                                  `${value.toFixed(2)} h (n=${p.pendingCount ?? 0}, total ${p.pendingTotal ?? 0} h)`,
+                                  name,
+                                ]
+                              : ["-", name];
+                          }
+                          return [value, name];
+                        }}
+                      />
+                      <Legend
+                        verticalAlign="top"
+                        height={22}
+                        wrapperStyle={{
+                          ...CHART_LEGEND_STYLE,
+                          paddingBottom: 2,
+                        }}
+                        iconType="circle"
+                        iconSize={8}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="avgHours"
+                        name="Resolution (avg h)"
+                        stroke="#93c5fd"
+                        strokeWidth={3}
+                        dot={{ r: 3, fill: "#071426", strokeWidth: 2 }}
+                        activeDot={{ r: 6, fill: "#93c5fd" }}
+                        isAnimationActive={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="pendingAvg"
+                        name="Pending (avg h)"
+                        stroke="#f59e0b"
+                        strokeWidth={3}
+                        dot={{ r: 3, fill: "#071426", strokeWidth: 2 }}
+                        activeDot={{ r: 6, fill: "#f59e0b" }}
+                        isAnimationActive={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </article>
+
+            <article className="glass-card" style={{ gridColumn: "1 / 7" }}>
+              <div
+                className="card-heading"
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                {" "}
+                <h3>Site Availability (All Sites)</h3> <BarChart3 size={18} />
+              </div>
+
+              {/* The Safety Guard: Only render if data exists and is not empty */}
+              {performanceKpiRows && performanceKpiRows.length > 0 ? (
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart
+                    key={JSON.stringify(performanceKpiRows)}
+                    data={performanceKpiRows}
+                    layout="horizontal"
+                    margin={{ left: 4, right: 18, top: 24, bottom: 6 }}
+                    barCategoryGap="22%"
+                  >
+                    <defs>
+                      <linearGradient
+                        id="availabilityBar"
+                        x1="0"
+                        y1="1"
+                        x2="0"
+                        y2="0"
+                      >
+                        <stop offset="0%" stopColor="#059669" />
+                        <stop offset="100%" stopColor="#86efac" />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      stroke={CHART_GRID_STROKE}
+                      vertical={false}
+                    />
                     <XAxis
-                      dataKey="name"
-                      tick={{ fill: "#aac0dc", fontSize: 10 }}
-                      angle={-40}
+                      dataKey="displayName"
+                      type="category"
+                      stroke={CHART_AXIS_STROKE}
+                      tick={{ fontSize: 8, fill: "#aac0dc" }}
+                      angle={-65}
                       textAnchor="end"
                       interval={0}
-                      height={40}
+                      height={88}
                     />
                     <YAxis
-                      tick={{ fill: "#aac0dc", fontSize: 10 }}
-                      tickFormatter={(v: number) => `${v}h`}
-                      width={42}
+                      type="number"
+                      stroke={CHART_AXIS_STROKE}
+                      tickLine={false}
+                      axisLine={false}
+                      width={38}
+                      tick={{ fontSize: 10, fill: "#aac0dc" }}
                     />
                     <Tooltip
                       contentStyle={CHART_TOOLTIP_STYLE}
-                      labelStyle={{ color: "#e2e8f0", fontWeight: 700 }}
-                      formatter={(value: number, name: string, props: { payload?: { count?: number; totalHours?: number; pendingCount?: number; pendingTotal?: number } }) => {
-                        const p = props.payload ?? {};
-                        if (name === "Resolution (avg h)") {
-                          return [`${value.toFixed(2)} h (n=${p.count ?? 0}, total ${p.totalHours ?? 0} h)`, name];
-                        }
-                        if (name === "Pending (avg h)") {
-                          return value > 0 ? [`${value.toFixed(2)} h (n=${p.pendingCount ?? 0}, total ${p.pendingTotal ?? 0} h)`, name] : ["-", name];
-                        }
-                        return [value, name];
-                      }}
+                      cursor={{ fill: "rgba(16, 185, 129, .06)" }}
                     />
-                    <Legend
-                      verticalAlign="top"
-                      height={22}
-                      wrapperStyle={{ ...CHART_LEGEND_STYLE, paddingBottom: 2 }}
-                      iconType="circle"
-                      iconSize={8}
-                    />
-                    <Line type="monotone" dataKey="avgHours" name="Resolution (avg h)" stroke="#93c5fd" strokeWidth={3} dot={{ r: 3, fill: "#071426", strokeWidth: 2 }} activeDot={{ r: 6, fill: "#93c5fd" }} isAnimationActive={false} />
-                    <Line type="monotone" dataKey="pendingAvg" name="Pending (avg h)" stroke="#f59e0b" strokeWidth={3} dot={{ r: 3, fill: "#071426", strokeWidth: 2 }} activeDot={{ r: 6, fill: "#f59e0b" }} isAnimationActive={false} />
-                  </LineChart>
+                    <Bar
+                      dataKey="availHours"
+                      radius={COLUMN_BAR_RADIUS}
+                      fill="url(#availabilityBar)"
+                      maxBarSize={12}
+                    >
+                      <LabelList
+                        dataKey="availHours"
+                        position="top"
+                        fill="#d1fae5"
+                        fontSize={9}
+                        formatter={(value: number) => `${value}h`}
+                      />
+                    </Bar>
+                  </BarChart>
                 </ResponsiveContainer>
-              )}
-            </div>
-          </article>
-
-          <article className="glass-card" style={{ gridColumn: "1 / 7" }}>
-          <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}> <h3>Site Availability (All Sites)</h3> <BarChart3 size={18} /></div>
-
-          {/* The Safety Guard: Only render if data exists and is not empty */}
-          {performanceKpiRows && performanceKpiRows.length > 0 ? (
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart key={JSON.stringify(performanceKpiRows)} data={performanceKpiRows} layout="horizontal" margin={{ left: 4, right: 18, top: 24, bottom: 6 }} barCategoryGap="22%">
-              <defs>
-                <linearGradient id="availabilityBar" x1="0" y1="1" x2="0" y2="0">
-                  <stop offset="0%" stopColor="#059669" />
-                  <stop offset="100%" stopColor="#86efac" />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
-              <XAxis dataKey="displayName" type="category" stroke={CHART_AXIS_STROKE} tick={{ fontSize: 8, fill: "#aac0dc" }} angle={-65} textAnchor="end" interval={0} height={88} />
-              <YAxis type="number" stroke={CHART_AXIS_STROKE} tickLine={false} axisLine={false} width={38} tick={{ fontSize: 10, fill: "#aac0dc" }} />
-              <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: "rgba(16, 185, 129, .06)" }} />
-              <Bar dataKey="availHours" radius={COLUMN_BAR_RADIUS} fill="url(#availabilityBar)" maxBarSize={12}>
-                <LabelList dataKey="availHours" position="top" fill="#d1fae5" fontSize={9} formatter={(value: number) => `${value}h`} />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          ) : (
-          // What shows if data is missing or empty
-          <div style={{ height: "300px", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8"  }}>
-          No performance data available.
-          </div>
-          )}
-          </article>
-
-          <article className="glass-card" style={{ gridColumn: "7 / 13" }}>
-          <div className="card-heading" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "5px" }}> <h3>Site Downtime (All Sites)</h3> <BarChart3 size={18} /></div>
-          <div className="card-subheading">
-          <span>Hours down per site</span>
-          </div>
-          {performanceKpiRows && performanceKpiRows.length > 0 ? (
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart
-              key={"downtime-" + JSON.stringify(performanceKpiRows)}
-              data={performanceKpiRows}
-              layout="horizontal"
-              margin={{ left: 4, right: 18, top: 24, bottom: 6 }}
-              barCategoryGap="22%"
-            >
-              <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
-              <XAxis dataKey="displayName" type="category" stroke={CHART_AXIS_STROKE} tick={{ fontSize: 8, fill: "#aac0dc" }} angle={-65} textAnchor="end" interval={0} height={88} />
-              <YAxis type="number" stroke={CHART_AXIS_STROKE} tickLine={false} axisLine={false} width={38} tick={{ fontSize: 10, fill: "#aac0dc" }} />
-              <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: number) => [`${value} hrs`, "Down Hours"]} cursor={{ fill: "rgba(248, 113, 113, .06)" }} />
-              <Bar dataKey="sitesDownHours" radius={COLUMN_BAR_RADIUS} maxBarSize={12}>
-                {performanceKpiRows.map((row, index) => (
-                  <Cell key={`cell-${index}`} fill={row.sitesDownHours === 0 ? "rgba(148,163,184,0.25)" : row.sitesDownHours > 24 ? "#ef4444" : row.sitesDownHours > 8 ? "#f59e0b" : "#fb923c"} />
-                ))}
-                <LabelList dataKey="sitesDownHours" position="top" fill="#fecaca" fontSize={9} formatter={(value: number) => value > 0 ? `${value}h` : ""} />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          ) : (
-          <div style={{ height: "300px", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8" }}>No performance data available.</div>
-          )}
-          </article>
-
-          </section>
-
-{/* Tickets Table */}
-          <section className="table-card">
-          <div className="table-heading">
-            <div><h2>{filteredTickets.length.toLocaleString()} distinct Ticket records</h2></div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ color: "#94a3b8", fontSize: 13 }}>Page {tablePage} of {Math.max(1, Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE))} &mdash; {filteredTickets.length.toLocaleString()} total</span>
-            </div>
-          </div>
-          <div className="table-scroll" id="ticket-table-wrapper">
-          <div ref={tableRef}>
-          <div style={{ marginBottom: "12px" }}>
-            <button className="ghost-button" onClick={scrollToTopCards}> ↑ Back to Summary </button>
-          </div>
-
-          <table style={{ tableLayout: "fixed", width: "auto", borderCollapse: "separate" }}>
-          <colgroup>
-            {DISTINCT_REPORT_HEADERS.map((header) => (
-              <col key={header} style={{ width: `${getTicketColumnWidth(header)}px` }} />
-            ))}
-          </colgroup>
-          <thead>
-          <tr>
-          {DISTINCT_REPORT_HEADERS.map((header) => {
-            return (
-              <th
-                key={header}
-                style={{
-                  textAlign: "center",
-                  padding: "12px",
-                  verticalAlign: "middle",
-                  position: "relative",
-                  whiteSpace: "normal",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-                title={header}
-              >
-                {header}
-                <span
-                  onMouseDown={startTicketColumnResize(header)}
+              ) : (
+                // What shows if data is missing or empty
+                <div
                   style={{
-                    position: "absolute",
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 6,
-                    cursor: "col-resize",
-                    userSelect: "none",
-                    background: "linear-gradient(transparent 30%, rgba(148,163,184,0.35) 30% 70%, transparent 70%)",
-                    backgroundSize: "100% 0",
-                    backgroundRepeat: "no-repeat",
-                    backgroundPosition: "center",
-                    transition: "background-size 120ms ease",
+                    height: "300px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#94a3b8",
                   }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLSpanElement).style.backgroundSize = "100% 100%"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLSpanElement).style.backgroundSize = "100% 0"; }}
-                  title="Drag to resize column"
-                  aria-label={`Resize ${header} column`}
-                />
-              </th>
-            );
-          })}
-          </tr>
-          </thead>
-          <tbody>
-
-          {filteredTickets
-            .slice((tablePage - 1) * TABLE_PAGE_SIZE, tablePage * TABLE_PAGE_SIZE)
-            .map((ticket, index) => {
-              const row = ticket.primary;
-              const reportRow = distinctReportRow(ticket, index);
-              const siteIds = Array.from(ticket.siteIds).filter(Boolean);
-              const siteNames = Array.from(ticket.siteNames).filter(Boolean);
-
-              // Columns rendered with monospace font (codes, IDs, dates, times, durations).
-              const monoHeaders = new Set([
-                "#", "Site ID", "TT",
-                "Observation Date", "Observation Time",
-                "Recovery Date", "Recovery Time",
-                "Escalated for L3 Support Date", "Escalated for L3 Support Time",
-                "Total Duration Days/Hours",
-              ]);
-
-              // Every cell follows the same pattern:
-              //   <td>  →  <div width=col-width, flex-column, overflow:hidden>  →  <span overflow:ellipsis>
-              // Outer <td> keeps `title` for hover-tooltip; inner div constrains the visual width.
-              const baseStyle: React.CSSProperties = { verticalAlign: "top", padding: "10px 12px" };
-              const centeredTicketHeaders = new Set([
-                "Managed Resource",
-                "Severity",
-                "Observation Date",
-                "Observation Time",
-                "Recovery Date",
-                "Recovery Time",
-              ]);
-              const ticketCellStyle = (header: string): React.CSSProperties => ({
-                ...baseStyle,
-                textAlign: centeredTicketHeaders.has(header) ? "center" : undefined,
-                verticalAlign: centeredTicketHeaders.has(header) ? "middle" : "top",
-              });
-              const innerDivStyle = (header: string): React.CSSProperties => ({
-                display: "flex",
-                flexDirection: "column",
-                width: getTicketColumnWidth(header),
-                gap: "4px",
-                overflow: "hidden",
-                alignItems: centeredTicketHeaders.has(header) ? "center" : "stretch",
-                justifyContent: centeredTicketHeaders.has(header) ? "center" : "flex-start",
-                textAlign: centeredTicketHeaders.has(header) ? "center" : undefined,
-              });
-              const spanStyle: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "normal" };
-
-            return (
-              <tr key={ticket.tt}>
-                {reportRow.map((cell, cellIndex) => {
-                  const header = DISTINCT_REPORT_HEADERS[cellIndex];
-                  const isMono = monoHeaders.has(header);
-
-                  // Multi-value: Site ID
-                  if (header === "Site ID") {
-                    const items = siteIds.length ? siteIds : [String(cell ?? "")];
-                    return (
-                      <td key={header} className="mono" style={ticketCellStyle(header)} title={siteIds.join(", ")}>
-                        <div style={innerDivStyle(header)}>
-                          {items.map((id) => <span key={id} style={spanStyle}>{id}</span>)}
-                        </div>
-                      </td>
-                    );
-                  }
-
-                  // Multi-value: Site Name
-                  if (header === "Site Name") {
-                    const items = siteNames.length ? siteNames : [String(cell ?? "")];
-                    return (
-                      <td key={header} style={ticketCellStyle(header)} title={siteNames.join(", ")}>
-                        <div style={innerDivStyle(header)}>
-                          {items.map((name) => <span key={name} style={spanStyle}>{name}</span>)}
-                        </div>
-                      </td>
-                    );
-                  }
-
-                  // Pill: Severity / Status — the pill itself replaces the span.
-                  if (header === "Severity" || header === "Status") {
-                    const tone = (header === "Severity" ? SEVERITY_COLORS : STATUS_COLORS)[row[header.toLowerCase() as keyof typeof row]] ?? "#64748b";
-                    return (
-                      <td key={header} style={ticketCellStyle(header)} title={String(cell ?? "")}>
-                        <div style={innerDivStyle(header)}>
-                          <span className="pill" style={{ ["--pill" as string]: tone }}>{cell}</span>
-                        </div>
-                      </td>
-                    );
-                  }
-
-                  // Default: single span, ellipsis truncation, hover for full value.
-                  return (
-                    <td key={header} className={isMono ? "mono" : undefined} style={ticketCellStyle(header)} title={String(cell ?? "")}>
-                      <div style={innerDivStyle(header)}>
-                        <span style={spanStyle}>{cell}</span>
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-          </tbody>
-          </table>
-          </div>
-          </div>
-          {Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE) > 1 && (
-            <div className="pagination-bar no-print">
-              <button className="ghost-button" disabled={tablePage <= 1} onClick={() => setTablePage(1)}>«</button>
-              <button className="ghost-button" disabled={tablePage <= 1} onClick={() => setTablePage((p) => p - 1)}>‹ Prev</button>
-              {Array.from({ length: Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE) }, (_, i) => i + 1)
-                .filter((p) => p === 1 || p === Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE) || Math.abs(p - tablePage) <= 2)
-                .reduce<(number | "...")[]>((acc, p, idx, arr) => {
-                  if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push("...");
-                  acc.push(p);
-                  return acc;
-                }, [])
-                .map((p, idx) =>
-                  p === "..." ? <span key={`ellipsis-${idx}`} style={{ color: "#94a3b8", padding: "0 4px" }}>...</span> :
-                  <button key={p} className={`ghost-button${p === tablePage ? " active-page" : ""}`} onClick={() => setTablePage(p as number)}>{p}</button>
-                )}
-              <button className="ghost-button" disabled={tablePage >= Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE)} onClick={() => setTablePage((p) => p + 1)}>Next ›</button>
-              <button className="ghost-button" disabled={tablePage >= Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE)} onClick={() => setTablePage(Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE))}>»</button>
-            </div>
-          )}
-          </section>
-
-{/* Monthly Performance Table */}
-          {perfRows.length > 0 && (
-          <section className="table-card">
-          <div className="table-heading">
-          <div>
-          <h2>Monthly Performance - {perfMonths.length === 0 ? "All Months" : perfMonths.length === 1 ? formatMonthMMMMYYYY(perfMonths[0]) : `${perfMonths.length} months`}{perfRegions.length > 0 ? ` — ${perfRegions.join(", ")}` : ""}</h2>
-          <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 4 }}>
-          {perfRows.length.toLocaleString()} sites &nbsp;|&nbsp;
-          Total hours in month: {perfMonths.length === 1 ? totalHoursInMonth(perfMonths[0]).toLocaleString() : perfMonths.length > 1 ? perfMonths.reduce((s, m) => s + totalHoursInMonth(m), 0).toLocaleString() : "N/A"} hrs
-          </p>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ color: "#94a3b8", fontSize: 13 }}>Page {perfPage} of {Math.max(1, Math.ceil(perfRows.length / TABLE_PAGE_SIZE))} &mdash; {perfRows.length.toLocaleString()} total</span>
-          </div>
-          </div>
-          <div style={{ marginBottom: "12px" }}>
-            <button className="ghost-button" onClick={scrollToTopCards}> ↑ Back to Summary </button>
-          </div>
-          <div className="table-scroll">
-          <table style={{ tableLayout: "fixed", width: "auto", borderCollapse: "separate" }}>
-          <colgroup>
-            {PERF_REPORT_HEADERS.map((h) => (
-              <col key={h} style={{ width: `${getPerfColumnWidth(h)}px` }} />
-            ))}
-          </colgroup>
-          <thead>
-          <tr>
-            {PERF_REPORT_HEADERS.map((header) => {
-              return (
-                <th
-                  key={header}
-                  style={{
-                    textAlign: header === "Site ID" || header === "Site Name" ? "left" : "center",
-                    padding: "12px",
-                    verticalAlign: "middle",
-                    position: "relative",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                  title={header}
                 >
-                  {header}
-                  <span
-                    onMouseDown={startPerfColumnResize(header)}
-                    style={{
-                      position: "absolute",
-                      right: 0,
-                      top: 0,
-                      bottom: 0,
-                      width: 6,
-                      cursor: "col-resize",
-                      userSelect: "none",
-                      background: "linear-gradient(transparent 30%, rgba(148,163,184,0.35) 30% 70%, transparent 70%)",
-                      backgroundSize: "100% 0",
-                      backgroundRepeat: "no-repeat",
-                      backgroundPosition: "center",
-                      transition: "background-size 120ms ease",
-                    }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLSpanElement).style.backgroundSize = "100% 100%"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLSpanElement).style.backgroundSize = "100% 0"; }}
-                    title="Drag to resize column"
-                    aria-label={`Resize ${header} column`}
-                  />
-                </th>
-              );
-            })}
-          </tr>
-          </thead>
-          <tbody>
-          {perfRows
-            .slice((perfPage - 1) * TABLE_PAGE_SIZE, perfPage * TABLE_PAGE_SIZE)
-            .map((row, i) => {
-            // Original index (1-based) across the whole result set, not the current page.
-            const absoluteIndex = (perfPage - 1) * TABLE_PAGE_SIZE + i + 1;
-            // Parse reliability % for color-coding.
-            const relNum = parseFloat(row.reliability);
-            const relColor = !row.sitesDownHours ? undefined
-              : relNum < 95 ? "#ef4444"   // red below 95%
-              : relNum < 99 ? "#f59e0b"   // amber below 99%
-              : undefined;                 // no highlight at/above 99%
+                  No performance data available.
+                </div>
+              )}
+            </article>
 
-            // Every cell follows the same pattern (matches the tickets table):
-            //   <td>  →  <div width=col-width, flex-column, overflow:hidden>  →  <span overflow:ellipsis>
-            const baseStyle: React.CSSProperties = { verticalAlign: "top", padding: "10px 12px" };
-            const isPerfLeftAligned = (header: string) => header === "Site ID" || header === "Site Name";
-            const perfCellStyle = (header: string): React.CSSProperties => ({
-              ...baseStyle,
-              textAlign: isPerfLeftAligned(header) ? "left" : "center",
-              verticalAlign: isPerfLeftAligned(header) ? "top" : "middle",
-            });
-            const innerDivStyle = (header: string): React.CSSProperties => ({
-              display: "flex",
-              flexDirection: "column",
-              width: getPerfColumnWidth(header),
-              gap: "4px",
-              overflow: "hidden",
-              alignItems: isPerfLeftAligned(header) ? "stretch" : "center",
-              justifyContent: isPerfLeftAligned(header) ? "flex-start" : "center",
-              textAlign: isPerfLeftAligned(header) ? "left" : "center",
-              margin: isPerfLeftAligned(header) ? undefined : "0 auto",
-            });
-            const spanStyle: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
-
-            const cells: Array<{ header: string; value: React.ReactNode; mono?: boolean; extra?: React.CSSProperties }> = [
-              { header: "S No",                      value: absoluteIndex,      mono: true },
-              { header: "Site ID",                   value: row.siteId,         mono: true },
-              { header: "Site Name",                 value: row.siteName },
-              { header: "Site Availability, Hrs",    value: row.availHours,     mono: true },
-              { header: "Site Availability, days",   value: row.availDay },
-              { header: "Channel Busy Count",        value: "",                 mono: true },
-              { header: "MW link Performance, Hrs",  value: "",                 mono: true },
-              { header: "DMR Reliability",           value: row.reliability,    mono: true, extra: relColor ? { color: relColor, fontWeight: 700 } : undefined },
-              { header: "Sites Down, hrs",           value: row.sitesDownHours, mono: true },
-            ];
-
-            return (
-              <tr key={row.siteId}>
-                {cells.map(({ header, value, mono, extra }) => (
-                  <td key={header} className={mono ? "mono" : undefined} style={perfCellStyle(header)} title={String(value ?? "")}>
-                    <div style={innerDivStyle(header)}>
-                      <span style={{ ...spanStyle, ...extra }}>{value}</span>
-                    </div>
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
-          {/* Total summary row — always computed over the full dataset, shown only on the last page */}
-          {perfPage === Math.max(1, Math.ceil(perfRows.length / TABLE_PAGE_SIZE)) && perfRows.length > 0 && (() => {
-            const totalDown = Math.round(perfRows.reduce((s, r) => s + r.sitesDownHours, 0) * 10) / 10;
-            const totalAvail = Math.round(perfRows.reduce((s, r) => s + r.availHours, 0) * 10) / 10;
-            const totalHrs = totalAvail + totalDown;
-            const overallRel = totalHrs > 0 ? ((totalAvail / totalHrs) * 100).toFixed(2) + "%" : "";
-            const relNum = parseFloat(overallRel);
-            const relColor = totalDown === 0 ? undefined
-              : relNum < 95 ? "#ef4444"
-              : relNum < 99 ? "#f59e0b"
-              : "#22c55e";
-            return (
-              <tr style={{ fontWeight: 700, borderTop: "2px solid rgba(148,163,184,0.3)", background: "rgba(255,255,255,0.04)" }}>
-                <td className="mono" colSpan={3} style={{ textAlign: "right", paddingRight: 16, color: "#94a3b8" }}>TOTAL</td>
-                <td className="mono" style={{ textAlign: "center" }}>{totalAvail}</td>
-                <td style={{ textAlign: "center" }}></td>
-                <td className="mono" style={{ textAlign: "center" }}></td>
-                <td className="mono" style={{ textAlign: "center" }}></td>
-                <td className="mono" style={{ textAlign: "center", ...(relColor ? { color: relColor, fontWeight: 700 } : {}) }}>{overallRel}</td>
-                <td className="mono" style={{ textAlign: "center" }}>{totalDown}</td>
-              </tr>
-            );
-          })()}
-           
-          </tbody>
-          </table>
-          </div>
-          {Math.ceil(perfRows.length / TABLE_PAGE_SIZE) > 1 && (
-            <div className="pagination-bar no-print">
-              <button className="ghost-button" disabled={perfPage <= 1} onClick={() => setPerfPage(1)}>«</button>
-              <button className="ghost-button" disabled={perfPage <= 1} onClick={() => setPerfPage((p) => p - 1)}>‹ Prev</button>
-              {Array.from({ length: Math.ceil(perfRows.length / TABLE_PAGE_SIZE) }, (_, i) => i + 1)
-                .filter((p) => p === 1 || p === Math.ceil(perfRows.length / TABLE_PAGE_SIZE) || Math.abs(p - perfPage) <= 2)
-                .reduce<(number | "...")[]>((acc, p, idx, arr) => {
-                  if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push("...");
-                  acc.push(p);
-                  return acc;
-                }, [])
-                .map((p, idx) =>
-                  p === "..." ? <span key={`ellipsis-${idx}`} style={{ color: "#94a3b8", padding: "0 4px" }}>...</span> :
-                  <button key={p} className={`ghost-button${p === perfPage ? " active-page" : ""}`} onClick={() => setPerfPage(p as number)}>{p}</button>
-                )}
-              <button className="ghost-button" disabled={perfPage >= Math.ceil(perfRows.length / TABLE_PAGE_SIZE)} onClick={() => setPerfPage((p) => p + 1)}>Next ›</button>
-              <button className="ghost-button" disabled={perfPage >= Math.ceil(perfRows.length / TABLE_PAGE_SIZE)} onClick={() => setPerfPage(Math.ceil(perfRows.length / TABLE_PAGE_SIZE))}>»</button>
-            </div>
-          )}
+            <article className="glass-card" style={{ gridColumn: "7 / 13" }}>
+              <div
+                className="card-heading"
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: "5px",
+                }}
+              >
+                {" "}
+                <h3>Site Downtime (All Sites)</h3> <BarChart3 size={18} />
+              </div>
+              <div className="card-subheading">
+                <span>Hours down per site</span>
+              </div>
+              {performanceKpiRows && performanceKpiRows.length > 0 ? (
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart
+                    key={"downtime-" + JSON.stringify(performanceKpiRows)}
+                    data={performanceKpiRows}
+                    layout="horizontal"
+                    margin={{ left: 4, right: 18, top: 24, bottom: 6 }}
+                    barCategoryGap="22%"
+                  >
+                    <CartesianGrid
+                      stroke={CHART_GRID_STROKE}
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="displayName"
+                      type="category"
+                      stroke={CHART_AXIS_STROKE}
+                      tick={{ fontSize: 8, fill: "#aac0dc" }}
+                      angle={-65}
+                      textAnchor="end"
+                      interval={0}
+                      height={88}
+                    />
+                    <YAxis
+                      type="number"
+                      stroke={CHART_AXIS_STROKE}
+                      tickLine={false}
+                      axisLine={false}
+                      width={38}
+                      tick={{ fontSize: 10, fill: "#aac0dc" }}
+                    />
+                    <Tooltip
+                      contentStyle={CHART_TOOLTIP_STYLE}
+                      formatter={(value: number) => [
+                        `${value} hrs`,
+                        "Down Hours",
+                      ]}
+                      cursor={{ fill: "rgba(248, 113, 113, .06)" }}
+                    />
+                    <Bar
+                      dataKey="sitesDownHours"
+                      radius={COLUMN_BAR_RADIUS}
+                      maxBarSize={12}
+                    >
+                      {performanceKpiRows.map((row, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={
+                            row.sitesDownHours === 0
+                              ? "rgba(148,163,184,0.25)"
+                              : row.sitesDownHours > 24
+                                ? "#ef4444"
+                                : row.sitesDownHours > 8
+                                  ? "#f59e0b"
+                                  : "#fb923c"
+                          }
+                        />
+                      ))}
+                      <LabelList
+                        dataKey="sitesDownHours"
+                        position="top"
+                        fill="#fecaca"
+                        fontSize={9}
+                        formatter={(value: number) =>
+                          value > 0 ? `${value}h` : ""
+                        }
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div
+                  style={{
+                    height: "300px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#94a3b8",
+                  }}
+                >
+                  No performance data available.
+                </div>
+              )}
+            </article>
           </section>
-          )}
 
+          {/* Tickets Table */}
+          <section className="table-card">
+            <div className="table-heading">
+              <div>
+                <h2>
+                  {filteredTickets.length.toLocaleString()} distinct Ticket
+                  records
+                </h2>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ color: "#94a3b8", fontSize: 13 }}>
+                  Page {tablePage} of{" "}
+                  {Math.max(
+                    1,
+                    Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE)
+                  )}{" "}
+                  &mdash; {filteredTickets.length.toLocaleString()} total
+                </span>
+              </div>
+            </div>
+            <div className="table-scroll" id="ticket-table-wrapper">
+              <div ref={tableRef}>
+                <div style={{ marginBottom: "12px" }}>
+                  <button className="ghost-button" onClick={scrollToTopCards}>
+                    {" "}
+                    ↑ Back to Summary{" "}
+                  </button>
+                </div>
+
+                <table
+                  style={{
+                    tableLayout: "fixed",
+                    width: "auto",
+                    borderCollapse: "separate",
+                  }}
+                >
+                  <colgroup>
+                    {DISTINCT_REPORT_HEADERS.map(header => (
+                      <col
+                        key={header}
+                        style={{ width: `${getTicketColumnWidth(header)}px` }}
+                      />
+                    ))}
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      {DISTINCT_REPORT_HEADERS.map(header => {
+                        return (
+                          <th
+                            key={header}
+                            style={{
+                              textAlign: "center",
+                              padding: "12px",
+                              verticalAlign: "middle",
+                              position: "relative",
+                              whiteSpace: "normal",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                            title={header}
+                          >
+                            {header}
+                            <span
+                              onMouseDown={startTicketColumnResize(header)}
+                              style={{
+                                position: "absolute",
+                                right: 0,
+                                top: 0,
+                                bottom: 0,
+                                width: 6,
+                                cursor: "col-resize",
+                                userSelect: "none",
+                                background:
+                                  "linear-gradient(transparent 30%, rgba(148,163,184,0.35) 30% 70%, transparent 70%)",
+                                backgroundSize: "100% 0",
+                                backgroundRepeat: "no-repeat",
+                                backgroundPosition: "center",
+                                transition: "background-size 120ms ease",
+                              }}
+                              onMouseEnter={e => {
+                                (
+                                  e.currentTarget as HTMLSpanElement
+                                ).style.backgroundSize = "100% 100%";
+                              }}
+                              onMouseLeave={e => {
+                                (
+                                  e.currentTarget as HTMLSpanElement
+                                ).style.backgroundSize = "100% 0";
+                              }}
+                              title="Drag to resize column"
+                              aria-label={`Resize ${header} column`}
+                            />
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTickets
+                      .slice(
+                        (tablePage - 1) * TABLE_PAGE_SIZE,
+                        tablePage * TABLE_PAGE_SIZE
+                      )
+                      .map((ticket, index) => {
+                        const row = ticket.primary;
+                        const reportRow = distinctReportRow(ticket, index);
+                        const siteIds = Array.from(ticket.siteIds).filter(
+                          Boolean
+                        );
+                        const siteNames = Array.from(ticket.siteNames).filter(
+                          Boolean
+                        );
+
+                        // Columns rendered with monospace font (codes, IDs, dates, times, durations).
+                        const monoHeaders = new Set([
+                          "#",
+                          "Site ID",
+                          "TT",
+                          "Observation Date",
+                          "Observation Time",
+                          "Recovery Date",
+                          "Recovery Time",
+                          "Escalated for L3 Support Date",
+                          "Escalated for L3 Support Time",
+                          "Total Duration Days/Hours",
+                        ]);
+
+                        // Every cell follows the same pattern:
+                        //   <td>  →  <div width=col-width, flex-column, overflow:hidden>  →  <span overflow:ellipsis>
+                        // Outer <td> keeps `title` for hover-tooltip; inner div constrains the visual width.
+                        const baseStyle: React.CSSProperties = {
+                          verticalAlign: "top",
+                          padding: "10px 12px",
+                        };
+                        const centeredTicketHeaders = new Set([
+                          "Managed Resource",
+                          "Severity",
+                          "Observation Date",
+                          "Observation Time",
+                          "Recovery Date",
+                          "Recovery Time",
+                        ]);
+                        const ticketCellStyle = (
+                          header: string
+                        ): React.CSSProperties => ({
+                          ...baseStyle,
+                          textAlign: centeredTicketHeaders.has(header)
+                            ? "center"
+                            : undefined,
+                          verticalAlign: centeredTicketHeaders.has(header)
+                            ? "middle"
+                            : "top",
+                        });
+                        const innerDivStyle = (
+                          header: string
+                        ): React.CSSProperties => ({
+                          display: "flex",
+                          flexDirection: "column",
+                          width: getTicketColumnWidth(header),
+                          gap: "4px",
+                          overflow: "hidden",
+                          alignItems: centeredTicketHeaders.has(header)
+                            ? "center"
+                            : "stretch",
+                          justifyContent: centeredTicketHeaders.has(header)
+                            ? "center"
+                            : "flex-start",
+                          textAlign: centeredTicketHeaders.has(header)
+                            ? "center"
+                            : undefined,
+                        });
+                        const spanStyle: React.CSSProperties = {
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "normal",
+                        };
+
+                        return (
+                          <tr key={ticket.tt}>
+                            {reportRow.map((cell, cellIndex) => {
+                              const header = DISTINCT_REPORT_HEADERS[cellIndex];
+                              const isMono = monoHeaders.has(header);
+
+                              // Multi-value: Site ID
+                              if (header === "Site ID") {
+                                const items = siteIds.length
+                                  ? siteIds
+                                  : [String(cell ?? "")];
+                                return (
+                                  <td
+                                    key={header}
+                                    className="mono"
+                                    style={ticketCellStyle(header)}
+                                    title={siteIds.join(", ")}
+                                  >
+                                    <div style={innerDivStyle(header)}>
+                                      {items.map(id => (
+                                        <span key={id} style={spanStyle}>
+                                          {id}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </td>
+                                );
+                              }
+
+                              // Multi-value: Site Name
+                              if (header === "Site Name") {
+                                const items = siteNames.length
+                                  ? siteNames
+                                  : [String(cell ?? "")];
+                                return (
+                                  <td
+                                    key={header}
+                                    style={ticketCellStyle(header)}
+                                    title={siteNames.join(", ")}
+                                  >
+                                    <div style={innerDivStyle(header)}>
+                                      {items.map(name => (
+                                        <span key={name} style={spanStyle}>
+                                          {name}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </td>
+                                );
+                              }
+
+                              // Pill: Severity / Status — the pill itself replaces the span.
+                              if (
+                                header === "Severity" ||
+                                header === "Status"
+                              ) {
+                                const tone =
+                                  (header === "Severity"
+                                    ? SEVERITY_COLORS
+                                    : STATUS_COLORS)[
+                                    row[
+                                      header.toLowerCase() as keyof typeof row
+                                    ]
+                                  ] ?? "#64748b";
+                                return (
+                                  <td
+                                    key={header}
+                                    style={ticketCellStyle(header)}
+                                    title={String(cell ?? "")}
+                                  >
+                                    <div style={innerDivStyle(header)}>
+                                      <span
+                                        className="pill"
+                                        style={{ ["--pill" as string]: tone }}
+                                      >
+                                        {cell}
+                                      </span>
+                                    </div>
+                                  </td>
+                                );
+                              }
+
+                              // Default: single span, ellipsis truncation, hover for full value.
+                              return (
+                                <td
+                                  key={header}
+                                  className={isMono ? "mono" : undefined}
+                                  style={ticketCellStyle(header)}
+                                  title={String(cell ?? "")}
+                                >
+                                  <div style={innerDivStyle(header)}>
+                                    <span style={spanStyle}>{cell}</span>
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE) > 1 && (
+              <div className="pagination-bar no-print">
+                <button
+                  className="ghost-button"
+                  disabled={tablePage <= 1}
+                  onClick={() => setTablePage(1)}
+                >
+                  «
+                </button>
+                <button
+                  className="ghost-button"
+                  disabled={tablePage <= 1}
+                  onClick={() => setTablePage(p => p - 1)}
+                >
+                  ‹ Prev
+                </button>
+                {Array.from(
+                  {
+                    length: Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE),
+                  },
+                  (_, i) => i + 1
+                )
+                  .filter(
+                    p =>
+                      p === 1 ||
+                      p ===
+                        Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE) ||
+                      Math.abs(p - tablePage) <= 2
+                  )
+                  .reduce<(number | "...")[]>((acc, p, idx, arr) => {
+                    if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1)
+                      acc.push("...");
+                    acc.push(p);
+                    return acc;
+                  }, [])
+                  .map((p, idx) =>
+                    p === "..." ? (
+                      <span
+                        key={`ellipsis-${idx}`}
+                        style={{ color: "#94a3b8", padding: "0 4px" }}
+                      >
+                        ...
+                      </span>
+                    ) : (
+                      <button
+                        key={p}
+                        className={`ghost-button${p === tablePage ? " active-page" : ""}`}
+                        onClick={() => setTablePage(p as number)}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
+                <button
+                  className="ghost-button"
+                  disabled={
+                    tablePage >=
+                    Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE)
+                  }
+                  onClick={() => setTablePage(p => p + 1)}
+                >
+                  Next ›
+                </button>
+                <button
+                  className="ghost-button"
+                  disabled={
+                    tablePage >=
+                    Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE)
+                  }
+                  onClick={() =>
+                    setTablePage(
+                      Math.ceil(filteredTickets.length / TABLE_PAGE_SIZE)
+                    )
+                  }
+                >
+                  »
+                </button>
+              </div>
+            )}
+          </section>
+
+          {/* Monthly Performance Table */}
+          {perfRows.length > 0 && (
+            <section className="table-card">
+              <div className="table-heading">
+                <div>
+                  <h2>
+                    Monthly Performance -{" "}
+                    {perfMonths.length === 0
+                      ? "All Months"
+                      : perfMonths.length === 1
+                        ? formatMonthMMMMYYYY(perfMonths[0])
+                        : `${perfMonths.length} months`}
+                    {perfRegions.length > 0
+                      ? ` — ${perfRegions.join(", ")}`
+                      : ""}
+                  </h2>
+                  <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 4 }}>
+                    {perfRows.length.toLocaleString()} sites &nbsp;|&nbsp; Total
+                    hours in month:{" "}
+                    {perfMonths.length === 1
+                      ? totalHoursInMonth(perfMonths[0]).toLocaleString()
+                      : perfMonths.length > 1
+                        ? perfMonths
+                            .reduce((s, m) => s + totalHoursInMonth(m), 0)
+                            .toLocaleString()
+                        : "N/A"}{" "}
+                    hrs
+                  </p>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <span style={{ color: "#94a3b8", fontSize: 13 }}>
+                    Page {perfPage} of{" "}
+                    {Math.max(1, Math.ceil(perfRows.length / TABLE_PAGE_SIZE))}{" "}
+                    &mdash; {perfRows.length.toLocaleString()} total
+                  </span>
+                </div>
+              </div>
+              <div style={{ marginBottom: "12px" }}>
+                <button className="ghost-button" onClick={scrollToTopCards}>
+                  {" "}
+                  ↑ Back to Summary{" "}
+                </button>
+              </div>
+              <div className="table-scroll">
+                <table
+                  style={{
+                    tableLayout: "fixed",
+                    width: "auto",
+                    borderCollapse: "separate",
+                  }}
+                >
+                  <colgroup>
+                    {PERF_REPORT_HEADERS.map(h => (
+                      <col
+                        key={h}
+                        style={{ width: `${getPerfColumnWidth(h)}px` }}
+                      />
+                    ))}
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      {PERF_REPORT_HEADERS.map(header => {
+                        return (
+                          <th
+                            key={header}
+                            style={{
+                              textAlign:
+                                header === "Site ID" || header === "Site Name"
+                                  ? "left"
+                                  : "center",
+                              padding: "12px",
+                              verticalAlign: "middle",
+                              position: "relative",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                            title={header}
+                          >
+                            {header}
+                            <span
+                              onMouseDown={startPerfColumnResize(header)}
+                              style={{
+                                position: "absolute",
+                                right: 0,
+                                top: 0,
+                                bottom: 0,
+                                width: 6,
+                                cursor: "col-resize",
+                                userSelect: "none",
+                                background:
+                                  "linear-gradient(transparent 30%, rgba(148,163,184,0.35) 30% 70%, transparent 70%)",
+                                backgroundSize: "100% 0",
+                                backgroundRepeat: "no-repeat",
+                                backgroundPosition: "center",
+                                transition: "background-size 120ms ease",
+                              }}
+                              onMouseEnter={e => {
+                                (
+                                  e.currentTarget as HTMLSpanElement
+                                ).style.backgroundSize = "100% 100%";
+                              }}
+                              onMouseLeave={e => {
+                                (
+                                  e.currentTarget as HTMLSpanElement
+                                ).style.backgroundSize = "100% 0";
+                              }}
+                              title="Drag to resize column"
+                              aria-label={`Resize ${header} column`}
+                            />
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {perfRows
+                      .slice(
+                        (perfPage - 1) * TABLE_PAGE_SIZE,
+                        perfPage * TABLE_PAGE_SIZE
+                      )
+                      .map((row, i) => {
+                        // Original index (1-based) across the whole result set, not the current page.
+                        const absoluteIndex =
+                          (perfPage - 1) * TABLE_PAGE_SIZE + i + 1;
+                        // Parse reliability % for color-coding.
+                        const relNum = parseFloat(row.reliability);
+                        const relColor = !row.sitesDownHours
+                          ? undefined
+                          : relNum < 95
+                            ? "#ef4444" // red below 95%
+                            : relNum < 99
+                              ? "#f59e0b" // amber below 99%
+                              : undefined; // no highlight at/above 99%
+
+                        // Every cell follows the same pattern (matches the tickets table):
+                        //   <td>  →  <div width=col-width, flex-column, overflow:hidden>  →  <span overflow:ellipsis>
+                        const baseStyle: React.CSSProperties = {
+                          verticalAlign: "top",
+                          padding: "10px 12px",
+                        };
+                        const isPerfLeftAligned = (header: string) =>
+                          header === "Site ID" || header === "Site Name";
+                        const perfCellStyle = (
+                          header: string
+                        ): React.CSSProperties => ({
+                          ...baseStyle,
+                          textAlign: isPerfLeftAligned(header)
+                            ? "left"
+                            : "center",
+                          verticalAlign: isPerfLeftAligned(header)
+                            ? "top"
+                            : "middle",
+                        });
+                        const innerDivStyle = (
+                          header: string
+                        ): React.CSSProperties => ({
+                          display: "flex",
+                          flexDirection: "column",
+                          width: getPerfColumnWidth(header),
+                          gap: "4px",
+                          overflow: "hidden",
+                          alignItems: isPerfLeftAligned(header)
+                            ? "stretch"
+                            : "center",
+                          justifyContent: isPerfLeftAligned(header)
+                            ? "flex-start"
+                            : "center",
+                          textAlign: isPerfLeftAligned(header)
+                            ? "left"
+                            : "center",
+                          margin: isPerfLeftAligned(header)
+                            ? undefined
+                            : "0 auto",
+                        });
+                        const spanStyle: React.CSSProperties = {
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        };
+
+                        const cells: Array<{
+                          header: string;
+                          value: React.ReactNode;
+                          mono?: boolean;
+                          extra?: React.CSSProperties;
+                        }> = [
+                          { header: "S No", value: absoluteIndex, mono: true },
+                          { header: "Site ID", value: row.siteId, mono: true },
+                          { header: "Site Name", value: row.siteName },
+                          {
+                            header: "Site Availability, Hrs",
+                            value: row.availHours,
+                            mono: true,
+                          },
+                          {
+                            header: "Site Availability, days",
+                            value: row.availDay,
+                          },
+                          {
+                            header: "Channel Busy Count",
+                            value: "",
+                            mono: true,
+                          },
+                          {
+                            header: "MW link Performance, Hrs",
+                            value: "",
+                            mono: true,
+                          },
+                          {
+                            header: "DMR Reliability",
+                            value: row.reliability,
+                            mono: true,
+                            extra: relColor
+                              ? { color: relColor, fontWeight: 700 }
+                              : undefined,
+                          },
+                          {
+                            header: "Sites Down, hrs",
+                            value: row.sitesDownHours,
+                            mono: true,
+                          },
+                        ];
+
+                        return (
+                          <tr key={row.siteId}>
+                            {cells.map(({ header, value, mono, extra }) => (
+                              <td
+                                key={header}
+                                className={mono ? "mono" : undefined}
+                                style={perfCellStyle(header)}
+                                title={String(value ?? "")}
+                              >
+                                <div style={innerDivStyle(header)}>
+                                  <span style={{ ...spanStyle, ...extra }}>
+                                    {value}
+                                  </span>
+                                </div>
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    {/* Total summary row — always computed over the full dataset, shown only on the last page */}
+                    {perfPage ===
+                      Math.max(
+                        1,
+                        Math.ceil(perfRows.length / TABLE_PAGE_SIZE)
+                      ) &&
+                      perfRows.length > 0 &&
+                      (() => {
+                        const totalDown =
+                          Math.round(
+                            perfRows.reduce((s, r) => s + r.sitesDownHours, 0) *
+                              10
+                          ) / 10;
+                        const totalAvail =
+                          Math.round(
+                            perfRows.reduce((s, r) => s + r.availHours, 0) * 10
+                          ) / 10;
+                        const totalHrs = totalAvail + totalDown;
+                        const overallRel =
+                          totalHrs > 0
+                            ? ((totalAvail / totalHrs) * 100).toFixed(2) + "%"
+                            : "";
+                        const relNum = parseFloat(overallRel);
+                        const relColor =
+                          totalDown === 0
+                            ? undefined
+                            : relNum < 95
+                              ? "#ef4444"
+                              : relNum < 99
+                                ? "#f59e0b"
+                                : "#22c55e";
+                        return (
+                          <tr
+                            style={{
+                              fontWeight: 700,
+                              borderTop: "2px solid rgba(148,163,184,0.3)",
+                              background: "rgba(255,255,255,0.04)",
+                            }}
+                          >
+                            <td
+                              className="mono"
+                              colSpan={3}
+                              style={{
+                                textAlign: "right",
+                                paddingRight: 16,
+                                color: "#94a3b8",
+                              }}
+                            >
+                              TOTAL
+                            </td>
+                            <td
+                              className="mono"
+                              style={{ textAlign: "center" }}
+                            >
+                              {totalAvail}
+                            </td>
+                            <td style={{ textAlign: "center" }}></td>
+                            <td
+                              className="mono"
+                              style={{ textAlign: "center" }}
+                            ></td>
+                            <td
+                              className="mono"
+                              style={{ textAlign: "center" }}
+                            ></td>
+                            <td
+                              className="mono"
+                              style={{
+                                textAlign: "center",
+                                ...(relColor
+                                  ? { color: relColor, fontWeight: 700 }
+                                  : {}),
+                              }}
+                            >
+                              {overallRel}
+                            </td>
+                            <td
+                              className="mono"
+                              style={{ textAlign: "center" }}
+                            >
+                              {totalDown}
+                            </td>
+                          </tr>
+                        );
+                      })()}
+                  </tbody>
+                </table>
+              </div>
+              {Math.ceil(perfRows.length / TABLE_PAGE_SIZE) > 1 && (
+                <div className="pagination-bar no-print">
+                  <button
+                    className="ghost-button"
+                    disabled={perfPage <= 1}
+                    onClick={() => setPerfPage(1)}
+                  >
+                    «
+                  </button>
+                  <button
+                    className="ghost-button"
+                    disabled={perfPage <= 1}
+                    onClick={() => setPerfPage(p => p - 1)}
+                  >
+                    ‹ Prev
+                  </button>
+                  {Array.from(
+                    { length: Math.ceil(perfRows.length / TABLE_PAGE_SIZE) },
+                    (_, i) => i + 1
+                  )
+                    .filter(
+                      p =>
+                        p === 1 ||
+                        p === Math.ceil(perfRows.length / TABLE_PAGE_SIZE) ||
+                        Math.abs(p - perfPage) <= 2
+                    )
+                    .reduce<(number | "...")[]>((acc, p, idx, arr) => {
+                      if (
+                        idx > 0 &&
+                        (p as number) - (arr[idx - 1] as number) > 1
+                      )
+                        acc.push("...");
+                      acc.push(p);
+                      return acc;
+                    }, [])
+                    .map((p, idx) =>
+                      p === "..." ? (
+                        <span
+                          key={`ellipsis-${idx}`}
+                          style={{ color: "#94a3b8", padding: "0 4px" }}
+                        >
+                          ...
+                        </span>
+                      ) : (
+                        <button
+                          key={p}
+                          className={`ghost-button${p === perfPage ? " active-page" : ""}`}
+                          onClick={() => setPerfPage(p as number)}
+                        >
+                          {p}
+                        </button>
+                      )
+                    )}
+                  <button
+                    className="ghost-button"
+                    disabled={
+                      perfPage >= Math.ceil(perfRows.length / TABLE_PAGE_SIZE)
+                    }
+                    onClick={() => setPerfPage(p => p + 1)}
+                  >
+                    Next ›
+                  </button>
+                  <button
+                    className="ghost-button"
+                    disabled={
+                      perfPage >= Math.ceil(perfRows.length / TABLE_PAGE_SIZE)
+                    }
+                    onClick={() =>
+                      setPerfPage(Math.ceil(perfRows.length / TABLE_PAGE_SIZE))
+                    }
+                  >
+                    »
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
         </>
       )}
     </main>
