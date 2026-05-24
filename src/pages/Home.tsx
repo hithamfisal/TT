@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import nascoLogoSrc from "../assets/nascologo.png";
 import ngLogoSrc from "../assets/nglogo.png";
+import seLogoSrc from "../assets/se.png";
 
 const HERO_IMAGE = "/h.png";
 const UPLOAD_IMAGE = "/h.png";
@@ -50,6 +51,108 @@ import {
 } from "recharts";
 
 import autoTable from "jspdf-autotable";
+
+type ZipFileMap = Record<string, Uint8Array>;
+type ZipTextCodec = { strFromU8: (bytes: Uint8Array) => string; strToU8: (text: string) => Uint8Array };
+type ExcelHorizontalAlign = "left" | "center";
+
+const applyExcelCellStyle = (xml: string, ref: string, styleIndex: number): string => {
+  const markerIdx = xml.indexOf(` r="${ref}"`);
+  if (markerIdx === -1) return xml;
+  const cStart = xml.lastIndexOf("<c", markerIdx);
+  const tagClose = xml.indexOf(">", cStart);
+  if (cStart === -1 || tagClose === -1) return xml;
+
+  const openTag = xml.slice(cStart, tagClose + 1);
+  const styledTag = openTag.includes(' s="')
+    ? openTag.replace(/\s+s="[^"]*"/, ` s="${styleIndex}"`)
+    : openTag.replace(/\/?>$/, (ending) => ` s="${styleIndex}"${ending}`);
+
+  return xml.slice(0, cStart) + styledTag + xml.slice(tagClose + 1);
+};
+
+const getExcelCellStyle = (xml: string, ref: string): number => {
+  const markerIdx = xml.indexOf(` r="${ref}"`);
+  if (markerIdx === -1) return 0;
+  const cStart = xml.lastIndexOf("<c", markerIdx);
+  const tagClose = xml.indexOf(">", cStart);
+  if (cStart === -1 || tagClose === -1) return 0;
+  const styleMatch = xml.slice(cStart, tagClose + 1).match(/\s+s="(\d+)"/);
+  return styleMatch ? Number(styleMatch[1]) : 0;
+};
+
+const ensureExcelAlignedStyle = (
+  files: ZipFileMap,
+  codec: ZipTextCodec,
+  baseStyleIndex: number,
+  horizontal: ExcelHorizontalAlign,
+) => {
+  const stylesKey = "xl/styles.xml";
+  if (!files[stylesKey]) return baseStyleIndex;
+
+  let stylesXml = codec.strFromU8(files[stylesKey]);
+  const cellXfsStart = stylesXml.indexOf("<cellXfs");
+  const cellXfsEnd = stylesXml.indexOf("</cellXfs>", cellXfsStart);
+  if (cellXfsStart === -1 || cellXfsEnd === -1) return baseStyleIndex;
+
+  const openEnd = stylesXml.indexOf(">", cellXfsStart);
+  const cellXfsInner = stylesXml.slice(openEnd + 1, cellXfsEnd);
+  const xfs = cellXfsInner.match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g) ?? [];
+  const baseXf = xfs[baseStyleIndex] ?? xfs[0] ?? '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>';
+  const alignmentTag = `<alignment horizontal="${horizontal}" vertical="center" wrapText="1"/>`;
+  const withApplyAlignment = baseXf.includes("applyAlignment=")
+    ? baseXf.replace(/applyAlignment="[^"]*"/, 'applyAlignment="1"')
+    : baseXf.replace(/^<xf\b/, '<xf applyAlignment="1"');
+  const alignedXf = withApplyAlignment.endsWith("/>")
+    ? withApplyAlignment.replace(/\/>$/, `>${alignmentTag}</xf>`)
+    : withApplyAlignment
+        .replace(/<alignment\b[^>]*\/>|<alignment\b[^>]*>[\s\S]*?<\/alignment>/g, "")
+        .replace("</xf>", `${alignmentTag}</xf>`);
+
+  const existingIndex = xfs.findIndex((xf) => xf === alignedXf);
+  if (existingIndex !== -1) return existingIndex;
+
+  const nextIndex = xfs.length;
+  const beforeClose = stylesXml.slice(0, cellXfsEnd);
+  const afterClose = stylesXml.slice(cellXfsEnd);
+  stylesXml = `${beforeClose}${alignedXf}${afterClose}`;
+  stylesXml = stylesXml.replace(/(<cellXfs\b[^>]*\bcount=")\d+(")/, `$1${nextIndex + 1}$2`);
+  files[stylesKey] = codec.strToU8(stylesXml);
+  return nextIndex;
+};
+
+const applyExcelColumnAlignment = (
+  files: ZipFileMap,
+  codec: ZipTextCodec,
+  xml: string,
+  refs: string[],
+  horizontal: ExcelHorizontalAlign,
+) => {
+  const styleCache = new Map<number, number>();
+  return refs.reduce((sheetXml, ref) => {
+    const baseStyle = getExcelCellStyle(sheetXml, ref);
+    const alignedStyle = styleCache.get(baseStyle) ?? ensureExcelAlignedStyle(files, codec, baseStyle, horizontal);
+    styleCache.set(baseStyle, alignedStyle);
+    return applyExcelCellStyle(sheetXml, ref, alignedStyle);
+  }, xml);
+};
+
+const applySheetCellAlignment = (sheet: XLSX.WorkSheet, ref: string, horizontal: ExcelHorizontalAlign) => {
+  const cell = sheet[ref] as XLSX.CellObject & { s?: any };
+  if (!cell) return;
+  cell.s = {
+    ...(cell.s ?? {}),
+    alignment: {
+      ...(cell.s?.alignment ?? {}),
+      horizontal,
+      vertical: "center",
+      wrapText: true,
+    },
+  };
+};
+
+const ticketExportCenteredIndexes = new Set([3, 4, 6, 7, 8, 9]);
+const perfExportLeftIndexes = new Set([1, 2]);
 
 // 1. Performance Data Exporter to PPT
 const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
@@ -98,11 +201,11 @@ const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
 
     const itemsPerSlide = 18;
     const headerRow = [
-        { text: "S No", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" } } },
-        { text: "Site Name", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" } } },
-        { text: "Availability (Hrs)", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" } } },
-        { text: "Down (Hrs)", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" } } },
-        { text: "Reliability", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" } } },
+        { text: "S No", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
+        { text: "Site Name", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
+        { text: "Availability (Hrs)", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
+        { text: "Down (Hrs)", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
+        { text: "Reliability", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
     ];
 
     for (let i = 0; i < data.length; i += itemsPerSlide) {
@@ -119,11 +222,11 @@ const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
           const relNum = parseFloat(r.reliability);
           const relColor = !r.sitesDownHours ? GREEN : relNum < 95 ? RED : relNum < 99 ? AMBER : GREEN;
           return [
-            { text: String(actualIdx + 1), options: { color: MUTED } },
-            { text: r?.siteName || "N/A", options: { color: WHITE, bold: true } },
-            { text: String(r?.availHours || 0), options: { color: GREEN } },
-            { text: String(r?.sitesDownHours || 0), options: { color: r.sitesDownHours > 0 ? RED : MUTED } },
-            { text: r?.reliability || "100%", options: { color: relColor, bold: true } },
+            { text: String(actualIdx + 1), options: { color: MUTED, align: "center", valign: "mid" } },
+            { text: r?.siteName || "N/A", options: { color: WHITE, bold: true, align: "left", valign: "mid" } },
+            { text: String(r?.availHours || 0), options: { color: GREEN, align: "center", valign: "mid" } },
+            { text: String(r?.sitesDownHours || 0), options: { color: r.sitesDownHours > 0 ? RED : MUTED, align: "center", valign: "mid" } },
+            { text: r?.reliability || "100%", options: { color: relColor, bold: true, align: "center", valign: "mid" } },
           ];
         })
       ];
@@ -166,13 +269,13 @@ const exportTicketsPpt = (tickets: any[], monthLabel: string = "All") => {
 
     const itemsPerSlide = 16;
     const headerRow = [
-      { text: "S No", options: { bold: true, color: "0a1628", fill: { color: CYAN } } },
-      { text: "Ticket ID", options: { bold: true, color: "0a1628", fill: { color: CYAN } } },
-      { text: "Site IDs", options: { bold: true, color: "0a1628", fill: { color: CYAN } } },
-      { text: "Resource", options: { bold: true, color: "0a1628", fill: { color: CYAN } } },
-      { text: "Sev", options: { bold: true, color: "0a1628", fill: { color: CYAN } } },
-      { text: "Issue Description", options: { bold: true, color: "0a1628", fill: { color: CYAN } } },
-      { text: "Status", options: { bold: true, color: "0a1628", fill: { color: CYAN } } },
+      { text: "S No", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
+      { text: "Ticket ID", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
+      { text: "Site IDs", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
+      { text: "Resource", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
+      { text: "Sev", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
+      { text: "Issue Description", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
+      { text: "Status", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
     ];
 
     for (let i = 0; i < tickets.length; i += itemsPerSlide) {
@@ -191,8 +294,8 @@ const exportTicketsPpt = (tickets: any[], monthLabel: string = "All") => {
             { text: String(i + idx + 1), options: { color: MUTED, align: "center" } },
             { text: t.tt || "N/A", options: { color: CYAN, bold: true } },
             { text: sites.length > 30 ? sites.substring(0, 30) + "..." : sites, options: { color: WHITE, fontSize: 7 } },
-            { text: row.managedResource || "N/A", options: { color: WHITE } },
-            { text: row.severity || "N/A", options: { color: row.severity === 'Critical' ? "ef4444" : WHITE, bold: true, align: "center" } },
+            { text: row.managedResource || "N/A", options: { color: WHITE, align: "center", valign: "mid" } },
+            { text: row.severity || "N/A", options: { color: row.severity === 'Critical' ? "ef4444" : WHITE, bold: true, align: "center", valign: "mid" } },
             { text: row.issue || "N/A", options: { color: WHITE, fontSize: 8 } },
             { text: row.status || "N/A", options: { color: row.status === 'Resolved' ? "10b981" : "f59e0b", bold: true } },
           ];
@@ -731,6 +834,22 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
       xml = setCell(xml, `H${r}`, row.reliability);
       xml = setCell(xml, `I${r}`, row.sitesDownHours);
     });
+    const perfDataRows = Array.from({ length: rows.length }, (_, i) => DATA_START + i);
+    const perfTableRows = [DATA_START - 1, ...perfDataRows];
+    xml = applyExcelColumnAlignment(
+      files,
+      { strFromU8, strToU8 },
+      xml,
+      perfTableRows.flatMap((r) => ["A", "D", "E", "F", "G", "H", "I"].map((col) => `${col}${r}`)),
+      "center",
+    );
+    xml = applyExcelColumnAlignment(
+      files,
+      { strFromU8, strToU8 },
+      xml,
+      perfTableRows.flatMap((r) => ["B", "C"].map((col) => `${col}${r}`)),
+      "left",
+    );
     files[sheetKey] = strToU8(xml);
 
     // ── Rename sheet in workbook.xml (use string ops — no regex needed) ──
@@ -855,6 +974,12 @@ function exportPerfExcel(rows: PerfRow[], monthKey: string) {
   ];
   // Sheet 1: Full performance table + KPIs
   const worksheet = XLSX.utils.aoa_to_sheet([PERF_REPORT_HEADERS, ...perfReportRows(rows), ...kpiRows]);
+  PERF_REPORT_HEADERS.forEach((_, colIndex) => {
+    const horizontal = perfExportLeftIndexes.has(colIndex) ? "left" : "center";
+    for (let rowIndex = 0; rowIndex <= rows.length; rowIndex++) {
+      applySheetCellAlignment(worksheet, XLSX.utils.encode_cell({ r: rowIndex, c: colIndex }), horizontal);
+    }
+  });
   worksheet["!cols"] = [
     { wch: 6 }, { wch: 14 }, { wch: 30 }, { wch: 24 }, { wch: 26 },
     { wch: 20 }, { wch: 26 }, { wch: 18 }, { wch: 18 },
@@ -936,8 +1061,8 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
       alternateRowStyles: { fillColor: [248, 248, 248] },
       columnStyles: {
         0: { cellWidth: 10, halign: "center" },
-        1: { cellWidth: 24, halign: "center" },
-        2: { cellWidth: 44, halign: "center" },
+        1: { cellWidth: 24, halign: "left" },
+        2: { cellWidth: 44, halign: "left" },
         3: { cellWidth: 30, halign: "center" },
         4: { cellWidth: 32, halign: "center" },
         5: { cellWidth: 25, halign: "center" },
@@ -948,6 +1073,8 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
       margin: { left: perfTableMargin, right: perfTableMargin, top: 54, bottom: 10 },
       willDrawPage: drawTemplateHeader,
       didParseCell: (d) => {
+        d.cell.styles.halign = d.column.index === 1 || d.column.index === 2 ? "left" : "center";
+        d.cell.styles.valign = "middle";
         if (d.section === "body" && d.column.index === 7) {
           const v = parseFloat(String(d.cell.raw ?? "100"));
           d.cell.styles.textColor = v < 95 ? C.warn : C.ok;
@@ -1060,8 +1187,8 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
     alternateRowStyles: { fillColor: C.card2 },
     columnStyles: {
       0: { cellWidth: 10, halign: "center" },
-      1: { cellWidth: 22 },
-      2: { cellWidth: 40 },
+      1: { cellWidth: 22, halign: "left" },
+      2: { cellWidth: 40, halign: "left" },
       3: { cellWidth: 28, halign: "center" },
       4: { cellWidth: 30, halign: "center" },
       5: { cellWidth: 22, halign: "center" },
@@ -1071,6 +1198,8 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
     },
     margin: { left: 10, right: 10, top: 22 },
     didParseCell: (d) => {
+      d.cell.styles.halign = d.column.index === 1 || d.column.index === 2 ? "left" : "center";
+      d.cell.styles.valign = "middle";
       if (d.section === "body" && d.column.index === 7) {
         const v = parseFloat(String(d.cell.raw ?? "100"));
         d.cell.styles.textColor = v < 95 ? C.red : v < 99 ? C.amber : C.green;
@@ -1270,6 +1399,12 @@ function exportCsv(rows: TicketAggregate[]) {
 
 function exportExcel(rows: TicketAggregate[]) {
   const worksheet = XLSX.utils.aoa_to_sheet([DISTINCT_REPORT_HEADERS, ...distinctReportRows(rows)]);
+  DISTINCT_REPORT_HEADERS.forEach((_, colIndex) => {
+    const horizontal = ticketExportCenteredIndexes.has(colIndex) ? "center" : "left";
+    for (let rowIndex = 0; rowIndex <= rows.length; rowIndex++) {
+      applySheetCellAlignment(worksheet, XLSX.utils.encode_cell({ r: rowIndex, c: colIndex }), horizontal);
+    }
+  });
   worksheet["!cols"] = [
     { wch: 6 }, { wch: 24 }, { wch: 28 }, { wch: 30 }, { wch: 12 }, { wch: 32 },
     { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 26 }, { wch: 26 },
@@ -1450,6 +1585,14 @@ async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string
     });
 
     // ── 10. Repack and download ─────────────────────────────────────────
+    const ticketDataRows = Array.from({ length: tickets.length }, (_, i) => DATA_START + i);
+    xml = applyExcelColumnAlignment(
+      files,
+      { strFromU8, strToU8 },
+      xml,
+      ticketDataRows.flatMap((r) => ["D", "E", "G", "H", "I", "J"].map((col) => `${col}${r}`)),
+      "center",
+    );
     files[sheetKey] = strToU8(xml);
     const output = zipSync(files, { level: 0 });          // store, no recompression
     const blob   = new Blob([output], {
@@ -1609,13 +1752,13 @@ async function exportPdf(rows: TicketAggregate[], monthKey: string) {
       0:  { cellWidth: 8,  halign: "center" },
       1:  { cellWidth: 18 },
       2:  { cellWidth: 22 },
-      3:  { cellWidth: 26 },
+      3:  { cellWidth: 26, halign: "center" },
       4:  { cellWidth: 14, halign: "center", fontStyle: "bold" },
       5:  { cellWidth: 30 },
-      6:  { cellWidth: 18 },
-      7:  { cellWidth: 16 },
-      8:  { cellWidth: 18 },
-      9:  { cellWidth: 16 },
+      6:  { cellWidth: 18, halign: "center" },
+      7:  { cellWidth: 16, halign: "center" },
+      8:  { cellWidth: 18, halign: "center" },
+      9:  { cellWidth: 16, halign: "center" },
       10: { cellWidth: 22 },
       11: { cellWidth: 20 },
       12: { cellWidth: 22 },
@@ -1691,10 +1834,18 @@ function StatCard({
 
 function PartnerLogoStrip() {
   return (
-    <div className="partner-logo-strip" aria-label="Project partner logos">
-      <img src={ngLogoSrc} alt="National Grid SA" className="partner-logo-img ng-logo" />
+    <div className="header-logo-group header-logo-group--left" aria-label="Saudi Energy and National Grid logos">
+      <img src={seLogoSrc} alt="Saudi Energy" className="header-logo-img se-logo" />
       <span className="logo-divider" aria-hidden="true" />
-      <img src={nascoLogoSrc} alt="NASCO" className="partner-logo-img nasco-logo" />
+      <img src={ngLogoSrc} alt="National Grid SA" className="header-logo-img ng-logo" />
+    </div>
+  );
+}
+
+function HeaderRightLogo() {
+  return (
+    <div className="header-logo-group header-logo-group--right" aria-label="NASCO logo">
+      <img src={nascoLogoSrc} alt="NASCO" className="header-logo-img nasco-logo" />
     </div>
   );
 }
@@ -2603,20 +2754,12 @@ export default function Home() {
         }}
       >
         <nav className="topbar no-print" style={{ marginBottom: "8px" }}>
-          <div className="brand-cluster">
-            <div className="brand-mark" style={{ 
-            whiteSpace: "nowrap",
-            fontFamily: "'Arial'",  // Choose a clean, professional font
-            fontStyle: "italic",    // Optional: adds a touch of elegance
-            fontSize: "24px",      // Add this to set your font size
-            fontWeight: "bold",    // Optional: make it stand out
-            display: "flex",       // Recommended: aligns the icon and text nicely
-            alignItems: "center",  // Recommended: centers the icon vertically with the text
-            gap: "10px"            // Recommended: adds space between the icon and text
-          }}>
-            <Network size={50} /> DMR Ticketing Dashboard
-          </div>
+          <div className="topbar-brand-row">
             <PartnerLogoStrip />
+            <div className="brand-title-center">
+              <span>DMR Ticketing Dashboard</span>
+            </div>
+            <HeaderRightLogo />
           </div>
           <div className="topbar-actions">
             {data && <button className="ghost-button" onClick={() => addRegionRef.current?.click()}><UploadCloud size={30} /> Add region</button>}
@@ -3556,12 +3699,28 @@ export default function Home() {
               //   <td>  →  <div width=col-width, flex-column, overflow:hidden>  →  <span overflow:ellipsis>
               // Outer <td> keeps `title` for hover-tooltip; inner div constrains the visual width.
               const baseStyle: React.CSSProperties = { verticalAlign: "top", padding: "10px 12px" };
+              const centeredTicketHeaders = new Set([
+                "Managed Resource",
+                "Severity",
+                "Observation Date",
+                "Observation Time",
+                "Recovery Date",
+                "Recovery Time",
+              ]);
+              const ticketCellStyle = (header: string): React.CSSProperties => ({
+                ...baseStyle,
+                textAlign: centeredTicketHeaders.has(header) ? "center" : undefined,
+                verticalAlign: centeredTicketHeaders.has(header) ? "middle" : "top",
+              });
               const innerDivStyle = (header: string): React.CSSProperties => ({
                 display: "flex",
                 flexDirection: "column",
                 width: getTicketColumnWidth(header),
                 gap: "4px",
                 overflow: "hidden",
+                alignItems: centeredTicketHeaders.has(header) ? "center" : "stretch",
+                justifyContent: centeredTicketHeaders.has(header) ? "center" : "flex-start",
+                textAlign: centeredTicketHeaders.has(header) ? "center" : undefined,
               });
               const spanStyle: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "normal" };
 
@@ -3575,7 +3734,7 @@ export default function Home() {
                   if (header === "Site ID") {
                     const items = siteIds.length ? siteIds : [String(cell ?? "")];
                     return (
-                      <td key={header} className="mono" style={baseStyle} title={siteIds.join(", ")}>
+                      <td key={header} className="mono" style={ticketCellStyle(header)} title={siteIds.join(", ")}>
                         <div style={innerDivStyle(header)}>
                           {items.map((id) => <span key={id} style={spanStyle}>{id}</span>)}
                         </div>
@@ -3587,7 +3746,7 @@ export default function Home() {
                   if (header === "Site Name") {
                     const items = siteNames.length ? siteNames : [String(cell ?? "")];
                     return (
-                      <td key={header} style={baseStyle} title={siteNames.join(", ")}>
+                      <td key={header} style={ticketCellStyle(header)} title={siteNames.join(", ")}>
                         <div style={innerDivStyle(header)}>
                           {items.map((name) => <span key={name} style={spanStyle}>{name}</span>)}
                         </div>
@@ -3599,7 +3758,7 @@ export default function Home() {
                   if (header === "Severity" || header === "Status") {
                     const tone = (header === "Severity" ? SEVERITY_COLORS : STATUS_COLORS)[row[header.toLowerCase() as keyof typeof row]] ?? "#64748b";
                     return (
-                      <td key={header} style={baseStyle} title={String(cell ?? "")}>
+                      <td key={header} style={ticketCellStyle(header)} title={String(cell ?? "")}>
                         <div style={innerDivStyle(header)}>
                           <span className="pill" style={{ ["--pill" as string]: tone }}>{cell}</span>
                         </div>
@@ -3609,7 +3768,7 @@ export default function Home() {
 
                   // Default: single span, ellipsis truncation, hover for full value.
                   return (
-                    <td key={header} className={isMono ? "mono" : undefined} style={baseStyle} title={String(cell ?? "")}>
+                    <td key={header} className={isMono ? "mono" : undefined} style={ticketCellStyle(header)} title={String(cell ?? "")}>
                       <div style={innerDivStyle(header)}>
                         <span style={spanStyle}>{cell}</span>
                       </div>
@@ -3676,7 +3835,7 @@ export default function Home() {
                 <th
                   key={header}
                   style={{
-                    textAlign: "center",
+                    textAlign: header === "Site ID" || header === "Site Name" ? "left" : "center",
                     padding: "12px",
                     verticalAlign: "middle",
                     position: "relative",
@@ -3729,12 +3888,22 @@ export default function Home() {
             // Every cell follows the same pattern (matches the tickets table):
             //   <td>  →  <div width=col-width, flex-column, overflow:hidden>  →  <span overflow:ellipsis>
             const baseStyle: React.CSSProperties = { verticalAlign: "top", padding: "10px 12px" };
+            const isPerfLeftAligned = (header: string) => header === "Site ID" || header === "Site Name";
+            const perfCellStyle = (header: string): React.CSSProperties => ({
+              ...baseStyle,
+              textAlign: isPerfLeftAligned(header) ? "left" : "center",
+              verticalAlign: isPerfLeftAligned(header) ? "top" : "middle",
+            });
             const innerDivStyle = (header: string): React.CSSProperties => ({
               display: "flex",
               flexDirection: "column",
               width: getPerfColumnWidth(header),
               gap: "4px",
               overflow: "hidden",
+              alignItems: isPerfLeftAligned(header) ? "stretch" : "center",
+              justifyContent: isPerfLeftAligned(header) ? "flex-start" : "center",
+              textAlign: isPerfLeftAligned(header) ? "left" : "center",
+              margin: isPerfLeftAligned(header) ? undefined : "0 auto",
             });
             const spanStyle: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 
@@ -3753,7 +3922,7 @@ export default function Home() {
             return (
               <tr key={row.siteId}>
                 {cells.map(({ header, value, mono, extra }) => (
-                  <td key={header} className={mono ? "mono" : undefined} style={baseStyle} title={String(value ?? "")}>
+                  <td key={header} className={mono ? "mono" : undefined} style={perfCellStyle(header)} title={String(value ?? "")}>
                     <div style={innerDivStyle(header)}>
                       <span style={{ ...spanStyle, ...extra }}>{value}</span>
                     </div>
@@ -3776,12 +3945,12 @@ export default function Home() {
             return (
               <tr style={{ fontWeight: 700, borderTop: "2px solid rgba(148,163,184,0.3)", background: "rgba(255,255,255,0.04)" }}>
                 <td className="mono" colSpan={3} style={{ textAlign: "right", paddingRight: 16, color: "#94a3b8" }}>TOTAL</td>
-                <td className="mono">{totalAvail}</td>
-                <td></td>
-                <td className="mono"></td>
-                <td className="mono"></td>
-                <td className="mono" style={relColor ? { color: relColor, fontWeight: 700 } : undefined}>{overallRel}</td>
-                <td className="mono">{totalDown}</td>
+                <td className="mono" style={{ textAlign: "center" }}>{totalAvail}</td>
+                <td style={{ textAlign: "center" }}></td>
+                <td className="mono" style={{ textAlign: "center" }}></td>
+                <td className="mono" style={{ textAlign: "center" }}></td>
+                <td className="mono" style={{ textAlign: "center", ...(relColor ? { color: relColor, fontWeight: 700 } : {}) }}>{overallRel}</td>
+                <td className="mono" style={{ textAlign: "center" }}>{totalDown}</td>
               </tr>
             );
           })()}
