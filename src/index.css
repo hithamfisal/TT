@@ -110,13 +110,20 @@
 .dashboard-shell { min-height: 100vh; padding: 22px; color: #e2e8f0; }
 .hero-panel { position: relative; overflow: hidden; min-height: 520px; border: 1px solid rgba(34, 211, 238, .18); border-radius: 34px; background-size: cover; background-position: center; box-shadow: 0 28px 90px rgba(0,0,0,.42), inset 0 1px rgba(255,255,255,.08); }
 .hero-panel::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent 60%, rgba(3,7,18,.74)), radial-gradient(circle at 60% 60%, rgba(34,211,238,.14), transparent 26rem); }
-.topbar { position: relative; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 22px 24px 12px; }
+.topbar { position: relative; z-index: 2; display: grid; grid-template-columns: 1fr; gap: 12px; padding: 18px 24px 12px; }
+.topbar-brand-row { display: grid; grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr); align-items: center; gap: 18px; width: 100%; }
 .brand-cluster { display: flex; align-items: center; gap: 14px; flex-wrap: nowrap; min-width: max-content; }
 .brand-mark, .hero-meta span, .section-kicker, .eyebrow { display: inline-flex; align-items: center; gap: 8px; color: #a5f3fc; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
 .brand-mark { padding: 10px 14px; border: 1px solid rgba(34, 211, 238, .24); border-radius: 999px; background: rgba(2, 6, 23, .42); backdrop-filter: blur(14px); color: #e0f2fe;white-space: nowrap;flex-shrink: 0; }
-.partner-logo-strip { display: inline-flex; align-items: center; gap: 12px; padding: 6px 14px 6px 8px; border: 1px solid rgba(148, 163, 184, .18); border-radius: 999px; background: rgba(2, 6, 23, .28); backdrop-filter: blur(12px); }
+.brand-title-center { justify-self: center; display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 68px; padding: 12px 34px; border: 1px solid rgba(34, 211, 238, .28); border-radius: 999px; background: rgba(2, 6, 23, .46); backdrop-filter: blur(14px); color: #f8fafc; box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 14px 34px rgba(0,0,0,.22); }
+.brand-title-center svg { color: #a5f3fc; flex-shrink: 0; }
+.brand-title-center span { font-family: Arial, system-ui, sans-serif; font-size: clamp(24px, 2.4vw, 36px); font-style: italic; font-weight: 900; letter-spacing: .055em; text-transform: uppercase; white-space: nowrap; }
+.partner-logo-strip,
+.header-logo-group { display: inline-flex; align-items: center; gap: 12px; padding: 8px 14px; border: 1px solid rgba(148, 163, 184, .18); border-radius: 999px; background: rgba(2, 6, 23, .32); backdrop-filter: blur(12px); }
+.header-logo-group--left { justify-self: start; }
+.header-logo-group--right { justify-self: end; }
 .logo-divider { width: 1px; height: 32px; background: linear-gradient(180deg, transparent, rgba(148,163,184,.45), transparent); }
-.topbar-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; flex-shrink: 1; min-width: 0; }
+.topbar-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; flex-shrink: 1; min-width: 0; }
 .hero-layout { position: relative; z-index: 2; display: block; padding: 32px 44px 48px; }
 .hero-export-row { position: relative; z-index: 2; padding: 0 44px 32px; }
 .hero-content { display: grid; align-items: end; min-height: 260px; max-width: 900px; padding: 0; }
@@ -627,10 +634,14 @@ td small { display: block; margin-top: 3px; color: #94a3b8; }
 @media (max-width: 760px) {
   .dashboard-shell { padding: 12px; }
   .hero-panel { min-height: 620px; border-radius: 24px; }
-  .topbar, .control-strip, .table-heading { align-items: stretch; flex-direction: column; }
-  .brand-cluster, .topbar-actions, .partner-logo-strip { width: 100%; }
-  .partner-logo-strip, .topbar-actions { justify-content: space-between; }
-  .partner-logo { flex: 1; }
+  .control-strip, .table-heading { align-items: stretch; flex-direction: column; }
+  .topbar { padding: 16px; }
+  .topbar-brand-row { grid-template-columns: 1fr; justify-items: center; gap: 10px; }
+  .header-logo-group,
+  .partner-logo-strip,
+  .topbar-actions { width: 100%; justify-content: center; }
+  .brand-title-center { order: -1; width: 100%; min-height: 58px; padding: 10px 14px; }
+  .brand-title-center span { white-space: normal; text-align: center; font-size: 22px; }
   .logo-divider { display: none; }
   .monthly-export-panel, .hero-export-card { grid-template-columns: 1fr; }
   .hero-layout { padding: 26px 22px 24px; }
@@ -665,6 +676,27 @@ td small { display: block; margin-top: 3px; color: #94a3b8; }
   height: 28px;
   max-width: 120px;
   object-fit: contain;
+}
+
+.header-logo-img {
+  height: 38px;
+  max-width: 150px;
+  object-fit: contain;
+}
+
+.header-logo-img.se-logo {
+  height: 54px;
+  max-width: 145px;
+}
+
+.header-logo-img.ng-logo {
+  height: 42px;
+  max-width: 120px;
+}
+
+.header-logo-img.nasco-logo {
+  height: 52px;
+  max-width: 165px;
 }
 
 
