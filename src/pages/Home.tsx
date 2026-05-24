@@ -2843,12 +2843,28 @@ export default function Home() {
             onDrop={(event) => { event.preventDefault(); setIsDragging(false); handleFile(event.dataTransfer.files?.[0]); }}
           >
             <div className="upload-copy">
-              <span className="section-kicker"><UploadCloud size={14} /> Workbooks upload</span>
-              <h2>Please Upload the Tickets Data.</h2>
+              <span className="section-kicker"><UploadCloud size={14} /> Workbooks Upload</span>
+              <h2>Load the tickets workbook</h2>
+              <p>Start with the main Follow-Up Sheets workbook, then add regional workbooks from the dashboard header after the first file is loaded.</p>
               {error && <div className="error-banner"><AlertTriangle size={16} /> {error}</div>}
-              <button className="primary-button large" onClick={() => inputRef.current?.click()}><FileSpreadsheet size={18} /> Select Excel workbook</button>
+              <div className="upload-actions">
+                <button className="primary-button large" onClick={() => inputRef.current?.click()}><FileSpreadsheet size={20} /> Select Excel workbook</button>
+                <span>or drop the workbook here</span>
+              </div>
+              <div className="upload-checks" aria-label="Workbook readiness">
+                <div><CheckCircle2 size={18} /><span>Tickets_Data</span></div>
+                <div><Layers3 size={18} /><span>Regional merge</span></div>
+                <div><BarChart3 size={18} /><span>Charts & reports</span></div>
+              </div>
             </div>
-            <img src={UPLOAD_IMAGE} alt="Abstract Workbook Upload Visualization" />
+            <div className="upload-visual">
+              <img src={UPLOAD_IMAGE} alt="Dashboard workbook preview" />
+              <div className="upload-preview-card">
+                <span>Ready For</span>
+                <strong>Excel · PDF · PPT</strong>
+                <small>Tickets, performance, RCA, and site availability reports</small>
+              </div>
+            </div>
           </div>
         </section>
       ) : (
