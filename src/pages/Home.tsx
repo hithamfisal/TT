@@ -14,13 +14,62 @@ import nascoLogoSrc from "../assets/nascologo.png";
 import ngLogoSrc from "../assets/nglogo.png";
 import seLogoSrc from "../assets/se.png";
 
-const HERO_IMAGE = "/h.png";
-const UPLOAD_IMAGE = "/h.png";
-const RIBBON_IMAGE = "/h.png";
+const THEME_IMAGES = {
+  dark: "/dark.png",
+  light: "/light.png",
+} as const;
+
+type DashboardTheme = keyof typeof THEME_IMAGES;
+
+
+type DashboardSectionId =
+  | "reports"
+  | "performanceKpis"
+  | "kpis"
+  | "executive"
+  | "deepDive"
+  | "overviewCharts"
+  | "trendCharts"
+  | "ticketsTable"
+  | "performanceTable";
+
+type DashboardSectionDefinition = {
+  id: DashboardSectionId;
+  label: string;
+  title: string;
+  selector: string;
+};
+
+const DASHBOARD_SECTIONS: DashboardSectionDefinition[] = [
+  { id: "reports", label: "Reports", title: "Report Export Center", selector: "#section-reports" },
+  { id: "performanceKpis", label: "Performance KPIs", title: "Performance KPI Gauge Cards", selector: "#section-performance-kpis" },
+  { id: "kpis", label: "KPIs", title: "Operational KPI Cards", selector: "#section-kpis" },
+  { id: "executive", label: "Executive", title: "Executive Insights", selector: "#section-executive" },
+  { id: "deepDive", label: "RCA / SLA", title: "RCA / Preventability / SLA Deep-Dive", selector: "#section-deep-dive" },
+  { id: "overviewCharts", label: "Overview Charts", title: "Operational Overview Charts", selector: "#section-overview-charts" },
+  { id: "trendCharts", label: "Trend Charts", title: "Trend & RCA Charts", selector: "#section-trend-charts" },
+  { id: "ticketsTable", label: "Tickets", title: "Tickets Data Table", selector: "#section-tickets-table" },
+  { id: "performanceTable", label: "Performance", title: "Performance Table", selector: "#section-performance-table" },
+];
+
+const INITIAL_COLLAPSED_SECTIONS: Record<DashboardSectionId, boolean> = {
+  reports: true,
+  performanceKpis: true,
+  kpis: true,
+  executive: true,
+  deepDive: true,
+  overviewCharts: true,
+  trendCharts: true,
+  ticketsTable: true,
+  performanceTable: true,
+};
+
+const SAVED_DASHBOARD_KEY = "followup-dashboard:last-workbook:v1";
 
 import {
   Activity,
   AlertTriangle,
+  ArrowUp,
   BarChart3,
   CheckCircle2,
   ChevronDown,
@@ -29,7 +78,12 @@ import {
   FileSpreadsheet,
   Filter,
   CloudOff,
+  Home as HomeIcon,
   Layers3,
+  ImageDown,
+  Maximize2,
+  Minimize2,
+  Moon,
   type LucideIcon,
   Network,
   Presentation,
@@ -37,6 +91,7 @@ import {
   RefreshCw,
   Search,
   ShieldAlert,
+  Sun,
   UploadCloud,
 } from "lucide-react";
 
@@ -58,6 +113,60 @@ import {
 } from "recharts";
 
 import autoTable from "jspdf-autotable";
+
+import type {
+  DashboardData,
+  DeepDiveAnalytics,
+  ExecutiveInsights,
+  Filters,
+  PerfRow,
+  TicketAggregate,
+  TicketRecord,
+} from "../types/dashboard";
+
+import {
+  average,
+  clean,
+  combineDateTime,
+  coveredMonthKeys,
+  dateKey,
+  dateWithinMonth,
+  formatDateDDMMYYYY,
+  formatHours,
+  formatMonthMMMMYYYY,
+  getField,
+  getRawField,
+  hoursBetween,
+  isPendingStatus,
+  isRfSiteId,
+  normalizeHeader,
+  normalizeMonthKey,
+  normalizeSiteId,
+  openingMonthKey,
+  openingMonthLabel,
+  parseDateValue,
+  parseDurationHours,
+  recordDateMonthKey,
+  resolveOpeningMonthKey,
+  selectedMonthRange,
+  ticketMatchesMonthlyExport,
+  totalHoursInMonth,
+  weekKey,
+  weekLabel,
+} from "../lib/dateUtils";
+
+import {
+  getPreventability,
+  getRcaFamily,
+  getRecommendedAction,
+  getResponsibleTeam,
+  rcaNotProvided,
+  RCA_FAMILY_MAP,
+} from "../lib/rcaRules";
+
+import { groupTickets, parseRows } from "../lib/parseWorkbook";
+import { calculateDeepDiveAnalytics, calculateExecutiveInsights } from "../lib/ticketAnalytics";
+
 
 type ZipFileMap = Record<string, Uint8Array>;
 type ZipTextCodec = {
@@ -183,8 +292,43 @@ const applySheetCellAlignment = (
 const ticketExportCenteredIndexes = new Set([3, 4, 6, 7, 8, 9]);
 const perfExportLeftIndexes = new Set([1, 2]);
 
+
+const PPT_SLIDE_W = 13.333;
+const PPT_SLIDE_H = 7.5;
+
+const safePptText = (value: unknown, maxLength = 900): string => {
+  const text = value === null || value === undefined ? "" : String(value);
+  return text
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
+    .replace(/[\uFFFE\uFFFF]/g, " ")
+    .replace(/[\uD800-\uDFFF]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+};
+
+const safePptTableRows = (rows: any[][]): any[][] =>
+  rows.map(row =>
+    row.map(cell => {
+      if (typeof cell === "string" || typeof cell === "number") {
+        return safePptText(cell, 350);
+      }
+      if (cell && typeof cell === "object" && "text" in cell) {
+        return {
+          ...cell,
+          text: safePptText((cell as { text?: unknown }).text, 550),
+        };
+      }
+      return cell;
+    })
+  );
+
 // 1. Performance Data Exporter to PPT
-const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
+const exportPerfPpt = (
+  data: PerfRow[],
+  monthLabel: string = "All",
+  executiveInsights?: ExecutiveInsights
+) => {
   try {
     const pptx = new PptxGenJS();
     pptx.layout = "LAYOUT_WIDE";
@@ -196,7 +340,7 @@ const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
       AMBER = "f59e0b",
       MUTED = "94a3b8",
       WHITE = "f8fafc";
-    const labels = (data || []).map(r => r?.siteName || "N/A");
+    const labels = (data || []).map(r => safePptText(r?.siteName || "N/A", 160));
     const availValues = (data || []).map(r => r?.availHours || 0);
     const downValues = (data || []).map(r => r?.sitesDownHours || 0);
 
@@ -205,7 +349,7 @@ const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
     s1.addShape(pptx.ShapeType.rect, {
       x: 0,
       y: 0,
-      w: "100%",
+      w: PPT_SLIDE_W,
       h: 0.06,
       fill: { color: CYAN },
     });
@@ -226,6 +370,25 @@ const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
       color: CYAN,
       fontFace: "Segoe UI",
     });
+    if (executiveInsights) {
+      s1.addText(`Network Health Score: ${executiveInsights.healthScore.score} / 100 · ${executiveInsights.healthScore.status}`, {
+        x: 0.7,
+        y: 2.95,
+        w: 9,
+        fontSize: 15,
+        bold: true,
+        color: WHITE,
+        fontFace: "Segoe UI",
+      });
+      s1.addText(safePptText(executiveInsights.healthScore.mainReason, 180), {
+        x: 0.7,
+        y: 3.32,
+        w: 9.5,
+        fontSize: 11,
+        color: MUTED,
+        fontFace: "Segoe UI",
+      });
+    }
 
     const kpi = computePerfKPIs(data);
     const kpiSlide = pptx.addSlide();
@@ -233,7 +396,7 @@ const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
     kpiSlide.addShape(pptx.ShapeType.rect, {
       x: 0,
       y: 0,
-      w: "100%",
+      w: PPT_SLIDE_W,
       h: 0.06,
       fill: { color: CYAN },
     });
@@ -420,7 +583,7 @@ const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
       slide.addShape(pptx.ShapeType.rect, {
         x: 0,
         y: 0,
-        w: "100%",
+        w: PPT_SLIDE_W,
         h: 0.06,
         fill: { color: CYAN },
       });
@@ -485,7 +648,7 @@ const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
           ];
         }),
       ];
-      slide.addTable(tableRows, {
+      slide.addTable(safePptTableRows(tableRows as any) as any, {
         x: 0.5,
         y: 0.65,
         w: 12,
@@ -503,7 +666,7 @@ const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
     slide3.addShape(pptx.ShapeType.rect, {
       x: 0,
       y: 0,
-      w: "100%",
+      w: PPT_SLIDE_W,
       h: 0.06,
       fill: { color: CYAN },
     });
@@ -544,7 +707,7 @@ const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
         valAxisLabelFontSize: 9,
         valAxisLabelColor: MUTED,
         valGridLine: { style: "solid", color: "1e3a5f", size: 0.5 },
-        plotAreaFill: { color: CARD_BG },
+        ...({ plotAreaFill: { color: CARD_BG } } as any),
         showLegend: false,
       }
     );
@@ -554,7 +717,7 @@ const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
     slide4.addShape(pptx.ShapeType.rect, {
       x: 0,
       y: 0,
-      w: "100%",
+      w: PPT_SLIDE_W,
       h: 0.06,
       fill: { color: RED },
     });
@@ -598,21 +761,26 @@ const exportPerfPpt = (data: PerfRow[], monthLabel: string = "All") => {
         valAxisLabelFontSize: 9,
         valAxisLabelColor: MUTED,
         valGridLine: { style: "solid", color: "1e3a5f", size: 0.5 },
-        plotAreaFill: { color: CARD_BG },
+        ...({ plotAreaFill: { color: CARD_BG } } as any),
         showLegend: false,
       }
     );
 
-    pptx.writeFile(
-      `Performance_Report_${monthLabel.replace(/\s+/g, "_")}.pptx`
-    );
+    pptx.writeFile({
+      fileName: `Performance_Report_${monthLabel.replace(/\s+/g, "_")}.pptx`,
+    });
   } catch (error) {
     console.error("Failed to generate Performance PPT:", error);
   }
 };
 
 // 2. Tickets Data Exporter to PPT
-const exportTicketsPpt = (tickets: any[], monthLabel: string = "All") => {
+const exportTicketsPpt = (
+  tickets: any[],
+  monthLabel: string = "All",
+  executiveInsights?: ExecutiveInsights,
+  deepDive?: DeepDiveAnalytics
+) => {
   try {
     const pptx = new PptxGenJS();
     pptx.layout = "LAYOUT_WIDE";
@@ -627,7 +795,7 @@ const exportTicketsPpt = (tickets: any[], monthLabel: string = "All") => {
     slide1.addShape(pptx.ShapeType.rect, {
       x: 0,
       y: 0,
-      w: "100%",
+      w: PPT_SLIDE_W,
       h: 0.06,
       fill: { color: CYAN },
     });
@@ -656,6 +824,193 @@ const exportTicketsPpt = (tickets: any[], monthLabel: string = "All") => {
       color: MUTED,
       italic: true,
     });
+
+    if (executiveInsights) {
+      const execSlide = pptx.addSlide();
+      execSlide.background = { color: BG };
+      execSlide.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: PPT_SLIDE_W,
+        h: 0.06,
+        fill: { color: CYAN },
+      });
+      execSlide.addText("Executive Management Summary", {
+        x: 0.55,
+        y: 0.28,
+        w: 12,
+        fontSize: 24,
+        bold: true,
+        color: WHITE,
+        fontFace: "Segoe UI",
+      });
+      execSlide.addText(safePptText(executiveInsights.summaryText, 700), {
+        x: 0.55,
+        y: 0.85,
+        w: 7.8,
+        h: 1.1,
+        fontSize: 14,
+        color: MUTED,
+        breakLine: false,
+        fit: "shrink",
+      } as any);
+      execSlide.addShape(pptx.ShapeType.roundRect, {
+        x: 8.65,
+        y: 0.82,
+        w: 3.85,
+        h: 1.5,
+        fill: { color: CARD_BG, transparency: 3 },
+        line: { color: CYAN, transparency: 15 },
+      } as any);
+      execSlide.addText("Network Health Score", {
+        x: 8.9,
+        y: 1.0,
+        w: 3.4,
+        fontSize: 10,
+        color: MUTED,
+        bold: true,
+      });
+      execSlide.addText(String(executiveInsights.healthScore.score), {
+        x: 8.9,
+        y: 1.25,
+        w: 1.2,
+        fontSize: 34,
+        bold: true,
+        color: CYAN,
+      });
+      execSlide.addText(executiveInsights.healthScore.status, {
+        x: 10.15,
+        y: 1.38,
+        w: 1.9,
+        fontSize: 16,
+        bold: true,
+        color: WHITE,
+      });
+
+      const insightRows = executiveInsights.cards.slice(0, 8).map(card => [
+        { text: card.label, options: { color: MUTED, fontSize: 9, bold: true } },
+        { text: String(card.value), options: { color: WHITE, fontSize: 12, bold: true } },
+        { text: card.note, options: { color: MUTED, fontSize: 8 } },
+      ]);
+      execSlide.addTable(safePptTableRows(insightRows as any) as any, {
+        x: 0.55,
+        y: 2.25,
+        w: 12,
+        colW: [3.1, 2.2, 6.7],
+        rowH: 0.35,
+        border: { type: "solid", color: "1e3a5f", pt: 0.4 },
+        fill: { color: CARD_BG },
+        margin: 0.04,
+      } as any);
+    }
+
+    if (executiveInsights?.highRiskSites.length) {
+      const riskSlide = pptx.addSlide();
+      riskSlide.background = { color: BG };
+      riskSlide.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: PPT_SLIDE_W,
+        h: 0.06,
+        fill: { color: "ef4444" },
+      });
+      riskSlide.addText("High-Risk Sites & Follow-Up Priority", {
+        x: 0.55,
+        y: 0.25,
+        w: 12,
+        fontSize: 23,
+        bold: true,
+        color: WHITE,
+      });
+      const riskRows = [
+        ["Rank", "Site ID", "Site Name", "Tickets", "Downtime", "Reliability", "Top RCA", "Risk"].map(text => ({
+          text,
+          options: { bold: true, color: "0a1628", fill: { color: "ef4444" }, align: "center" },
+        })),
+        ...executiveInsights.highRiskSites.slice(0, 10).map(site => [
+          { text: String(site.rank), options: { color: MUTED, align: "center" } },
+          { text: site.siteId, options: { color: CYAN, bold: true } },
+          { text: site.siteName || "-", options: { color: WHITE } },
+          { text: String(site.ticketCount), options: { color: WHITE, align: "center" } },
+          { text: `${site.downtimeHours} hrs`, options: { color: WHITE, align: "center" } },
+          { text: `${site.reliability.toFixed(2)}%`, options: { color: WHITE, align: "center" } },
+          { text: site.topRca, options: { color: WHITE } },
+          { text: `${site.riskLevel} ${site.riskScore}`, options: { color: "f59e0b", bold: true } },
+        ]),
+      ];
+      riskSlide.addTable(safePptTableRows(riskRows as any) as any, {
+        x: 0.35,
+        y: 0.9,
+        w: 12.65,
+        fontSize: 8,
+        rowH: 0.34,
+        colW: [0.55, 1.2, 2.2, 0.8, 1.0, 1.0, 3.3, 1.6],
+        border: { type: "solid", color: "1e3a5f", pt: 0.4 },
+        fill: { color: CARD_BG },
+      } as any);
+    }
+
+    if (deepDive) {
+      const deepSlide = pptx.addSlide();
+      deepSlide.background = { color: BG };
+      deepSlide.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: PPT_SLIDE_W,
+        h: 0.06,
+        fill: { color: "a78bfa" },
+      });
+      deepSlide.addText("RCA, Preventability & SLA Deep-Dive", {
+        x: 0.55,
+        y: 0.25,
+        w: 12,
+        fontSize: 23,
+        bold: true,
+        color: WHITE,
+      });
+      const rcaRows = [
+        ["RCA Family", "Tickets", "Downtime", "Missing RCA", "Preventable", "Owner Team"].map(text => ({
+          text,
+          options: { bold: true, color: "0a1628", fill: { color: "a78bfa" }, align: "center" },
+        })),
+        ...deepDive.rcaFamilyDeepDive.slice(0, 7).map(row => [
+          { text: row.family, options: { color: WHITE, bold: true } },
+          { text: String(row.tickets), options: { color: WHITE, align: "center" } },
+          { text: `${row.downtimeHours} hrs`, options: { color: WHITE, align: "center" } },
+          { text: String(row.missingRca), options: { color: row.missingRca ? "f59e0b" : "34d399", align: "center" } },
+          { text: String(row.preventableTickets), options: { color: WHITE, align: "center" } },
+          { text: row.responsibleTeam, options: { color: MUTED } },
+        ]),
+      ];
+      deepSlide.addTable(safePptTableRows(rcaRows as any) as any, {
+        x: 0.45,
+        y: 0.85,
+        w: 12.4,
+        fontSize: 8,
+        rowH: 0.35,
+        colW: [2.7, 0.8, 1.1, 1.1, 1.1, 5.6],
+        border: { type: "solid", color: "1e3a5f", pt: 0.4 },
+        fill: { color: CARD_BG },
+      } as any);
+      deepSlide.addText("Recommended Management Actions", {
+        x: 0.55,
+        y: 4.05,
+        w: 12,
+        fontSize: 14,
+        bold: true,
+        color: CYAN,
+      });
+      deepDive.recommendations.forEach((item, idx) => {
+        deepSlide.addText(safePptText(`${idx + 1}. ${item}`, 260), {
+          x: 0.7,
+          y: 4.4 + idx * 0.42,
+          w: 11.5,
+          fontSize: 10,
+          color: WHITE,
+          fit: "shrink",
+        } as any);
+      });
+    }
 
     const itemsPerSlide = 16;
     const headerRow = [
@@ -737,7 +1092,7 @@ const exportTicketsPpt = (tickets: any[], monthLabel: string = "All") => {
       slide.addShape(pptx.ShapeType.rect, {
         x: 0,
         y: 0,
-        w: "100%",
+        w: PPT_SLIDE_W,
         h: 0.06,
         fill: { color: CYAN },
       });
@@ -794,7 +1149,7 @@ const exportTicketsPpt = (tickets: any[], monthLabel: string = "All") => {
           ];
         }),
       ];
-      slide.addTable(tableRows, {
+      slide.addTable(safePptTableRows(tableRows as any) as any, {
         x: 0.4,
         y: 0.7,
         w: 12.5,
@@ -865,68 +1220,6 @@ const CHART_LEGEND_STYLE: CSSProperties = {
 const BAR_RADIUS: [number, number, number, number] = [0, 8, 8, 0];
 const COLUMN_BAR_RADIUS: [number, number, number, number] = [6, 6, 0, 0];
 
-type TicketRecord = {
-  rowNo: number;
-  tt: string;
-  siteId: string;
-  siteName: string;
-  managedResource: string;
-  issue: string;
-  severity: string;
-  region: string;
-  observationDate: string;
-  observationTime: string;
-  openingMonthKey: string;
-  openingMonthLabel: string;
-  recoveryDate: string;
-  recoveryTime: string;
-  duration: string;
-  impact: string;
-  escalatedTo: string;
-  escalationLevel: string;
-  escalatedForL3SupportDate: string;
-  escalatedForL3SupportTime: string;
-  frtHours: number | null;
-  responseHours: number | null;
-  resolutionHours: number | null;
-  status: string;
-  rca: string;
-  rcaFamily: string;
-  preventability: string;
-  responsibleTeam: string;
-  recommendedAction: string;
-  actionTaken: string;
-  sourceFile: string;
-};
-
-type TicketAggregate = {
-  tt: string;
-  primary: TicketRecord;
-  siteIds: Set<string>;
-  siteNames: Set<string>;
-  rows: TicketRecord[];
-};
-
-type DashboardData = {
-  fileName: string;
-  sheetName: string;
-  generatedAt: string;
-  rows: TicketRecord[];
-  uniqueTickets: TicketAggregate[];
-  siteOrder: { siteId: string; siteName: string }[];
-};
-
-type Filters = {
-  search: string;
-  status: string[];
-  severity: string[];
-  region: string[];
-  impact: string[];
-  site: string[];
-  openingMonth: string[];
-  rcaFamily: string[];
-};
-
 const EMPTY_FILTERS: Filters = {
   search: "",
   status: [],
@@ -937,655 +1230,6 @@ const EMPTY_FILTERS: Filters = {
   openingMonth: [],
   rcaFamily: [],
 };
-
-function clean(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  return String(value).replace(/\s+/g, " ").trim();
-}
-function normalizeHeader(value: string): string {
-  return clean(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-}
-function getField(row: Record<string, unknown>, aliases: string[]): string {
-  const map = new Map<string, unknown>();
-  Object.entries(row).forEach(([key, value]) =>
-    map.set(normalizeHeader(key), value)
-  );
-  for (const alias of aliases) {
-    const found = map.get(normalizeHeader(alias));
-    if (found !== undefined) return clean(found);
-  }
-  return "";
-}
-function getRawField(row: Record<string, unknown>, aliases: string[]): unknown {
-  const map = new Map<string, unknown>();
-  Object.entries(row).forEach(([key, value]) =>
-    map.set(normalizeHeader(key), value)
-  );
-  for (const alias of aliases) {
-    const found = map.get(normalizeHeader(alias));
-    if (found !== undefined && found !== null && found !== "") return found;
-  }
-  return "";
-}
-function isRfSiteId(value: unknown): boolean {
-  return clean(value).toUpperCase().startsWith("RF");
-}
-
-function parseDateValue(value: unknown): Date | null {
-  if (value === null || value === undefined || value === "") return null;
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
-  const numericValue =
-    typeof value === "number"
-      ? value
-      : /^\d+(\.\d+)?$/.test(clean(value))
-        ? Number(clean(value))
-        : null;
-  if (numericValue !== null && numericValue > 20000 && numericValue < 90000) {
-    const excelDate = XLSX.SSF.parse_date_code(numericValue);
-    if (excelDate) return new Date(excelDate.y, excelDate.m - 1, excelDate.d);
-  }
-  const text = clean(value);
-  const dmyMatch = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
-  if (dmyMatch) {
-    const d = Number(dmyMatch[1]);
-    const m = Number(dmyMatch[2]);
-    const y = Number(dmyMatch[3]);
-    if (d > 12) {
-      const candidate = new Date(y, m - 1, d);
-      if (!Number.isNaN(candidate.getTime())) return candidate;
-    } else {
-      const candidate = new Date(y, m - 1, d);
-      if (!Number.isNaN(candidate.getTime())) return candidate;
-    }
-  }
-  const direct = new Date(text);
-  if (!Number.isNaN(direct.getTime())) return direct;
-  const match = text.match(
-    /(\d{1,2})[-/ ]([A-Za-z]{3,}|\d{1,2})[-/ ](\d{2,4})/
-  );
-  if (!match) return null;
-  const parsed = new Date(text.replace(/-/g, " "));
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function normalizeMonthKey(value: unknown): string | null {
-  const text = clean(value);
-  if (!text) return null;
-  const keyMatch = text.match(/^(\d{4})[-/](\d{1,2})$/);
-  if (keyMatch) return `${keyMatch[1]}-${keyMatch[2].padStart(2, "0")}`;
-  const parsed = parseDateValue(text.startsWith("1 ") ? text : `1 ${text}`);
-  if (!parsed) return null;
-  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
-}
-function openingMonthKey(value: unknown): string {
-  const parsed = parseDateValue(value);
-  if (!parsed) return "Unknown";
-  const month = String(parsed.getMonth() + 1).padStart(2, "0");
-  return `${parsed.getFullYear()}-${month}`;
-}
-function resolveOpeningMonthKey(
-  sourceKey: unknown,
-  sourceLabel: unknown,
-  observationDate: unknown
-): string {
-  return (
-    normalizeMonthKey(sourceKey) ??
-    normalizeMonthKey(sourceLabel) ??
-    openingMonthKey(observationDate)
-  );
-}
-function openingMonthLabel(key: string): string {
-  if (!key || key === "Unknown") return "Unknown";
-  const parsed = new Date(`${key}-01T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return key;
-  return parsed.toLocaleDateString("en", { month: "short", year: "numeric" });
-}
-function startOfWeek(date: Date): Date {
-  const copy = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const day = copy.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  copy.setDate(copy.getDate() + diff);
-  return copy;
-}
-function weekKey(value: unknown): string {
-  const parsed = parseDateValue(value);
-  if (!parsed) return "Unknown";
-  const start = startOfWeek(parsed);
-  return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`;
-}
-function weekLabel(key: string): string {
-  if (!key || key === "Unknown") return "Unknown";
-  const parsed = new Date(`${key}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return key;
-  const end = new Date(parsed);
-  end.setDate(end.getDate() + 6);
-  const sameMonth =
-    parsed.getMonth() === end.getMonth() &&
-    parsed.getFullYear() === end.getFullYear();
-  const startLabel = parsed.toLocaleDateString("en", {
-    day: "2-digit",
-    month: "short",
-  });
-  const endLabel = end.toLocaleDateString(
-    "en",
-    sameMonth ? { day: "2-digit" } : { day: "2-digit", month: "short" }
-  );
-  return `${startLabel}-${endLabel}`;
-}
-function recordDateMonthKey(value: string): string {
-  const parsed = parseDateValue(value);
-  if (!parsed) return "Unknown";
-  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
-}
-function selectedMonthRange(
-  selectedMonth: string
-): { start: Date; end: Date } | null {
-  const match = selectedMonth.match(/^(\d{4})-(\d{2})$/);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const monthIndex = Number(match[2]) - 1;
-  const start = new Date(year, monthIndex, 1);
-  const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
-  return Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())
-    ? null
-    : { start, end };
-}
-function totalHoursInMonth(monthKey: string): number {
-  const range = selectedMonthRange(monthKey);
-  if (!range) return 0;
-  const daysInMonth = range.end.getDate();
-  return daysInMonth * 24;
-}
-function coveredMonthKeys(row: TicketRecord): string[] {
-  const observation = parseDateValue(row.observationDate);
-  const recovery = parseDateValue(row.recoveryDate);
-  const keys = new Set<string>();
-  const addEndpoint = (value: string) => {
-    const key = recordDateMonthKey(value);
-    if (key !== "Unknown") keys.add(key);
-  };
-  addEndpoint(row.observationDate);
-  addEndpoint(row.recoveryDate);
-  if (!observation || !recovery) return Array.from(keys);
-  const startDate = observation <= recovery ? observation : recovery;
-  const endDate = recovery >= observation ? recovery : observation;
-  const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-  const final = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
-  let guard = 0;
-  while (cursor <= final && guard < 240) {
-    keys.add(
-      `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`
-    );
-    cursor.setMonth(cursor.getMonth() + 1);
-    guard += 1;
-  }
-  return Array.from(keys);
-}
-function isPendingStatus(value: string): boolean {
-  return clean(value).toLowerCase() === "pending";
-}
-function dateWithinMonth(dateValue: string, selectedMonth: string): boolean {
-  const range = selectedMonthRange(selectedMonth);
-  if (!range) return false;
-  const parsed = parseDateValue(dateValue);
-  if (!parsed) return false;
-  return parsed >= range.start && parsed <= range.end;
-}
-function ticketMatchesMonthlyExport(
-  ticket: TicketAggregate,
-  selectedMonth: string
-): boolean {
-  if (selectedMonth === "all") return true;
-  const range = selectedMonthRange(selectedMonth);
-  if (!range) return false;
-  return ticket.rows.some(row => {
-    const obsDate = parseDateValue(row.observationDate);
-    const recDate = parseDateValue(row.recoveryDate);
-    const observationInMonth =
-      obsDate !== null && obsDate >= range.start && obsDate <= range.end;
-    const recoveryInMonth =
-      recDate !== null && recDate >= range.start && recDate <= range.end;
-    const pendingBeforeMonthEnd =
-      isPendingStatus(row.status) && obsDate !== null && obsDate <= range.end;
-    const spansEntireMonth =
-      obsDate !== null &&
-      recDate !== null &&
-      obsDate < range.start &&
-      recDate > range.end;
-    return (
-      observationInMonth ||
-      recoveryInMonth ||
-      pendingBeforeMonthEnd ||
-      spansEntireMonth
-    );
-  });
-}
-function dateKey(value: string): number {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
-}
-function formatDateDDMMYYYY(value: string): string {
-  const parsed = parseDateValue(value);
-  if (!parsed) return value || "";
-  const d = String(parsed.getDate()).padStart(2, "0");
-  const m = String(parsed.getMonth() + 1).padStart(2, "0");
-  const y = parsed.getFullYear();
-  return `${d}/${m}/${y}`;
-}
-function formatMonthMMMMYYYY(monthKey: string): string {
-  if (!monthKey || monthKey === "all") return "";
-  const parsed = new Date(`${monthKey}-01T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return monthKey;
-  return parsed.toLocaleDateString("en", { month: "short", year: "numeric" });
-}
-function parseDurationHours(duration: string): number | null {
-  if (!duration) return null;
-  if (/days?/i.test(duration) || /hrs?/i.test(duration)) {
-    const days = Number(duration.match(/(\d+)\s*days?/i)?.[1] ?? 0);
-    const hrs = Number(duration.match(/(\d+)\s*hrs?/i)?.[1] ?? 0);
-    const mins = Number(duration.match(/(\d+)\s*mins?/i)?.[1] ?? 0);
-    const total = days * 24 + hrs + mins / 60;
-    return Number.isFinite(total) ? total : null;
-  }
-  const num = Number(duration);
-  if (Number.isFinite(num) && num >= 0) {
-    if (num > 0 && num < 1) return Math.round(num * 24 * 10) / 10;
-    return Math.round(num * 10) / 10;
-  }
-  return null;
-}
-function combineDateTime(dateStr: string, timeStr: string): Date | null {
-  const parsed = parseDateValue(dateStr);
-  if (!parsed) return null;
-  const time = clean(timeStr);
-  const match = time.match(/^(\d{1,2}):(\d{2})/);
-  if (match) parsed.setHours(Number(match[1]), Number(match[2]), 0, 0);
-  return parsed;
-}
-function hoursBetween(start: Date | null, end: Date | null): number | null {
-  if (!start || !end || end < start) return null;
-  return Math.round(((end.getTime() - start.getTime()) / 36e5) * 10) / 10;
-}
-function average(values: Array<number | null | undefined>): number {
-  const valid = values.filter(
-    (value): value is number =>
-      typeof value === "number" && Number.isFinite(value)
-  );
-  return valid.length
-    ? valid.reduce((sum, value) => sum + value, 0) / valid.length
-    : 0;
-}
-
-const RCA_FAMILY_MAP: Record<string, string> = {
-  "Power Issue": "Power & Environment",
-  "High Temperature": "Power & Environment",
-  "High VSWR": "Power & Environment",
-  "Weather Issue": "Power & Environment",
-  "DC Charger Faulty": "Power & Environment",
-  "Link Down": "Transmission & Link",
-  "Link Flapping": "Transmission & Link",
-  Transmission: "Transmission & Link",
-  "MW Issue": "Transmission & Link",
-  "MPLS Issue": "Transmission & Link",
-  "SDH Hanged": "Transmission & Link",
-  "Hardware Failure": "Hardware & Device",
-  "Hardware Faulty": "Hardware & Device",
-  "Device Hanged": "Hardware & Device",
-  "Fiber Cut": "Fiber & Physical",
-  Cabling: "Fiber & Physical",
-  "Port Disable": "Fiber & Physical",
-  "Port Hang": "Fiber & Physical",
-  "Loss of Signal": "Fiber & Physical",
-  "Media Converter Faulty": "Fiber & Physical",
-  "Configuration Issue": "Configuration / Software",
-  "Software Issue": "Configuration / Software",
-  "Application Issue": "Configuration / Software",
-  "Human Mistake": "Human / Process / Planned",
-  "Approved Activity": "Human / Process / Planned",
-  "Un-Approved Activity": "Human / Process / Planned",
-  "Planned Activity": "Human / Process / Planned",
-  "Project Team": "Human / Process / Planned",
-  "FMD Team": "Human / Process / Planned",
-  "NG FO Team": "Human / Process / Planned",
-  "RCA not Provided": "Unknown / Missing",
-};
-
-const NON_PREVENTABLE_RCAS = new Set([
-  "Weather Issue",
-  "Approved Activity",
-  "Planned Activity",
-  "RCA not Provided",
-]);
-const RESPONSIBLE_TEAM_BY_FAMILY: Record<string, string> = {
-  "Power & Environment": "Power / Facilities Team",
-  "Transmission & Link": "Transmission / NOC Team",
-  "Hardware & Device": "Field Maintenance / Vendor",
-  "Fiber & Physical": "Fiber / Physical Maintenance Team",
-  "Configuration / Software": "NOC / Configuration Team",
-  "Human / Process / Planned": "Process Owner / Project Team",
-  "Unknown / Missing": "RCA Owner / Follow-up Required",
-  "Other / Review": "Operations Review Team",
-};
-const RECOMMENDED_ACTION_BY_FAMILY: Record<string, string> = {
-  "Power & Environment":
-    "Check power source, rectifier, batteries, grounding, cooling, and repeated environmental alarms.",
-  "Transmission & Link":
-    "Review link stability, transmission path, MPLS/MW/SDH health, and vendor escalation history.",
-  "Hardware & Device":
-    "Inspect device health, replace faulty hardware, verify spares, and monitor repeated failures.",
-  "Fiber & Physical":
-    "Inspect fiber/cabling route, port status, optical levels, patching quality, and civil-work exposure.",
-  "Configuration / Software":
-    "Review recent changes, configuration backup, software version, rollback records, and approval controls.",
-  "Human / Process / Planned":
-    "Validate activity approval, handover, method of procedure, and team process compliance.",
-  "Unknown / Missing":
-    "Complete RCA, assign owner, and update action taken before closure reporting.",
-  "Other / Review":
-    "Review RCA text manually and assign the correct operational owner.",
-};
-
-function getRcaFamily(rca: string): string {
-  const normalized = clean(rca) || "RCA not Provided";
-  return RCA_FAMILY_MAP[normalized] ?? "Other / Review";
-}
-function getPreventability(rca: string): string {
-  const normalized = clean(rca) || "RCA not Provided";
-  return NON_PREVENTABLE_RCAS.has(normalized)
-    ? "Non-preventable"
-    : "Preventable";
-}
-function getResponsibleTeam(rcaFamily: string): string {
-  return (
-    RESPONSIBLE_TEAM_BY_FAMILY[rcaFamily] ??
-    RESPONSIBLE_TEAM_BY_FAMILY["Other / Review"]
-  );
-}
-function getRecommendedAction(rcaFamily: string): string {
-  return (
-    RECOMMENDED_ACTION_BY_FAMILY[rcaFamily] ??
-    RECOMMENDED_ACTION_BY_FAMILY["Other / Review"]
-  );
-}
-function rcaNotProvided(rca: string): boolean {
-  const normalized = clean(rca).toLowerCase();
-  return !normalized || normalized === "rca not provided";
-}
-function formatHours(value: number): string {
-  if (!value || !Number.isFinite(value)) return "";
-  return `${value.toFixed(1)} hrs`;
-}
-
-function groupTickets(rows: TicketRecord[]): TicketAggregate[] {
-  const grouped = new Map<string, TicketAggregate>();
-  rows.forEach(row => {
-    if (!row.tt) return;
-    const existing = grouped.get(row.tt);
-    if (!existing) {
-      grouped.set(row.tt, {
-        tt: row.tt,
-        primary: row,
-        siteIds: new Set(row.siteId ? [row.siteId] : []),
-        siteNames: new Set(row.siteName ? [row.siteName] : []),
-        rows: [row],
-      });
-    } else {
-      existing.rows.push(row);
-      if (row.siteId) existing.siteIds.add(row.siteId);
-      if (row.siteName) existing.siteNames.add(row.siteName);
-      const currentDate = dateKey(existing.primary.observationDate);
-      const nextDate = dateKey(row.observationDate);
-      if (!currentDate || (nextDate && nextDate < currentDate))
-        existing.primary = row;
-    }
-  });
-  return Array.from(grouped.values());
-}
-
-function parseSiteOrder(
-  workbook: XLSX.WorkBook
-): { siteId: string; siteName: string }[] {
-  const siteSheetName = workbook.SheetNames.find(name => {
-    const n = name.toLowerCase().replace(/[^a-z0-9]/g, "");
-    return (
-      n === "dashboarddata" ||
-      n === "siteid" ||
-      n === "sites" ||
-      n === "sitelist" ||
-      n === "siteids" ||
-      n === "sitedata"
-    );
-  });
-  if (!siteSheetName) return [];
-  const sheet = workbook.Sheets[siteSheetName];
-  const raw2d = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    defval: null,
-  }) as unknown[][];
-  let siteIdCol = -1;
-  let siteNameCol = -1;
-  let headerRowIdx = -1;
-  for (let ri = 0; ri < raw2d.length; ri++) {
-    const row = raw2d[ri];
-    for (let ci = 0; ci < row.length; ci++) {
-      const cell = String(row[ci] ?? "")
-        .trim()
-        .toLowerCase();
-      if (cell === "site id" || cell === "siteid") {
-        siteIdCol = ci;
-        headerRowIdx = ri;
-      }
-      if (cell === "site name" || cell === "sitename") {
-        siteNameCol = ci;
-      }
-    }
-    if (siteIdCol >= 0 && siteNameCol >= 0) break;
-  }
-  if (headerRowIdx < 0 || siteIdCol < 0) return [];
-  const seen = new Set<string>();
-  const result: { siteId: string; siteName: string }[] = [];
-  for (let ri = headerRowIdx + 1; ri < raw2d.length; ri++) {
-    const row = raw2d[ri];
-    const id = clean(String(row[siteIdCol] ?? ""));
-    const name = siteNameCol >= 0 ? clean(String(row[siteNameCol] ?? "")) : "";
-    if (!id) break;
-    if (!seen.has(id)) {
-      seen.add(id);
-      result.push({ siteId: id, siteName: name });
-    }
-  }
-  return result;
-}
-
-function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
-  const preferred = workbook.SheetNames.find(name =>
-    name.toLowerCase().includes("tickets_data")
-  );
-  const sheetName = preferred ?? workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-    defval: "",
-    raw: true,
-  });
-  const siteOrder = parseSiteOrder(workbook);
-
-  function toDateStr(val: unknown): string {
-    if (val === null || val === undefined || val === "") return "";
-    const parsed = parseDateValue(val);
-    if (!parsed) return String(val);
-    const d = String(parsed.getDate()).padStart(2, "0");
-    const m = String(parsed.getMonth() + 1).padStart(2, "0");
-    return `${d}/${m}/${parsed.getFullYear()}`;
-  }
-  function toTimeStr(val: unknown): string {
-    if (val === null || val === undefined || val === "") return "";
-    if (val instanceof Date) {
-      const hh = String(val.getUTCHours()).padStart(2, "0");
-      const mm = String(val.getUTCMinutes()).padStart(2, "0");
-      return `${hh}:${mm}`;
-    }
-    if (typeof val === "number") {
-      const totalMinutes = Math.round(val * 24 * 60);
-      const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0");
-      const mm = String(totalMinutes % 60).padStart(2, "0");
-      return `${hh}:${mm}`;
-    }
-    const text = String(val).trim();
-    const hhmmss = text.match(/^(\d{1,2}):(\d{2})(:\d{2})?$/);
-    if (hhmmss) return `${hhmmss[1].padStart(2, "0")}:${hhmmss[2]}`;
-    return text;
-  }
-
-  const rows: TicketRecord[] = raw
-    .map((row, index) => {
-      const observationDate = toDateStr(
-        getRawField(row, ["Observation Date", "Observed Date"]) || ""
-      );
-      const monthKey = resolveOpeningMonthKey(
-        getField(row, ["Opening Month Key", "OpeningMonthKey"]),
-        getField(row, ["Opening Month", "OpeningMonth"]),
-        observationDate
-      );
-      const observationTime = toTimeStr(
-        getRawField(row, [
-          "Observation Time",
-          "Observed Time",
-          "ObservationTime",
-        ])
-      );
-      const recoveryDate = toDateStr(getRawField(row, ["Recovery Date"]) || "");
-      const recoveryTime = toTimeStr(
-        getRawField(row, ["Recovery Time", "RecoveryTime"])
-      );
-      const duration = String(
-        getRawField(row, [
-          "Total Duration Days/Hours",
-          "Total Durration Days/Hours",
-          "Duration",
-        ]) ?? ""
-      );
-      const l3Date = toDateStr(
-        getField(row, [
-          "Escalated for L3 Support Date",
-          "Escalated For L3 Support Date",
-          "L3 Support Date",
-          "L3 Escalation Date",
-          "Escalation L3 Date",
-          "Escalated L3 Date",
-        ]) || ""
-      );
-      const l3Time = toTimeStr(
-        getRawField(row, [
-          "Escalated for L3 Support Time",
-          "Escalated For L3 Support Time",
-          "L3 Support Time",
-          "L3 Escalation Time",
-          "Escalation L3 Time",
-          "Escalated L3 Time",
-        ])
-      );
-      const observedAt = combineDateTime(observationDate, observationTime);
-      const l3At = combineDateTime(l3Date, l3Time);
-      const recoveredAt = combineDateTime(recoveryDate, recoveryTime);
-      const explicitFrt = parseDurationHours(
-        String(
-          getRawField(row, [
-            "FRT",
-            "Avg FRT",
-            "First Reply Time",
-            "First Response Time",
-          ]) ?? ""
-        )
-      );
-      const explicitResponse = parseDurationHours(
-        String(
-          getRawField(row, [
-            "Response Time",
-            "Avg Response Time",
-            "Ticket Response Time",
-          ]) ?? ""
-        )
-      );
-      const explicitResolution = parseDurationHours(
-        String(
-          getRawField(row, [
-            "Resolution Time",
-            "Avg Resolution Time",
-            "Ticket Resolution Time",
-          ]) ?? ""
-        )
-      );
-      const rca = getField(row, [
-        "RCA",
-        "Root Cause Analysis",
-        "Root Cause",
-        "Action Taken/RCA",
-      ]);
-      const rcaFamily = getRcaFamily(rca);
-      return {
-        rowNo: index + 2,
-        tt: getField(row, ["TT", "Ticket", "Ticket Number"]),
-        siteId: getField(row, ["Site ID", "SiteID", "Site Name", "SiteName"]),
-        siteName: getField(row, ["Site Name", "SiteName"]),
-        managedResource: getField(row, [
-          "Managed Resource",
-          "ManagedResource",
-          "Managed Resources",
-          "Resource",
-          "NE Name",
-          "Network Element",
-        ]),
-        issue: getField(row, ["Issues", "Issue"]),
-        severity: getField(row, ["Severity"]),
-        region: getField(row, ["Region"]),
-        observationDate,
-        observationTime,
-        openingMonthKey: monthKey,
-        openingMonthLabel: openingMonthLabel(monthKey),
-        recoveryDate,
-        recoveryTime,
-        duration,
-        impact: getField(row, [
-          "Service Impaction Status",
-          "Service Impact Status",
-        ]),
-        escalatedTo: getField(row, [
-          "Escalated to",
-          "Escalated To",
-          "Escalated to ",
-        ]),
-        escalationLevel: getField(row, ["Escalation Level", "Esclation Level"]),
-        escalatedForL3SupportDate: l3Date,
-        escalatedForL3SupportTime: l3Time,
-        frtHours: explicitFrt ?? hoursBetween(observedAt, l3At),
-        responseHours: explicitResponse ?? hoursBetween(observedAt, l3At),
-        resolutionHours:
-          explicitResolution ??
-          parseDurationHours(duration) ??
-          hoursBetween(observedAt, recoveredAt),
-        status: getField(row, ["Status"]),
-        rca,
-        rcaFamily,
-        preventability: getPreventability(rca),
-        responsibleTeam: getResponsibleTeam(rcaFamily),
-        recommendedAction: getRecommendedAction(rcaFamily),
-        actionTaken: getField(row, ["Action"]),
-        sourceFile: fileName,
-      };
-    })
-    .filter(row => row.tt || row.siteId || row.siteName || row.issue);
-
-  return {
-    fileName,
-    sheetName,
-    generatedAt: new Date().toLocaleString(),
-    rows,
-    uniqueTickets: groupTickets(rows),
-    siteOrder,
-  };
-}
 
 function countBy<T>(
   items: T[],
@@ -1753,30 +1397,6 @@ function drawPdfReportHeader(
   doc.setFontSize(8);
   doc.setTextColor(...TEMPLATE_PDF_COLORS.muted);
   doc.text(subtitle, pageW / 2, 17.2, { align: "center" });
-}
-
-type PerfRow = {
-  siteId: string;
-  siteName: string;
-  displayName: string;
-  sourceLabel: string;
-  perfKey: string;
-  sitesDownHours: number;
-  availHours: number;
-  availDay: string;
-  reliability: string;
-  channelBusy: number;
-  mwLinkPerf: number;
-  ticketCount: number;
-};
-
-function normalizeSiteId(id: string): string {
-  return id
-    .replace(
-      /(\D+)(\d+)$/,
-      (_, prefix, num) => prefix.toUpperCase() + String(parseInt(num, 10))
-    )
-    .trim();
 }
 
 function perfSourceLabel(row: TicketRecord): string {
@@ -2247,7 +1867,7 @@ async function exportPerfTemplate(
         (_m, open, body, close) => {
           const updatedBody = body.replace(
             /(\$?)([A-J])(\$?)(\d+)/g,
-            (ref, absCol, col, absRow, rowText) => {
+            (ref: string, absCol: string, col: string, absRow: string, rowText: string) => {
               const rowNum = Number(rowText);
               return rowNum >= PROTECTED
                 ? `${absCol}${col}${absRow}${rowNum + extra2}`
@@ -3694,6 +3314,346 @@ async function exportPdf(rows: TicketAggregate[], monthKey: string) {
   doc.save(`DMR-Monthly-Tickets${suffix}.pdf`);
 }
 
+
+function clampGaugePercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+function extractFirstNumericValue(text: string): number | null {
+  const match = clean(text).match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : null;
+}
+
+type GaugeStatus = "excellent" | "good" | "warning" | "critical";
+
+type GaugeThresholds = {
+  excellent: number;
+  good: number;
+  warning: number;
+};
+
+type PerformanceGaugeContext = {
+  totalSites: number;
+  totalHours: number;
+};
+
+type PerformanceGaugeConfig = {
+  id: string;
+  label: string;
+  color: string;
+  icon: LucideIcon;
+  direction: "higher" | "lower";
+  thresholds: GaugeThresholds;
+  getValue: (kpi: ReturnType<typeof computePerfKPIs>, ctx: PerformanceGaugeContext) => number;
+  getScale: (kpi: ReturnType<typeof computePerfKPIs>, ctx: PerformanceGaugeContext) => { min: number; max: number };
+  formatValue: (kpi: ReturnType<typeof computePerfKPIs>) => string;
+  caption: (kpi: ReturnType<typeof computePerfKPIs>, ctx: PerformanceGaugeContext) => string;
+  helper: (kpi: ReturnType<typeof computePerfKPIs>, ctx: PerformanceGaugeContext) => string;
+  sparkline: (rows: PerfRow[], kpi: ReturnType<typeof computePerfKPIs>, ctx: PerformanceGaugeContext) => number[];
+};
+
+type PerformanceGaugeCardModel = {
+  id: string;
+  label: string;
+  value: string;
+  color: string;
+  progress: number;
+  status: GaugeStatus;
+  icon: LucideIcon;
+  caption: string;
+  helper: string;
+  sparkline: number[];
+};
+
+const PERFORMANCE_GAUGE_CONFIG: PerformanceGaugeConfig[] = [
+  {
+    id: "availability",
+    label: "% Availability",
+    color: "#22d3ee",
+    icon: Activity,
+    direction: "higher",
+    thresholds: { excellent: 99.5, good: 98, warning: 95 },
+    getValue: kpi => extractFirstNumericValue(kpi.pctAvailability) ?? 0,
+    getScale: () => ({ min: 0, max: 100 }),
+    formatValue: kpi => kpi.pctAvailability,
+    caption: (kpi) => `${(extractFirstNumericValue(kpi.pctAvailability) ?? 0).toFixed(2)}% healthy window`,
+    helper: kpi => `Available ${kpi.totalAvail.toFixed(1)} hrs across selected sites`,
+    sparkline: rows => rows.map(r => {
+      const total = r.availHours + r.sitesDownHours;
+      return total > 0 ? (r.availHours / total) * 100 : 100;
+    }),
+  },
+  {
+    id: "mttr",
+    label: "MTTR",
+    color: "#f59e0b",
+    icon: RefreshCw,
+    direction: "lower",
+    thresholds: { excellent: 4, good: 8, warning: 24 },
+    getValue: kpi => extractFirstNumericValue(kpi.mttr) ?? 0,
+    getScale: () => ({ min: 0, max: 24 }),
+    formatValue: kpi => kpi.mttr,
+    caption: () => "Target ≤ 24 hrs mean repair time",
+    helper: kpi => `${(extractFirstNumericValue(kpi.mttr) ?? 0).toFixed(2)} hrs average repair`,
+    sparkline: rows => rows.filter(r => r.sitesDownHours > 0).map(r => r.sitesDownHours),
+  },
+  {
+    id: "mtbf",
+    label: "MTBF",
+    color: "#3b82f6",
+    icon: Network,
+    direction: "higher",
+    thresholds: { excellent: 168, good: 72, warning: 24 },
+    getValue: kpi => extractFirstNumericValue(kpi.mtbf) ?? 0,
+    getScale: () => ({ min: 0, max: 168 }),
+    formatValue: kpi => kpi.mtbf,
+    caption: () => "Target ≥ 168 hrs between failures",
+    helper: kpi => `${(extractFirstNumericValue(kpi.mtbf) ?? 0).toFixed(2)} hrs between failures`,
+    sparkline: rows => rows.map(r => r.availHours),
+  },
+  {
+    id: "mttf",
+    label: "MTTF",
+    color: "#a78bfa",
+    icon: ShieldAlert,
+    direction: "higher",
+    thresholds: { excellent: 192, good: 96, warning: 36 },
+    getValue: kpi => extractFirstNumericValue(kpi.mttf) ?? 0,
+    getScale: () => ({ min: 0, max: 192 }),
+    formatValue: kpi => kpi.mttf,
+    caption: () => "Target ≥ 192 hrs expected failure-free time",
+    helper: kpi => `${(extractFirstNumericValue(kpi.mttf) ?? 0).toFixed(2)} hrs uptime horizon`,
+    sparkline: rows => rows.map(r => r.availHours + Math.max(0, r.sitesDownHours * 0.35)),
+  },
+  {
+    id: "affectedSites",
+    label: "Affected Sites",
+    color: "#f43f5e",
+    icon: AlertTriangle,
+    direction: "lower",
+    thresholds: { excellent: 0, good: 5, warning: 15 },
+    getValue: kpi => kpi.affectedSites,
+    getScale: (_, ctx) => ({ min: 0, max: Math.max(1, ctx.totalSites) }),
+    formatValue: kpi => String(kpi.affectedSites),
+    caption: (kpi, ctx) => `${((kpi.affectedSites / Math.max(1, ctx.totalSites)) * 100).toFixed(1)}% of monitored sites`,
+    helper: (kpi, ctx) => `${kpi.affectedSites} impacted / ${ctx.totalSites} total sites`,
+    sparkline: rows => rows.map(r => (r.sitesDownHours > 0 ? 1 : 0)),
+  },
+  {
+    id: "nonAffectedSites",
+    label: "Non-Affected Sites",
+    color: "#10b981",
+    icon: CheckCircle2,
+    direction: "higher",
+    thresholds: { excellent: 90, good: 75, warning: 50 },
+    getValue: (kpi, ctx) => (kpi.nonAffectedSites / Math.max(1, ctx.totalSites)) * 100,
+    getScale: () => ({ min: 0, max: 100 }),
+    formatValue: kpi => String(kpi.nonAffectedSites),
+    caption: (kpi, ctx) => `${((kpi.nonAffectedSites / Math.max(1, ctx.totalSites)) * 100).toFixed(1)}% healthy sites`,
+    helper: (kpi, ctx) => `${kpi.nonAffectedSites} stable / ${ctx.totalSites} total sites`,
+    sparkline: rows => rows.map(r => (r.sitesDownHours <= 0 ? 1 : 0)),
+  },
+  {
+    id: "totalDown",
+    label: "Total Down",
+    color: "#fb923c",
+    icon: CloudOff,
+    direction: "lower",
+    thresholds: { excellent: 12, good: 48, warning: 120 },
+    getValue: kpi => kpi.totalDown,
+    getScale: (_, ctx) => ({ min: 0, max: Math.max(1, ctx.totalHours || 1) }),
+    formatValue: kpi => kpi.totalDownHrs,
+    caption: kpi => `${kpi.totalDown.toFixed(1)} hrs lost during selected window`,
+    helper: (kpi, ctx) => `${((kpi.totalDown / Math.max(1, ctx.totalHours)) * 100).toFixed(2)}% downtime share`,
+    sparkline: rows => rows.map(r => r.sitesDownHours),
+  },
+];
+
+function gaugeStatusFromValue(
+  value: number,
+  direction: PerformanceGaugeConfig["direction"],
+  thresholds: GaugeThresholds
+): GaugeStatus {
+  if (direction === "higher") {
+    if (value >= thresholds.excellent) return "excellent";
+    if (value >= thresholds.good) return "good";
+    if (value >= thresholds.warning) return "warning";
+    return "critical";
+  }
+
+  if (value <= thresholds.excellent) return "excellent";
+  if (value <= thresholds.good) return "good";
+  if (value <= thresholds.warning) return "warning";
+  return "critical";
+}
+
+function gaugeProgressFromScale(
+  value: number,
+  direction: PerformanceGaugeConfig["direction"],
+  min: number,
+  max: number
+): number {
+  const range = Math.max(1, max - min);
+  const normalized = ((value - min) / range) * 100;
+  return clampGaugePercent(direction === "higher" ? normalized : 100 - normalized);
+}
+
+function compactSparkline(values: number[], maxPoints = 12): number[] {
+  const cleanValues = values.filter(value => Number.isFinite(value));
+  if (cleanValues.length === 0) return [0, 0, 0, 0, 0];
+  if (cleanValues.length <= maxPoints) return cleanValues;
+
+  const bucketSize = cleanValues.length / maxPoints;
+  return Array.from({ length: maxPoints }, (_, index) => {
+    const start = Math.floor(index * bucketSize);
+    const end = Math.max(start + 1, Math.floor((index + 1) * bucketSize));
+    const slice = cleanValues.slice(start, end);
+    return slice.reduce((sum, value) => sum + value, 0) / Math.max(1, slice.length);
+  });
+}
+
+function sparklinePath(values: number[]): string {
+  const points = compactSparkline(values, 14);
+  const max = Math.max(...points, 1);
+  const min = Math.min(...points, 0);
+  const range = Math.max(1, max - min);
+  return points
+    .map((value, index) => {
+      const x = points.length === 1 ? 50 : (index / (points.length - 1)) * 100;
+      const y = 100 - ((value - min) / range) * 100;
+      return `${x},${y}`;
+    })
+    .join(" ");
+}
+
+function gaugeNeedleAngle(progress: number): number {
+  return -130 + clampGaugePercent(progress) * 2.6;
+}
+
+function buildPerformanceGaugeCards(
+  kpi: ReturnType<typeof computePerfKPIs>,
+  rows: PerfRow[]
+): PerformanceGaugeCardModel[] {
+  const ctx: PerformanceGaugeContext = {
+    totalSites: Math.max(1, kpi.affectedSites + kpi.nonAffectedSites),
+    totalHours: Math.max(1, kpi.totalAvail + kpi.totalDown),
+  };
+
+  return PERFORMANCE_GAUGE_CONFIG.map(config => {
+    const value = config.getValue(kpi, ctx);
+    const scale = config.getScale(kpi, ctx);
+    return {
+      id: config.id,
+      label: config.label,
+      value: config.formatValue(kpi),
+      color: config.color,
+      progress: gaugeProgressFromScale(value, config.direction, scale.min, scale.max),
+      status: gaugeStatusFromValue(value, config.direction, config.thresholds),
+      icon: config.icon,
+      caption: config.caption(kpi, ctx),
+      helper: config.helper(kpi, ctx),
+      sparkline: compactSparkline(config.sparkline(rows, kpi, ctx)),
+    };
+  });
+}
+
+function statusLabel(status: GaugeStatus): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function PerformanceGaugeCard({
+  label,
+  value,
+  color,
+  progress,
+  status,
+  icon: Icon,
+  caption,
+  helper,
+  index,
+}: PerformanceGaugeCardModel & { index: number }) {
+  const safeProgress = clampGaugePercent(progress);
+  const gaugeId = label.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+
+  return (
+    <article
+      className="perf-gauge-card"
+      style={{
+        ["--gauge-color" as string]: color,
+        ["--gauge-progress" as string]: `${safeProgress}%`,
+        ["--card-index" as string]: index,
+      }}
+    >
+      <div className="perf-gauge-card__topline">
+        <span className="perf-gauge-card__label">{label}</span>
+        <span className={`perf-gauge-card__status perf-gauge-card__status--${status}`}>
+          {statusLabel(status)}
+        </span>
+      </div>
+
+      <div className="perf-gauge-card__dial-wrap">
+        <svg
+          className="perf-gauge-card__dial"
+          viewBox="0 0 240 165"
+          role="img"
+          aria-label={`${label} performance gauge`}
+        >
+          <defs>
+            <linearGradient id={`gauge-arc-${gaugeId}`} x1="0%" x2="100%" y1="0%" y2="0%">
+              <stop offset="0%" stopColor={color} stopOpacity="0.32" />
+              <stop offset="52%" stopColor={color} stopOpacity="0.98" />
+              <stop offset="100%" stopColor={color} stopOpacity="0.46" />
+            </linearGradient>
+          </defs>
+          <path
+            className="perf-gauge-card__dial-arc-track"
+            d="M 14 140 A 106 106 0 0 1 226 140"
+            pathLength={100}
+          />
+          <path
+            className="perf-gauge-card__dial-arc-glow"
+            d="M 14 140 A 106 106 0 0 1 226 140"
+            pathLength={100}
+            stroke={`url(#gauge-arc-${gaugeId})`}
+            strokeDasharray={100}
+            strokeDashoffset={100 - safeProgress}
+          />
+          {Array.from({ length: 11 }, (_, tick) => {
+            const angle = Math.PI + tick * (Math.PI / 10);
+            const x1 = 120 + Math.cos(angle) * 86;
+            const y1 = 140 + Math.sin(angle) * 86;
+            const x2 = 120 + Math.cos(angle) * 102;
+            const y2 = 140 + Math.sin(angle) * 102;
+            return (
+              <line
+                key={tick}
+                className="perf-gauge-card__tick"
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+              />
+            );
+          })}
+        </svg>
+
+        <div className="perf-gauge-card__center">
+          <div className="perf-gauge-card__icon-wrap">
+            <Icon size={20} />
+          </div>
+          <strong className="perf-gauge-card__value">{value || "--"}</strong>
+          <span className="perf-gauge-card__caption">{caption}</span>
+        </div>
+      </div>
+
+      <div className="perf-gauge-card__footer">
+        <span className="perf-gauge-card__helper">{helper}</span>
+      </div>
+    </article>
+  );
+}
+
 function StatCard({
   label,
   value,
@@ -3706,7 +3666,7 @@ function StatCard({
 }: {
   label: ReactNode;
   value: ReactNode;
-  note: ReactNode;
+  note?: ReactNode;
   icon: LucideIcon;
   tone: string;
   onClick?: () => void;
@@ -4108,6 +4068,18 @@ export default function Home() {
   const TABLE_PAGE_SIZE = 20;
   const [perfMonths, setPerfMonths] = useState<string[]>([]);
   const [perfRegions, setPerfRegions] = useState<string[]>([]);
+  const [dashboardTheme, setDashboardTheme] = useState<DashboardTheme>("dark");
+  const [collapsedSections, setCollapsedSections] = useState<Record<DashboardSectionId, boolean>>(INITIAL_COLLAPSED_SECTIONS);
+  const [savedSnapshotAvailable, setSavedSnapshotAvailable] = useState(false);
+  const activeThemeImage = THEME_IMAGES[dashboardTheme];
+  const heroThemeOverlay =
+    dashboardTheme === "dark"
+      ? "linear-gradient(90deg, rgba(3,7,18,.94) 0%, rgba(3,7,18,.70) 42%, rgba(3,7,18,.18) 100%)"
+      : "linear-gradient(90deg, rgba(248,250,252,.92) 0%, rgba(248,250,252,.68) 44%, rgba(248,250,252,.18) 100%)";
+  const ribbonThemeOverlay =
+    dashboardTheme === "dark"
+      ? "linear-gradient(90deg, rgba(4,13,31,.88), rgba(4,13,31,.70))"
+      : "linear-gradient(90deg, rgba(248,250,252,.88), rgba(226,232,240,.66))";
 
   // ══════════════════════════════════════════════════════════════════════════
   // TABLE COLUMN WIDTHS — edit the px values below to size each column.
@@ -4999,6 +4971,24 @@ export default function Home() {
     analytics.preventableCount,
     analytics.totalUnique
   );
+
+  const executiveInsights = useMemo(
+    () =>
+      calculateExecutiveInsights({
+        tickets: filteredTickets,
+        performanceRows: performanceKpiRows,
+      }),
+    [filteredTickets, performanceKpiRows]
+  );
+
+  const deepDiveAnalytics = useMemo(
+    () =>
+      calculateDeepDiveAnalytics({
+        tickets: filteredTickets,
+        performanceRows: performanceKpiRows,
+      }),
+    [filteredTickets, performanceKpiRows]
+  );
   function scrollToTopCards() {
     // Scroll to the filters card. Fall back to the stats grid if filters
     // aren't mounted (e.g. before a workbook is loaded).
@@ -5055,6 +5045,251 @@ export default function Home() {
       reportRows: rfPerfRows.length,
     };
   }, [allDataRows, perfMonths, perfRegions, perfRows]);
+
+
+  const allSectionsCollapsed = DASHBOARD_SECTIONS.every(section => collapsedSections[section.id]);
+
+  function makeFileSafeName(value: string) {
+    return clean(value).replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "") || "dashboard_export";
+  }
+
+  function serializeDashboardData(snapshot: DashboardData) {
+    return {
+      fileName: snapshot.fileName,
+      sheetName: snapshot.sheetName,
+      generatedAt: snapshot.generatedAt,
+      rows: snapshot.rows,
+      siteOrder: snapshot.siteOrder,
+    };
+  }
+
+  function hydrateDashboardData(snapshot: ReturnType<typeof serializeDashboardData>): DashboardData {
+    return {
+      ...snapshot,
+      uniqueTickets: groupTickets(snapshot.rows),
+    };
+  }
+
+  function loadSavedDashboardSnapshot() {
+    try {
+      const raw = localStorage.getItem(SAVED_DASHBOARD_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        data?: ReturnType<typeof serializeDashboardData>;
+        regions?: Array<ReturnType<typeof serializeDashboardData>>;
+      };
+      if (!parsed.data?.rows?.length) return;
+      const restoredData = hydrateDashboardData(parsed.data);
+      const restoredRegions = (parsed.regions ?? []).map(hydrateDashboardData);
+      setData(restoredData);
+      setRegions(restoredRegions.length ? restoredRegions : [restoredData]);
+      setError("");
+      setFilters(EMPTY_FILTERS);
+      setTablePage(1);
+      setPerfPage(1);
+    } catch (err) {
+      console.error("Failed to restore previous dashboard snapshot:", err);
+      setError("Could not restore the previous workbook session. Please upload the workbook again.");
+    }
+  }
+
+  function returnToWelcomeUploadScreen() {
+    setData(null);
+    setRegions([]);
+    setError("");
+    setFilters(EMPTY_FILTERS);
+    setExportMonths([]);
+    setExportRegions([]);
+    setPerfMonths([]);
+    setPerfRegions([]);
+    setTablePage(1);
+    setPerfPage(1);
+    setCollapsedSections(INITIAL_COLLAPSED_SECTIONS);
+    setSavedSnapshotAvailable(Boolean(localStorage.getItem(SAVED_DASHBOARD_KEY)));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function scrollToDashboardTop() {
+    const nav = document.querySelector<HTMLElement>("#dashboard-section-nav");
+    if (nav) {
+      nav.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function scrollToDashboardSection(sectionId: DashboardSectionId) {
+    const definition = DASHBOARD_SECTIONS.find(section => section.id === sectionId);
+    if (!definition) return;
+
+    const sectionHeader = document.querySelector<HTMLElement>(`#section-control-${definition.id}`);
+    const target = sectionHeader ?? document.querySelector<HTMLElement>(definition.selector);
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function toggleDashboardSection(sectionId: DashboardSectionId) {
+    setCollapsedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
+  }
+
+  function setAllDashboardSections(collapsed: boolean) {
+    setCollapsedSections({
+      reports: collapsed,
+      performanceKpis: collapsed,
+      kpis: collapsed,
+      executive: collapsed,
+      deepDive: collapsed,
+      overviewCharts: collapsed,
+      trendCharts: collapsed,
+      ticketsTable: collapsed,
+      performanceTable: collapsed,
+    });
+  }
+
+  async function exportElementToPng(element: HTMLElement | null, fileName: string) {
+    if (!element) return;
+    const { default: html2canvas } = await import("html2canvas");
+    try {
+      const canvas = await html2canvas(element, {
+        backgroundColor: null,
+        scale: Math.min(2, window.devicePixelRatio || 1.5),
+        useCORS: true,
+        logging: false,
+        ignoreElements: node =>
+          node instanceof HTMLElement &&
+          (node.classList.contains("section-control-panel") ||
+            node.classList.contains("chart-export-png-button") ||
+            node.classList.contains("no-print")),
+      });
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = `${makeFileSafeName(fileName)}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      console.error("PNG export failed:", err);
+      setError("PNG export failed. Please try again after the section finishes rendering.");
+    }
+  }
+
+  useEffect(() => {
+    setSavedSnapshotAvailable(Boolean(localStorage.getItem(SAVED_DASHBOARD_KEY)));
+  }, []);
+
+  useEffect(() => {
+    if (!data) return;
+    try {
+      localStorage.setItem(
+        SAVED_DASHBOARD_KEY,
+        JSON.stringify({
+          data: serializeDashboardData(data),
+          regions: regions.map(serializeDashboardData),
+        })
+      );
+      setSavedSnapshotAvailable(true);
+    } catch (err) {
+      console.warn("Could not save dashboard snapshot:", err);
+    }
+  }, [data, regions]);
+
+  useEffect(() => {
+    if (!data) return;
+    document.querySelectorAll(".section-control-panel").forEach(panel => panel.remove());
+    const cleanup: Array<() => void> = [];
+
+    DASHBOARD_SECTIONS.forEach(section => {
+      const target = document.querySelector<HTMLElement>(section.selector);
+      if (!target) return;
+      target.classList.add("dashboard-section-content-block");
+      target.classList.toggle("dashboard-section-collapsed", collapsedSections[section.id]);
+
+      const panel = document.createElement("div");
+      panel.id = `section-control-${section.id}`;
+      panel.className = `section-control-panel no-print${collapsedSections[section.id] ? " section-control-panel-collapsed" : ""}`;
+      panel.innerHTML = `
+        <div class="section-control-title"><span>${section.title}</span></div>
+        <div class="section-control-actions">
+          <button type="button" class="section-tool-button" data-action="png">Export PNG</button>
+          <button type="button" class="section-tool-button" data-action="toggle">${collapsedSections[section.id] ? "Expand" : "Collapse"}</button>
+          <button type="button" class="section-tool-button" data-action="top">Top Nav</button>
+        </div>
+      `;
+
+      const pngButton = panel.querySelector<HTMLButtonElement>('[data-action="png"]');
+      const toggleButton = panel.querySelector<HTMLButtonElement>('[data-action="toggle"]');
+      const topButton = panel.querySelector<HTMLButtonElement>('[data-action="top"]');
+      const pngHandler = () => exportElementToPng(target, section.title);
+      const toggleHandler = () => toggleDashboardSection(section.id);
+      const topHandler = () => scrollToDashboardTop();
+      pngButton?.addEventListener("click", pngHandler);
+      toggleButton?.addEventListener("click", toggleHandler);
+      topButton?.addEventListener("click", topHandler);
+      target.parentElement?.insertBefore(panel, target);
+
+      cleanup.push(() => {
+        pngButton?.removeEventListener("click", pngHandler);
+        toggleButton?.removeEventListener("click", toggleHandler);
+        topButton?.removeEventListener("click", topHandler);
+        panel.remove();
+      });
+    });
+
+    return () => cleanup.forEach(remove => remove());
+  }, [data, collapsedSections]);
+
+  useEffect(() => {
+    if (!data) return;
+    document.querySelectorAll(".chart-export-png-button").forEach(button => button.remove());
+    const chartHosts = new Set<HTMLElement>();
+
+    const explicitChartSelector = [
+      ".dashboard-chart-grid > .glass-card",
+      ".chart-mosaic > .glass-card",
+      ".deep-dive-chart-grid .deep-dive-panel",
+      ".client-delivery-section .deep-dive-panel",
+      ".glass-card:has(.recharts-wrapper)",
+      ".glass-card:has(.recharts-surface)",
+      ".deep-dive-panel:has(.recharts-wrapper)",
+      ".deep-dive-panel:has(.recharts-surface)",
+    ].join(",");
+
+    document.querySelectorAll<HTMLElement>(explicitChartSelector).forEach(card => {
+      chartHosts.add(card);
+    });
+
+    document.querySelectorAll<HTMLElement>(".recharts-wrapper, .recharts-surface").forEach(chart => {
+      const host = chart.closest<HTMLElement>(
+        ".glass-card, .deep-dive-panel, .chart-card, article, section"
+      );
+      if (host) chartHosts.add(host);
+    });
+
+    const cleanup: Array<() => void> = [];
+    Array.from(chartHosts).forEach((card, index) => {
+      if (card.querySelector(".chart-export-png-button")) return;
+      card.classList.add("chart-export-target");
+      const title = card.querySelector("h3, h4, strong, .card-heading")?.textContent?.trim() ?? `Chart ${index + 1}`;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "chart-export-png-button no-print";
+      button.title = `Export ${title} as PNG`;
+      button.textContent = "PNG";
+      const handler = (event: MouseEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+        exportElementToPng(card, title);
+      };
+      button.addEventListener("click", handler);
+      card.appendChild(button);
+      cleanup.push(() => {
+        button.removeEventListener("click", handler);
+        button.remove();
+        card.classList.remove("chart-export-target");
+      });
+    });
+    return () => cleanup.forEach(remove => remove());
+  }, [data, analytics, executiveInsights, deepDiveAnalytics, collapsedSections]);
 
   const filtersPanel = data ? (
     <section
@@ -5155,11 +5390,11 @@ export default function Home() {
   ) : null;
 
   return (
-    <main className="dashboard-shell">
+    <main className="dashboard-shell" data-dashboard-theme={dashboardTheme}>
       <section
         className="hero-panel"
         style={{
-          backgroundImage: `linear-gradient(90deg, rgba(3,7,18,.96) 0%, rgba(3,7,18,.78) 42%, rgba(3,7,18,.26) 100%), url(${HERO_IMAGE})`,
+          backgroundImage: `${heroThemeOverlay}, url(${activeThemeImage})`,
           backgroundSize: "contain",
           backgroundPosition: "top",
           backgroundRepeat: "no-repeat",
@@ -5175,6 +5410,40 @@ export default function Home() {
             <HeaderRightLogo />
           </div>
           <div className="topbar-actions">
+            <div className="theme-toggle no-print" aria-label="Dashboard theme selector">
+              <button
+                type="button"
+                className="active"
+                onClick={() =>
+                  setDashboardTheme(prev => (prev === "dark" ? "light" : "dark"))
+                }
+                aria-pressed={dashboardTheme === "light"}
+                aria-label={`Switch to ${dashboardTheme === "dark" ? "light" : "dark"} theme`}
+                title={`Switch to ${dashboardTheme === "dark" ? "Light" : "Dark"} Theme`}
+              >
+                {dashboardTheme === "dark" ? (
+                  <>
+                    <Moon size={18} strokeWidth={2.4} />
+                    <span>Dark Theme</span>
+                  </>
+                ) : (
+                  <>
+                    <Sun size={18} strokeWidth={2.4} />
+                    <span>Light Theme</span>
+                  </>
+                )}
+              </button>
+            </div>
+            {data && (
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={returnToWelcomeUploadScreen}
+                title="Return to the welcome upload screen"
+              >
+                <HomeIcon size={30} /> Home
+              </button>
+            )}
             {data && (
               <button
                 className="ghost-button"
@@ -5198,12 +5467,37 @@ export default function Home() {
             )}
           </div>
         </nav>
+        {data && (
+          <div id="dashboard-section-nav" className="dashboard-section-nav no-print" aria-label="Dashboard section navigation">
+            <div className="section-nav-buttons">
+              {DASHBOARD_SECTIONS.map(section => (
+                <button
+                  key={section.id}
+                  type="button"
+                  className="section-nav-button"
+                  onClick={() => scrollToDashboardSection(section.id)}
+                >
+                  {section.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="section-nav-toggle"
+              onClick={() => setAllDashboardSections(!allSectionsCollapsed)}
+            >
+              {allSectionsCollapsed ? <Maximize2 size={15} /> : <Minimize2 size={15} />}
+              {allSectionsCollapsed ? "Expand All" : "Collapse All"}
+            </button>
+          </div>
+        )}
         {filtersPanel}
 
         {data && (
           <>
             <div
-              className="hero-export-row no-print export-row-dual"
+              id="section-reports"
+              className="hero-export-row no-print export-row-dual dashboard-section-content-block"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
@@ -5317,7 +5611,12 @@ export default function Home() {
                               exportMonths[0]
                             ] ?? exportMonths[0])
                           : "All";
-                      exportTicketsPpt(monthlyExportTickets, currentMonthLabel);
+                      exportTicketsPpt(
+                        monthlyExportTickets,
+                        currentMonthLabel,
+                        executiveInsights,
+                        deepDiveAnalytics
+                      );
                     }}
                     style={{
                       display: "flex",
@@ -5434,7 +5733,7 @@ export default function Home() {
                           : perfMonths.length > 1
                             ? `${perfMonths.length} months`
                             : "All";
-                      exportPerfPpt(perfRows, lbl);
+                      exportPerfPpt(perfRows, lbl, executiveInsights);
                     }}
                   >
                     <Presentation size={16} /> PPT
@@ -5449,6 +5748,7 @@ export default function Home() {
                 const kpi = computePerfKPIs(performanceKpiRows);
                 return (
                   <div
+                    id="section-performance-kpis"
                     className="hero-export-row no-print"
                     style={{
                       paddingBottom: 0,
@@ -5456,72 +5756,17 @@ export default function Home() {
                       marginTop: "4px",
                     }}
                   >
-                    {/* Added justify-content: center to align tiles horizontally */}
-                    <div
-                      className="perf-kpi-row"
-                      style={{
-                        display: "flex",
-                        justifyContent: "center",
-                        gap: "24px",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {(
-                        [
-                          {
-                            label: "% Availability",
-                            value: kpi.pctAvailability,
-                            color: "#ff0000",
-                          },
-                          { label: "MTTR", value: kpi.mttr, color: "#f59e0b" },
-                          { label: "MTBF", value: kpi.mtbf, color: "#3b82f6" },
-                          { label: "MTTF", value: kpi.mttf, color: "#a78bfa" },
-                          {
-                            label: "Affected Sites",
-                            value: String(kpi.affectedSites),
-                            color: "#f43f5e",
-                          },
-                          {
-                            label: "Non-Affected Sites",
-                            value: String(kpi.nonAffectedSites),
-                            color: "#10b981",
-                          },
-                          {
-                            label: "Total Down",
-                            value: kpi.totalDownHrs,
-                            color: "#fb923c",
-                          },
-                        ] as { label: string; value: string; color: string }[]
-                      ).map(({ label, value, color }) => (
-                        <div
-                          key={label}
-                          className="perf-kpi-tile"
-                          style={{
-                            ["--kpi-color" as string]: color,
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            textAlign: "center",
-                          }}
-                        >
-                          <div
-                            className="perf-kpi-label"
-                            style={{ fontSize: "16px", fontWeight: 1000 }}
-                          >
-                            {label}
-                          </div>
-                          <div
-                            className="perf-kpi-value"
-                            style={{
-                              color,
-                              fontSize: "24px",
-                              fontWeight: 1000,
-                            }}
-                          >
-                            {value || "--"}
-                          </div>
-                        </div>
-                      ))}
+                    <div className="perf-kpi-row perf-kpi-row--gauges">
+                      {(() => {
+                        const gaugeCards = buildPerformanceGaugeCards(
+                          kpi,
+                          performanceKpiRows
+                        );
+
+                        return gaugeCards.map((card, index) => (
+                          <PerformanceGaugeCard key={card.id} {...card} index={index} />
+                        ));
+                      })()}
                     </div>
                   </div>
                 );
@@ -5582,6 +5827,15 @@ export default function Home() {
                 >
                   <FileSpreadsheet size={20} /> Select Excel workbook
                 </button>
+                {savedSnapshotAvailable && (
+                  <button
+                    type="button"
+                    className="ghost-button large"
+                    onClick={loadSavedDashboardSnapshot}
+                  >
+                    <RefreshCw size={20} /> Continue previous workbook
+                  </button>
+                )}
                 <span>or drop the workbook here</span>
               </div>
               <div className="upload-checks" aria-label="Workbook readiness">
@@ -5600,7 +5854,7 @@ export default function Home() {
               </div>
             </div>
             <div className="upload-visual">
-              <img src={UPLOAD_IMAGE} alt="Dashboard workbook preview" />
+              <img src={activeThemeImage} alt="Dashboard workbook preview" />
               <div className="upload-preview-card">
                 <span>Ready For</span>
                 <strong>Excel · PDF · PPT</strong>
@@ -5615,9 +5869,10 @@ export default function Home() {
         <>
           <section
             ref={statsRef}
-            className="stats-grid workbook-cards"
+            id="section-kpis"
+            className="stats-grid workbook-cards dashboard-section-content-block"
             style={{
-              backgroundImage: `linear-gradient(90deg, rgba(4,13,31,.88), rgba(4,13,31,.70)), url(${RIBBON_IMAGE})`,
+              backgroundImage: `${ribbonThemeOverlay}, url(${activeThemeImage})`,
               display: "grid",
               // 48 columns lets every card span 6 tracks: 8 cards per row, 2 rows total.
               gridTemplateColumns: "repeat(48, 1fr)",
@@ -6169,8 +6424,256 @@ export default function Home() {
             />
           </section>
 
+          <section id="section-executive" className="glass-card executive-insights-section dashboard-section-content-block">
+            <div className="card-heading executive-insights-header">
+              <div className="executive-insights-copy">
+                <span className="section-kicker">
+                  <Activity size={14} /> Executive Insights
+                </span>
+                <h3>Network Health & Risk Summary</h3>
+                <p>{executiveInsights.summaryText}</p>
+              </div>
+
+              <div
+                className={`executive-health-score executive-health-score--${executiveInsights.healthScore.status.toLowerCase()}`}
+              >
+                <span>Network Health Score</span>
+                <strong>{executiveInsights.healthScore.score}</strong>
+                <em>{executiveInsights.healthScore.status}</em>
+                <small>{executiveInsights.healthScore.mainReason}</small>
+              </div>
+            </div>
+
+            <div className="executive-insight-grid">
+              {executiveInsights.cards.map(card => (
+                <div
+                  key={card.label}
+                  className="executive-insight-card"
+                  style={{ ["--insight-tone" as string]: card.tone }}
+                >
+                  <span>{card.label}</span>
+                  <strong>{card.value}</strong>
+                  <small>{card.note}</small>
+                </div>
+              ))}
+            </div>
+
+            <div className="executive-risk-table-card">
+              <div className="executive-risk-table-header">
+                <div>
+                  <strong>High Risk Sites Ranking</strong>
+                  <p>
+                    Risk score uses ticket count, downtime, service impact, critical severity, missing RCA, and reliability.
+                  </p>
+                </div>
+                <span>Top {executiveInsights.highRiskSites.length}</span>
+              </div>
+
+              <div className="table-scroll executive-risk-table-scroll">
+                <table className="data-table executive-risk-table">
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Site ID</th>
+                      <th>Site Name</th>
+                      <th>Tickets</th>
+                      <th>Downtime</th>
+                      <th>Reliability</th>
+                      <th>Top RCA</th>
+                      <th>Risk Level</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {executiveInsights.highRiskSites.length ? (
+                      executiveInsights.highRiskSites.map(site => (
+                        <tr key={`${site.rank}-${site.siteId}`}>
+                          <td>{site.rank}</td>
+                          <td>{site.siteId}</td>
+                          <td>{site.siteName || "-"}</td>
+                          <td>{site.ticketCount.toLocaleString()}</td>
+                          <td>{site.downtimeHours.toLocaleString()} hrs</td>
+                          <td>{site.reliability.toFixed(2)}%</td>
+                          <td>{site.topRca}</td>
+                          <td>
+                            <span
+                              className={`pill executive-risk-pill executive-risk-pill--${site.riskLevel.toLowerCase()}`}
+                            >
+                              {site.riskLevel} · {site.riskScore}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={8} className="empty-table-cell">
+                          No high-risk sites found for the selected filters.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section id="section-deep-dive" className="glass-card deep-dive-section client-delivery-section dashboard-section-content-block">
+            <div className="card-heading deep-dive-header">
+              <div>
+                <span className="section-kicker">
+                  <ShieldAlert size={14} /> RCA / Preventability / SLA Deep-Dive
+                </span>
+                <h3>Operational Quality & Follow-Up Priorities</h3>
+                <p>
+                  This layer converts RCA quality, preventability, SLA response, and repeated-site patterns into management follow-up actions.
+                </p>
+              </div>
+            </div>
+
+            <div className="deep-dive-kpi-grid">
+              <div className="deep-dive-kpi-card">
+                <span>Avg FRT</span>
+                <strong>{deepDiveAnalytics.slaSummary.avgFrtHours.toFixed(1)}h</strong>
+                <small>{deepDiveAnalytics.slaSummary.frtBreaches.toLocaleString()} above 1h target</small>
+              </div>
+              <div className="deep-dive-kpi-card">
+                <span>Avg Response</span>
+                <strong>{deepDiveAnalytics.slaSummary.avgResponseHours.toFixed(1)}h</strong>
+                <small>{deepDiveAnalytics.slaSummary.responseBreaches.toLocaleString()} above 4h target</small>
+              </div>
+              <div className="deep-dive-kpi-card">
+                <span>Avg Resolution</span>
+                <strong>{deepDiveAnalytics.slaSummary.avgResolutionHours.toFixed(1)}h</strong>
+                <small>{deepDiveAnalytics.slaSummary.resolutionBreaches.toLocaleString()} above 24h target</small>
+              </div>
+              <div className="deep-dive-kpi-card">
+                <span>Repeated Sites</span>
+                <strong>{deepDiveAnalytics.repeatedOffenderSites.length.toLocaleString()}</strong>
+                <small>Top sites requiring technical follow-up</small>
+              </div>
+            </div>
+
+            <div className="deep-dive-chart-grid">
+              <article className="deep-dive-panel">
+                <div className="deep-dive-panel-heading">
+                  <strong>Preventability by Tickets</strong>
+                  <small>Preventable vs non-preventable events</small>
+                </div>
+                <ResponsiveContainer width="100%" height={230}>
+                  <PieChart>
+                    <Pie
+                      data={deepDiveAnalytics.preventabilityByCount}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={52}
+                      outerRadius={82}
+                      paddingAngle={4}
+                      label={({ name, percentage }) => `${name}: ${percentage ?? 0}%`}
+                    >
+                      {deepDiveAnalytics.preventabilityByCount.map((entry, index) => (
+                        <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                    <Legend wrapperStyle={CHART_LEGEND_STYLE} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </article>
+
+              <article className="deep-dive-panel">
+                <div className="deep-dive-panel-heading">
+                  <strong>Pending Aging Buckets</strong>
+                  <small>Open/pending tickets by age</small>
+                </div>
+                <ResponsiveContainer width="100%" height={230}>
+                  <BarChart data={deepDiveAnalytics.slaSummary.pendingAgingBuckets} margin={{ left: 4, right: 20, top: 14, bottom: 4 }}>
+                    <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
+                    <XAxis dataKey="name" stroke={CHART_AXIS_STROKE} tickLine={false} axisLine={false} />
+                    <YAxis stroke={CHART_AXIS_STROKE} allowDecimals={false} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                    <Bar dataKey="value" name="Tickets" radius={COLUMN_BAR_RADIUS} fill="#f59e0b">
+                      <LabelList dataKey="value" position="top" fill={CHART_LABEL_FILL} fontSize={11} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </article>
+
+              <article className="deep-dive-panel deep-dive-panel--wide">
+                <div className="deep-dive-panel-heading">
+                  <strong>Top RCA Families by Downtime</strong>
+                  <small>Includes RCA quality, preventability, and ownership</small>
+                </div>
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart
+                    data={deepDiveAnalytics.rcaFamilyDeepDive.slice(0, 8)}
+                    layout="vertical"
+                    margin={{ left: 18, right: 48, top: 8, bottom: 8 }}
+                  >
+                    <CartesianGrid stroke={CHART_GRID_STROKE} horizontal={false} />
+                    <XAxis type="number" stroke={CHART_AXIS_STROKE} allowDecimals={false} tickLine={false} axisLine={false} />
+                    <YAxis dataKey="family" type="category" stroke={CHART_AXIS_STROKE} width={190} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                    <Bar dataKey="downtimeHours" name="Downtime hrs" radius={BAR_RADIUS} fill="#22d3ee">
+                      <LabelList dataKey="downtimeHours" position="right" fill={CHART_LABEL_FILL} fontSize={11} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </article>
+            </div>
+
+            <div className="deep-dive-bottom-grid">
+              <div className="deep-dive-table-card">
+                <div className="deep-dive-panel-heading">
+                  <strong>Repeated Offender Sites</strong>
+                  <small>Prioritized by downtime and repeated tickets</small>
+                </div>
+                <div className="table-scroll deep-dive-table-scroll">
+                  <table className="data-table compact-table">
+                    <thead>
+                      <tr>
+                        <th>Site ID</th>
+                        <th>Site Name</th>
+                        <th>Tickets</th>
+                        <th>Downtime</th>
+                        <th>Top RCA</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deepDiveAnalytics.repeatedOffenderSites.length ? (
+                        deepDiveAnalytics.repeatedOffenderSites.slice(0, 8).map(site => (
+                          <tr key={site.siteId}>
+                            <td>{site.siteId}</td>
+                            <td>{site.siteName || "-"}</td>
+                            <td>{site.tickets}</td>
+                            <td>{site.downtimeHours.toLocaleString()} hrs</td>
+                            <td>{site.topRca}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="empty-table-cell">No repeated offender sites found.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="deep-dive-actions-card">
+                <div className="deep-dive-panel-heading">
+                  <strong>Recommended Management Actions</strong>
+                  <small>Auto-generated from current filtered scope</small>
+                </div>
+                <ol>
+                  {deepDiveAnalytics.recommendations.map(item => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+          </section>
+
           {/* ══ Charts ══ */}
-          <div className="chart-2col dashboard-chart-grid">
+          <div id="section-overview-charts" className="chart-2col dashboard-chart-grid dashboard-section-content-block">
             {/* ── Column 1 — five charts, one per row ─────────────────────────── */}
             <article
               className="glass-card"
@@ -6946,7 +7449,7 @@ export default function Home() {
           </div>
           {/* /chart-2col */}
           {/* ══ Full-width + bottom-row charts ═══════════════════════════════════ */}
-          <section className="chart-mosaic">
+          <section id="section-trend-charts" className="chart-mosaic dashboard-section-content-block">
             <article className="glass-card" style={{ gridColumn: "1 / 5" }}>
               <div
                 className="card-heading"
@@ -7549,7 +8052,7 @@ export default function Home() {
           </section>
 
           {/* Tickets Table */}
-          <section className="table-card">
+          <section id="section-tickets-table" className="table-card dashboard-section-content-block">
             <div className="table-heading">
               <div>
                 <h2>
@@ -7784,11 +8287,7 @@ export default function Home() {
                                 const tone =
                                   (header === "Severity"
                                     ? SEVERITY_COLORS
-                                    : STATUS_COLORS)[
-                                    row[
-                                      header.toLowerCase() as keyof typeof row
-                                    ]
-                                  ] ?? "#64748b";
+                                    : STATUS_COLORS)[String(cell ?? "")] ?? "#64748b";
                                 return (
                                   <td
                                     key={header}
@@ -7911,7 +8410,7 @@ export default function Home() {
 
           {/* Monthly Performance Table */}
           {perfRows.length > 0 && (
-            <section className="table-card">
+            <section id="section-performance-table" className="table-card dashboard-section-content-block">
               <div className="table-heading">
                 <div>
                   <h2>
