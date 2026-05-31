@@ -161,6 +161,11 @@
   min-height: 100vh;
   padding: 22px;
   color: #e2e8f0;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(34, 211, 238, 0.10), transparent 34rem),
+    radial-gradient(circle at 90% 0%, rgba(96, 165, 250, 0.08), transparent 32rem),
+    linear-gradient(180deg, #020617 0%, #071426 48%, #020617 100%);
+  background-attachment: fixed;
 }
 .hero-panel {
   position: relative;
@@ -169,7 +174,8 @@
   border: 1px solid rgba(34, 211, 238, 0.18);
   border-radius: 34px;
   background-size: cover;
-  background-position: center;
+  background-position: center top;
+  background-repeat: no-repeat;
   box-shadow:
     0 28px 90px rgba(0, 0, 0, 0.42),
     inset 0 1px rgba(255, 255, 255, 0.08);
@@ -602,7 +608,8 @@
   border-radius: 28px;
   border: 1px solid rgba(34, 211, 238, 0.16);
   background-size: cover;
-  background-position: center;
+  background-position: center top;
+  background-repeat: no-repeat;
 }
 .stat-card {
   position: relative;
@@ -1483,6 +1490,8 @@
 }
 
 .table-scroll {
+  width: 100%;
+  max-width: 100%;
   overflow: auto;
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 20px;
@@ -1490,7 +1499,7 @@
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 2280px;
+  min-width: 100%;
 }
 th {
   position: sticky;
@@ -3284,24 +3293,56 @@ Does this choice reinforce or dilute our design philosophy?
 }
 
 .section-control-title {
-  display: flex;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
   align-items: center;
+  gap: 10px;
   min-width: 0;
+  padding: 7px 8px 7px 4px;
   color: #f8fafc;
+  font: inherit;
   font-size: 13px;
   font-weight: 900;
   letter-spacing: .08em;
+  line-height: 1.2;
+  text-align: left;
   text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 12px;
+  transition: background .18s ease, color .18s ease, transform .18s ease;
 }
 
-.section-control-title::before {
-  content: "";
-  width: 9px;
-  height: 9px;
-  margin-right: 9px;
+.section-control-title:hover,
+.section-control-title:focus-visible {
+  background: rgba(34, 211, 238, 0.1);
+  color: #e0faff;
+  outline: none;
+}
+
+.section-control-arrow {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 999px;
+  color: #08111f;
   background: linear-gradient(135deg, #22d3ee, #22c55e);
-  box-shadow: 0 0 18px rgba(34, 211, 238, .75);
+  box-shadow: 0 0 18px rgba(34, 211, 238, .55);
+  font-size: 15px;
+  font-weight: 1000;
+  line-height: 1;
+}
+
+.section-control-title-text {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .section-control-actions {
@@ -3371,6 +3412,17 @@ Does this choice reinforce or dilute our design philosophy?
   color: #0f172a;
 }
 
+[data-dashboard-theme="light"] .section-control-title:hover,
+[data-dashboard-theme="light"] .section-control-title:focus-visible {
+  background: rgba(14, 116, 144, 0.1);
+  color: #0e7490;
+}
+
+[data-dashboard-theme="light"] .section-control-arrow {
+  color: #ffffff;
+  background: linear-gradient(135deg, #0891b2, #22c55e);
+}
+
 [data-dashboard-theme="light"] .section-nav-button,
 [data-dashboard-theme="light"] .section-tool-button,
 [data-dashboard-theme="light"] .chart-export-png-button {
@@ -3410,4 +3462,645 @@ Does this choice reinforce or dilute our design philosophy?
     transform: none !important;
     pointer-events: auto !important;
   }
+}
+
+
+/* ==========================================================
+   Table Width + Theme Background Focus Fix
+   Keeps the existing layout, but makes tables use the available
+   dashboard width correctly and makes dark/light theme images
+   cover consistently.
+   ========================================================== */
+.dashboard-shell .table-card {
+  width: min(100%, calc(100vw - 44px));
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.dashboard-shell .table-card .table-heading {
+  width: 100%;
+  min-width: 0;
+}
+
+.dashboard-shell .table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.dashboard-shell #ticket-table-wrapper table,
+.dashboard-shell #section-performance-table .table-scroll table {
+  width: max-content !important;
+  min-width: 100% !important;
+  table-layout: fixed !important;
+}
+
+.dashboard-shell #ticket-table-wrapper th,
+.dashboard-shell #ticket-table-wrapper td,
+.dashboard-shell #section-performance-table .table-scroll th,
+.dashboard-shell #section-performance-table .table-scroll td {
+  box-sizing: border-box;
+}
+
+.dashboard-shell #ticket-table-wrapper th,
+.dashboard-shell #section-performance-table .table-scroll th {
+  white-space: normal !important;
+  word-break: normal;
+  line-height: 1.25;
+}
+
+.dashboard-shell .executive-risk-table-scroll,
+.dashboard-shell .deep-dive-table-scroll {
+  width: 100%;
+  max-width: 100%;
+}
+
+.dashboard-shell .executive-risk-table,
+.dashboard-shell .compact-table {
+  min-width: 100%;
+}
+
+.dashboard-shell .hero-panel,
+.dashboard-shell .stats-grid.workbook-cards {
+  background-size: cover !important;
+  background-position: center top !important;
+  background-repeat: no-repeat !important;
+}
+
+.dashboard-shell .upload-visual img {
+  object-fit: cover;
+  object-position: center top;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] {
+  background-attachment: fixed;
+}
+
+@media (min-width: 1440px) {
+  .dashboard-shell .table-card {
+    width: min(100%, calc(100vw - 44px));
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-shell .table-card {
+    width: 100%;
+    padding: 14px;
+  }
+
+  .dashboard-shell .table-heading {
+    align-items: flex-start;
+  }
+}
+
+/* ==========================================================
+   CDR-style tab arrangement for dashboard sections
+   ========================================================== */
+.dashboard-tabs-nav {
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px;
+  border-radius: 22px;
+}
+
+.section-tabs-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  padding: 2px;
+  scrollbar-width: thin;
+}
+
+.section-tab-button {
+  position: relative;
+  white-space: nowrap;
+  min-width: max-content;
+  padding: 9px 14px;
+  border-radius: 999px;
+  opacity: 0.78;
+}
+
+.section-tab-button-active,
+.section-tab-button[aria-selected="true"] {
+  opacity: 1;
+  color: #02111f;
+  border-color: rgba(34, 211, 238, 0.72);
+  background: linear-gradient(135deg, #67e8f9, #38bdf8 50%, #22c55e);
+  box-shadow:
+    0 16px 36px rgba(8, 145, 178, 0.32),
+    inset 0 1px rgba(255, 255, 255, 0.42);
+}
+
+.section-tab-button-active::after,
+.section-tab-button[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: -7px;
+  height: 3px;
+  border-radius: 999px;
+  background: #67e8f9;
+  box-shadow: 0 0 18px rgba(103, 232, 249, 0.75);
+}
+
+.section-tabs-current {
+  flex: 0 0 auto;
+  max-width: 360px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: #dff8ff;
+  background: rgba(15, 23, 42, 0.54);
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-section-content-block.dashboard-section-tab-hidden {
+  display: none !important;
+}
+
+.section-control-panel-tab-active {
+  margin-top: 14px;
+  border-color: rgba(34, 211, 238, 0.24);
+}
+
+.section-control-title-static {
+  cursor: default;
+}
+
+.section-control-title-static:hover,
+.section-control-title-static:focus-visible {
+  background: transparent;
+  color: inherit;
+}
+
+.section-control-tab-dot {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #67e8f9, #22c55e);
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.72);
+}
+
+[data-dashboard-theme="light"] .section-tab-button-active,
+[data-dashboard-theme="light"] .section-tab-button[aria-selected="true"] {
+  color: #ffffff;
+  border-color: rgba(14, 116, 144, 0.54);
+  background: linear-gradient(135deg, #0891b2, #0ea5e9 50%, #22c55e);
+}
+
+[data-dashboard-theme="light"] .section-tabs-current {
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(14, 116, 144, 0.18);
+}
+
+@media (max-width: 900px) {
+  .dashboard-tabs-nav {
+    align-items: stretch;
+  }
+
+  .section-tabs-buttons {
+    width: 100%;
+  }
+
+  .section-tabs-current {
+    max-width: none;
+    text-align: center;
+  }
+}
+
+@media print {
+  .dashboard-section-content-block.dashboard-section-tab-hidden {
+    display: block !important;
+  }
+}
+
+
+/* ==========================================================
+   CDR tab/layout correction: remove inactive performance tab behavior,
+   fit tab contents naturally, compact filters, and lock theme image geometry.
+   ========================================================== */
+.dashboard-tabs-nav {
+  align-items: stretch;
+  padding: 8px 10px;
+}
+
+.section-tabs-buttons {
+  flex-wrap: wrap;
+  overflow-x: visible;
+  row-gap: 8px;
+}
+
+.section-tab-button {
+  padding: 8px 13px;
+  min-height: 36px;
+}
+
+.section-tabs-current {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+}
+
+.dashboard-section-content-block {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.dashboard-section-content-block.dashboard-section-tab-hidden {
+  display: none !important;
+}
+
+#section-performance-table.dashboard-section-tab-hidden {
+  display: none !important;
+}
+
+.dashboard-shell .table-card,
+.dashboard-shell .glass-card,
+.dashboard-shell .executive-risk-table-card,
+.dashboard-shell .deep-dive-table-card {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.dashboard-shell .dashboard-filters-panel,
+.dashboard-shell .filters-panel {
+  padding: 10px 12px !important;
+  gap: 8px !important;
+  margin-bottom: 12px !important;
+  border-radius: 18px !important;
+  align-items: end !important;
+}
+
+.dashboard-shell .search-box,
+.dashboard-shell .filter-field {
+  gap: 4px !important;
+  font-size: 10px !important;
+  letter-spacing: 0.06em !important;
+}
+
+.dashboard-shell .search-box input,
+.dashboard-shell .select-wrap select,
+.dashboard-shell .multi-select-filter-button {
+  min-height: 34px !important;
+  height: 34px !important;
+  border-radius: 12px !important;
+  font-size: 12px !important;
+}
+
+.dashboard-shell .search-box svg {
+  bottom: 9px !important;
+}
+
+.dashboard-shell .hero-panel,
+.dashboard-shell .stats-grid.workbook-cards {
+  background-size: 100% auto !important;
+  background-position: center top !important;
+  background-repeat: no-repeat !important;
+}
+
+.dashboard-shell .upload-visual img {
+  object-fit: contain !important;
+  object-position: center top !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .hero-panel::after {
+  background:
+    linear-gradient(180deg, transparent 60%, rgba(248, 250, 252, 0.62)),
+    radial-gradient(circle at 60% 60%, rgba(14, 165, 233, 0.12), transparent 26rem);
+}
+
+@media (max-width: 900px) {
+  .section-tabs-buttons {
+    flex-wrap: wrap;
+  }
+}
+
+
+/* Unified compact filter settings across all CDR-style tabs */
+.dashboard-shell .dashboard-filters-panel,
+.dashboard-shell .filters-panel.dashboard-filters-panel {
+  display: grid !important;
+  grid-template-columns: minmax(220px, 1.35fr) repeat(7, minmax(112px, 0.82fr)) max-content !important;
+  align-items: end !important;
+  gap: 8px !important;
+  margin: 0 24px 14px !important;
+  padding: 10px 12px !important;
+  min-height: 0 !important;
+  border-radius: 18px !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box,
+.dashboard-shell .dashboard-filters-panel .filter-field,
+.dashboard-shell .report-export-filters .filter-field,
+.dashboard-shell .section-tabs-panel .filter-field {
+  gap: 4px !important;
+  min-width: 0 !important;
+  font-size: 10px !important;
+  letter-spacing: 0.055em !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box > span,
+.dashboard-shell .dashboard-filters-panel .filter-field > span,
+.dashboard-shell .report-export-filters .filter-field > span,
+.dashboard-shell .section-tabs-panel .filter-field > span {
+  min-height: 12px !important;
+  line-height: 1.05 !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box input,
+.dashboard-shell .dashboard-filters-panel .multi-select-trigger,
+.dashboard-shell .dashboard-filters-panel .select-wrap select,
+.dashboard-shell .report-export-filters .multi-select-trigger,
+.dashboard-shell .report-export-filters .select-wrap select,
+.dashboard-shell .section-tabs-panel .multi-select-trigger,
+.dashboard-shell .section-tabs-panel .select-wrap select {
+  height: 34px !important;
+  min-height: 34px !important;
+  border-radius: 11px !important;
+  font-size: 12px !important;
+  line-height: 1 !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box input {
+  padding-left: 34px !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box svg {
+  left: 11px !important;
+  bottom: 9px !important;
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .ghost-button,
+.dashboard-shell .report-export-actions .ghost-button,
+.dashboard-shell .section-tabs-panel .ghost-button {
+  min-height: 34px !important;
+  height: 34px !important;
+  padding: 0 12px !important;
+  border-radius: 11px !important;
+  font-size: 12px !important;
+}
+
+/* Theme background: identical geometry for dark and light, color tint only */
+.dashboard-shell .hero-panel,
+.dashboard-shell .stats-grid,
+.dashboard-shell .upload-card img,
+.dashboard-shell .report-ribbon {
+  background-size: 100% auto !important;
+  background-position: center top !important;
+  background-repeat: no-repeat !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .hero-panel {
+  filter: saturate(0.96) brightness(1.08) contrast(0.98);
+}
+
+.dashboard-shell[data-dashboard-theme="dark"] .hero-panel {
+  filter: saturate(1.05) brightness(1) contrast(1.02);
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .upload-card img {
+  filter: saturate(0.92) brightness(1.08) contrast(0.98);
+}
+
+.dashboard-shell[data-dashboard-theme="dark"] .upload-card img {
+  filter: saturate(1.05) brightness(1) contrast(1.02);
+}
+
+@media (max-width: 1280px) {
+  .dashboard-shell .dashboard-filters-panel,
+  .dashboard-shell .filters-panel.dashboard-filters-panel {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    margin: 0 12px 14px !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-shell .dashboard-filters-panel,
+  .dashboard-shell .filters-panel.dashboard-filters-panel {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Final compact filter height pass: fit all tab filter rows tighter */
+.dashboard-shell .dashboard-filters-panel,
+.dashboard-shell .filters-panel,
+.dashboard-shell .filters-panel.dashboard-filters-panel,
+.dashboard-shell .section-tabs-panel .filters-panel,
+.dashboard-shell .section-tabs-panel .dashboard-filters-panel {
+  padding: 6px 10px !important;
+  gap: 6px !important;
+  margin: 0 18px 8px !important;
+  min-height: 0 !important;
+  align-items: end !important;
+  border-radius: 14px !important;
+}
+
+.dashboard-shell .search-box,
+.dashboard-shell .filter-field,
+.dashboard-shell .dashboard-filters-panel .search-box,
+.dashboard-shell .dashboard-filters-panel .filter-field,
+.dashboard-shell .section-tabs-panel .search-box,
+.dashboard-shell .section-tabs-panel .filter-field,
+.dashboard-shell .report-export-filters .filter-field {
+  gap: 2px !important;
+  font-size: 9px !important;
+  line-height: 1 !important;
+  letter-spacing: 0.045em !important;
+}
+
+.dashboard-shell .search-box > span,
+.dashboard-shell .filter-field > span,
+.dashboard-shell .dashboard-filters-panel .search-box > span,
+.dashboard-shell .dashboard-filters-panel .filter-field > span,
+.dashboard-shell .section-tabs-panel .search-box > span,
+.dashboard-shell .section-tabs-panel .filter-field > span,
+.dashboard-shell .report-export-filters .filter-field > span {
+  min-height: 9px !important;
+  height: 9px !important;
+  line-height: 9px !important;
+  margin: 0 !important;
+}
+
+.dashboard-shell .search-box input,
+.dashboard-shell .select-wrap select,
+.dashboard-shell .multi-select-trigger,
+.dashboard-shell .dashboard-filters-panel .search-box input,
+.dashboard-shell .dashboard-filters-panel .multi-select-trigger,
+.dashboard-shell .dashboard-filters-panel .select-wrap select,
+.dashboard-shell .section-tabs-panel .multi-select-trigger,
+.dashboard-shell .section-tabs-panel .select-wrap select,
+.dashboard-shell .report-export-filters .multi-select-trigger,
+.dashboard-shell .report-export-filters .select-wrap select {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  border-radius: 9px !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+}
+
+.dashboard-shell .multi-select-trigger {
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+
+.dashboard-shell .search-box input,
+.dashboard-shell .dashboard-filters-panel .search-box input {
+  padding-left: 30px !important;
+}
+
+.dashboard-shell .search-box svg,
+.dashboard-shell .dashboard-filters-panel .search-box svg {
+  left: 10px !important;
+  bottom: 7px !important;
+  width: 13px !important;
+  height: 13px !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .ghost-button,
+.dashboard-shell .filters-panel .ghost-button,
+.dashboard-shell .section-tabs-panel .ghost-button,
+.dashboard-shell .report-export-actions .ghost-button {
+  min-height: 28px !important;
+  height: 28px !important;
+  padding: 0 10px !important;
+  border-radius: 9px !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+}
+
+.dashboard-shell .report-export-filters {
+  gap: 6px !important;
+}
+
+.dashboard-shell .multi-select-dropdown {
+  max-height: 220px !important;
+  padding: 4px 0 !important;
+}
+
+.dashboard-shell .multi-select-option {
+  min-height: 24px !important;
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+}
+
+.dashboard-shell .multi-select-clear {
+  min-height: 24px !important;
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+}
+
+
+/* Final tabs/filter compact fit and Tickets-first view refinement */
+.dashboard-shell .hero-panel {
+  min-height: auto !important;
+}
+
+.dashboard-shell .dashboard-section-nav.dashboard-tabs-nav {
+  margin-bottom: 8px !important;
+}
+
+.dashboard-shell .dashboard-filters-panel,
+.dashboard-shell .filters-panel,
+.dashboard-shell .filters-panel.dashboard-filters-panel,
+.dashboard-shell .section-tabs-panel .filters-panel,
+.dashboard-shell .section-tabs-panel .dashboard-filters-panel {
+  padding: 4px 8px !important;
+  gap: 5px !important;
+  margin: 0 18px 6px !important;
+  min-height: 0 !important;
+  align-items: end !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box,
+.dashboard-shell .dashboard-filters-panel .filter-field,
+.dashboard-shell .filters-panel .search-box,
+.dashboard-shell .filters-panel .filter-field,
+.dashboard-shell .section-tabs-panel .search-box,
+.dashboard-shell .section-tabs-panel .filter-field {
+  min-height: 38px !important;
+  gap: 1px !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box > span,
+.dashboard-shell .dashboard-filters-panel .filter-field > span,
+.dashboard-shell .filters-panel .search-box > span,
+.dashboard-shell .filters-panel .filter-field > span,
+.dashboard-shell .section-tabs-panel .search-box > span,
+.dashboard-shell .section-tabs-panel .filter-field > span {
+  min-height: 8px !important;
+  height: 8px !important;
+  line-height: 8px !important;
+  font-size: 8px !important;
+  letter-spacing: 0.06em !important;
+  margin: 0 !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box input,
+.dashboard-shell .dashboard-filters-panel .multi-select-trigger,
+.dashboard-shell .dashboard-filters-panel .select-wrap select,
+.dashboard-shell .filters-panel .search-box input,
+.dashboard-shell .filters-panel .multi-select-trigger,
+.dashboard-shell .filters-panel .select-wrap select,
+.dashboard-shell .section-tabs-panel .search-box input,
+.dashboard-shell .section-tabs-panel .multi-select-trigger,
+.dashboard-shell .section-tabs-panel .select-wrap select {
+  height: 24px !important;
+  min-height: 24px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  font-size: 10px !important;
+  border-radius: 8px !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box input,
+.dashboard-shell .filters-panel .search-box input,
+.dashboard-shell .section-tabs-panel .search-box input {
+  padding-left: 28px !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box svg,
+.dashboard-shell .filters-panel .search-box svg,
+.dashboard-shell .section-tabs-panel .search-box svg {
+  left: 9px !important;
+  bottom: 6px !important;
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .ghost-button,
+.dashboard-shell .filters-panel .ghost-button,
+.dashboard-shell .section-tabs-panel .ghost-button {
+  height: 24px !important;
+  min-height: 24px !important;
+  padding: 0 9px !important;
+  font-size: 10px !important;
+  border-radius: 8px !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .ghost-button svg,
+.dashboard-shell .filters-panel .ghost-button svg,
+.dashboard-shell .section-tabs-panel .ghost-button svg {
+  width: 13px !important;
+  height: 13px !important;
 }

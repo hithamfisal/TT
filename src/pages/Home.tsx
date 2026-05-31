@@ -30,8 +30,7 @@ type DashboardSectionId =
   | "deepDive"
   | "overviewCharts"
   | "trendCharts"
-  | "ticketsTable"
-  | "performanceTable";
+  | "ticketsTable";
 
 type DashboardSectionDefinition = {
   id: DashboardSectionId;
@@ -41,15 +40,14 @@ type DashboardSectionDefinition = {
 };
 
 const DASHBOARD_SECTIONS: DashboardSectionDefinition[] = [
-  { id: "reports", label: "Reports", title: "Report Export Center", selector: "#section-reports" },
-  { id: "performanceKpis", label: "Performance KPIs", title: "Performance KPI Gauge Cards", selector: "#section-performance-kpis" },
-  { id: "kpis", label: "KPIs", title: "Operational KPI Cards", selector: "#section-kpis" },
+  { id: "ticketsTable", label: "Tickets", title: "Tickets Data Table", selector: "#section-tickets-table" },
+  { id: "overviewCharts", label: "Overview", title: "Operational Overview Charts", selector: "#section-overview-charts" },
   { id: "executive", label: "Executive", title: "Executive Insights", selector: "#section-executive" },
   { id: "deepDive", label: "RCA / SLA", title: "RCA / Preventability / SLA Deep-Dive", selector: "#section-deep-dive" },
-  { id: "overviewCharts", label: "Overview Charts", title: "Operational Overview Charts", selector: "#section-overview-charts" },
+  { id: "performanceKpis", label: "Performance KPI", title: "Performance KPI Gauge Cards", selector: "#section-performance-kpis" },
+  { id: "kpis", label: "KPI", title: "Operational KPI Cards", selector: "#section-kpis" },
   { id: "trendCharts", label: "Trend Charts", title: "Trend & RCA Charts", selector: "#section-trend-charts" },
-  { id: "ticketsTable", label: "Tickets", title: "Tickets Data Table", selector: "#section-tickets-table" },
-  { id: "performanceTable", label: "Performance", title: "Performance Table", selector: "#section-performance-table" },
+  { id: "reports", label: "Reports", title: "Report Export Center", selector: "#section-reports" },
 ];
 
 const INITIAL_COLLAPSED_SECTIONS: Record<DashboardSectionId, boolean> = {
@@ -61,7 +59,6 @@ const INITIAL_COLLAPSED_SECTIONS: Record<DashboardSectionId, boolean> = {
   overviewCharts: true,
   trendCharts: true,
   ticketsTable: true,
-  performanceTable: true,
 };
 
 const SAVED_DASHBOARD_KEY = "followup-dashboard:last-workbook:v1";
@@ -323,6 +320,198 @@ const safePptTableRows = (rows: any[][]): any[][] =>
     })
   );
 
+const safePptNumber = (value: unknown): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(parsed, 0) : 0;
+};
+
+const addPptShapeBarChart = (
+  slide: any,
+  rectShape: any,
+  rows: { label: string; value: number }[],
+  options: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    barColor: string;
+    bgColor: string;
+    gridColor: string;
+    labelColor: string;
+    valueColor: string;
+    emptyText: string;
+  }
+) => {
+  const chartRows = rows
+    .map(row => ({
+      label: safePptText(row.label || "N/A", 24),
+      value: safePptNumber(row.value),
+    }))
+    .slice(0, 34);
+
+  slide.addShape(rectShape, {
+    x: options.x,
+    y: options.y,
+    w: options.w,
+    h: options.h,
+    fill: { color: options.bgColor, transparency: 4 },
+    line: { color: options.gridColor, transparency: 15, width: 0.5 },
+  });
+
+  if (!chartRows.length) {
+    slide.addText(options.emptyText, {
+      x: options.x + 0.25,
+      y: options.y + options.h / 2 - 0.15,
+      w: options.w - 0.5,
+      h: 0.3,
+      align: "center",
+      fontSize: 12,
+      color: options.labelColor,
+      fontFace: "Segoe UI",
+    });
+    return;
+  }
+
+  const plotX = options.x + 0.45;
+  const plotY = options.y + 0.3;
+  const plotW = options.w - 0.75;
+  const plotH = options.h - 1.15;
+  const labelY = plotY + plotH + 0.1;
+  const maxValue = Math.max(...chartRows.map(row => row.value), 1);
+
+  for (let i = 0; i <= 4; i += 1) {
+    const y = plotY + (plotH / 4) * i;
+    slide.addShape(rectShape, {
+      x: plotX,
+      y,
+      w: plotW,
+      h: 0.005,
+      fill: { color: options.gridColor, transparency: 35 },
+      line: { color: options.gridColor, transparency: 40, width: 0 },
+    });
+  }
+
+  const slotW = plotW / Math.max(chartRows.length, 1);
+  const barW = Math.min(0.24, Math.max(0.05, slotW * 0.55));
+
+  chartRows.forEach((row, index) => {
+    const barH = row.value > 0 ? Math.max((row.value / maxValue) * plotH, 0.04) : 0;
+    const barX = plotX + index * slotW + (slotW - barW) / 2;
+    const barY = plotY + plotH - barH;
+
+    if (barH > 0) {
+      slide.addShape(rectShape, {
+        x: barX,
+        y: barY,
+        w: barW,
+        h: barH,
+        fill: { color: options.barColor },
+        line: { color: options.barColor, transparency: 20, width: 0 },
+      });
+    }
+
+    if (chartRows.length <= 24 && row.value > 0) {
+      slide.addText(String(Math.round(row.value * 10) / 10), {
+        x: barX - 0.08,
+        y: Math.max(plotY - 0.08, barY - 0.18),
+        w: barW + 0.16,
+        h: 0.15,
+        align: "center",
+        fontSize: 5.5,
+        color: options.valueColor,
+        fontFace: "Segoe UI",
+        fit: "shrink",
+      } as any);
+    }
+
+    slide.addText(row.label, {
+      x: barX - 0.18,
+      y: labelY,
+      w: 0.52,
+      h: 0.34,
+      rotate: 45,
+      fontSize: 5.5,
+      color: options.labelColor,
+      fontFace: "Segoe UI",
+      fit: "shrink",
+    } as any);
+  });
+};
+
+const getPptCellTextAndOptions = (cell: any) => {
+  if (cell && typeof cell === "object" && "text" in cell) {
+    return {
+      text: safePptText(cell.text, 550),
+      options: cell.options || {},
+    };
+  }
+
+  return {
+    text: safePptText(cell, 350),
+    options: {},
+  };
+};
+
+const addPptShapeTable = (
+  slide: any,
+  rectShape: any,
+  rows: any[][],
+  options: {
+    x: number;
+    y: number;
+    colW: number[];
+    rowH: number;
+    fontSize: number;
+    fontFace?: string;
+    borderColor: string;
+    fillColor: string;
+    textColor: string;
+  }
+) => {
+  const safeRows = safePptTableRows(rows);
+  let y = options.y;
+
+  safeRows.forEach(row => {
+    let x = options.x;
+
+    options.colW.forEach((colW, colIndex) => {
+      const { text, options: cellOptions } = getPptCellTextAndOptions(row[colIndex]);
+      const fillColor = cellOptions.fill?.color || options.fillColor;
+      const fontSize =
+        typeof cellOptions.fontSize === "number"
+          ? cellOptions.fontSize
+          : options.fontSize;
+
+      slide.addShape(rectShape, {
+        x,
+        y,
+        w: colW,
+        h: options.rowH,
+        fill: { color: fillColor },
+        line: { color: options.borderColor, width: 0.4 },
+      });
+      slide.addText(text, {
+        x: x + 0.04,
+        y: y + 0.03,
+        w: Math.max(colW - 0.08, 0.1),
+        h: Math.max(options.rowH - 0.06, 0.1),
+        fontSize,
+        fontFace: options.fontFace || "Segoe UI",
+        color: cellOptions.color || options.textColor,
+        bold: Boolean(cellOptions.bold),
+        italic: Boolean(cellOptions.italic),
+        align: cellOptions.align || "left",
+        valign: cellOptions.valign || "mid",
+        fit: "shrink",
+      } as any);
+
+      x += colW;
+    });
+
+    y += options.rowH;
+  });
+};
+
 // 1. Performance Data Exporter to PPT
 const exportPerfPpt = (
   data: PerfRow[],
@@ -340,9 +529,14 @@ const exportPerfPpt = (
       AMBER = "f59e0b",
       MUTED = "94a3b8",
       WHITE = "f8fafc";
-    const labels = (data || []).map(r => safePptText(r?.siteName || "N/A", 160));
-    const availValues = (data || []).map(r => r?.availHours || 0);
-    const downValues = (data || []).map(r => r?.sitesDownHours || 0);
+    const availabilityChartRows = (data || []).map(r => ({
+      label: r?.siteName || r?.siteId || "N/A",
+      value: safePptNumber(r?.availHours),
+    }));
+    const downtimeChartRows = (data || []).map(r => ({
+      label: r?.siteName || r?.siteId || "N/A",
+      value: safePptNumber(r?.sitesDownHours),
+    }));
 
     const s1 = pptx.addSlide();
     s1.background = { color: BG };
@@ -648,14 +842,14 @@ const exportPerfPpt = (
           ];
         }),
       ];
-      slide.addTable(safePptTableRows(tableRows as any) as any, {
+      addPptShapeTable(slide, pptx.ShapeType.rect, tableRows as any, {
         x: 0.5,
         y: 0.65,
-        w: 12,
         fontSize: 10,
         fontFace: "Segoe UI",
-        border: { type: "solid", color: "1e3a5f", pt: 0.5 },
-        fill: { color: CARD_BG },
+        borderColor: "1e3a5f",
+        fillColor: CARD_BG,
+        textColor: WHITE,
         rowH: 0.28,
         colW: [0.6, 3.5, 2.2, 2.0, 1.7],
       });
@@ -687,30 +881,18 @@ const exportPerfPpt = (
       color: MUTED,
       fontFace: "Segoe UI",
     });
-    slide3.addChart(
-      pptx.ChartType.bar,
-      [{ name: "Availability (Hrs)", labels, values: availValues }],
-      {
-        x: 0.4,
-        y: 0.85,
-        w: 12.2,
-        h: 5.8,
-        barDir: "col",
-        barGapWidthPct: 120,
-        chartColors: [GREEN],
-        showValue: true,
-        dataLabelFontSize: 7,
-        dataLabelColor: WHITE,
-        catAxisLabelFontSize: 8,
-        catAxisLabelColor: MUTED,
-        catAxisLabelRotate: 45,
-        valAxisLabelFontSize: 9,
-        valAxisLabelColor: MUTED,
-        valGridLine: { style: "solid", color: "1e3a5f", size: 0.5 },
-        ...({ plotAreaFill: { color: CARD_BG } } as any),
-        showLegend: false,
-      }
-    );
+    addPptShapeBarChart(slide3, pptx.ShapeType.rect, availabilityChartRows, {
+      x: 0.4,
+      y: 0.85,
+      w: 12.2,
+      h: 5.8,
+      barColor: GREEN,
+      bgColor: CARD_BG,
+      gridColor: "1e3a5f",
+      labelColor: MUTED,
+      valueColor: WHITE,
+      emptyText: "No availability data available for this selection.",
+    });
 
     const slide4 = pptx.addSlide();
     slide4.background = { color: BG };
@@ -741,30 +923,18 @@ const exportPerfPpt = (
         fontFace: "Segoe UI",
       }
     );
-    slide4.addChart(
-      pptx.ChartType.bar,
-      [{ name: "Down (Hrs)", labels, values: downValues }],
-      {
-        x: 0.4,
-        y: 0.85,
-        w: 12.2,
-        h: 5.8,
-        barDir: "col",
-        barGapWidthPct: 120,
-        chartColors: [RED],
-        showValue: true,
-        dataLabelFontSize: 7,
-        dataLabelColor: WHITE,
-        catAxisLabelFontSize: 8,
-        catAxisLabelColor: MUTED,
-        catAxisLabelRotate: 45,
-        valAxisLabelFontSize: 9,
-        valAxisLabelColor: MUTED,
-        valGridLine: { style: "solid", color: "1e3a5f", size: 0.5 },
-        ...({ plotAreaFill: { color: CARD_BG } } as any),
-        showLegend: false,
-      }
-    );
+    addPptShapeBarChart(slide4, pptx.ShapeType.rect, downtimeChartRows, {
+      x: 0.4,
+      y: 0.85,
+      w: 12.2,
+      h: 5.8,
+      barColor: RED,
+      bgColor: CARD_BG,
+      gridColor: "1e3a5f",
+      labelColor: MUTED,
+      valueColor: WHITE,
+      emptyText: "No downtime data available for this selection.",
+    });
 
     pptx.writeFile({
       fileName: `Performance_Report_${monthLabel.replace(/\s+/g, "_")}.pptx`,
@@ -892,15 +1062,16 @@ const exportTicketsPpt = (
         { text: String(card.value), options: { color: WHITE, fontSize: 12, bold: true } },
         { text: card.note, options: { color: MUTED, fontSize: 8 } },
       ]);
-      execSlide.addTable(safePptTableRows(insightRows as any) as any, {
+      addPptShapeTable(execSlide, pptx.ShapeType.rect, insightRows as any, {
         x: 0.55,
         y: 2.25,
-        w: 12,
         colW: [3.1, 2.2, 6.7],
         rowH: 0.35,
-        border: { type: "solid", color: "1e3a5f", pt: 0.4 },
-        fill: { color: CARD_BG },
-        margin: 0.04,
+        fontSize: 9,
+        fontFace: "Segoe UI",
+        borderColor: "1e3a5f",
+        fillColor: CARD_BG,
+        textColor: WHITE,
       } as any);
     }
 
@@ -938,15 +1109,16 @@ const exportTicketsPpt = (
           { text: `${site.riskLevel} ${site.riskScore}`, options: { color: "f59e0b", bold: true } },
         ]),
       ];
-      riskSlide.addTable(safePptTableRows(riskRows as any) as any, {
+      addPptShapeTable(riskSlide, pptx.ShapeType.rect, riskRows as any, {
         x: 0.35,
         y: 0.9,
-        w: 12.65,
         fontSize: 8,
         rowH: 0.34,
         colW: [0.55, 1.2, 2.2, 0.8, 1.0, 1.0, 3.3, 1.6],
-        border: { type: "solid", color: "1e3a5f", pt: 0.4 },
-        fill: { color: CARD_BG },
+        fontFace: "Segoe UI",
+        borderColor: "1e3a5f",
+        fillColor: CARD_BG,
+        textColor: WHITE,
       } as any);
     }
 
@@ -982,15 +1154,16 @@ const exportTicketsPpt = (
           { text: row.responsibleTeam, options: { color: MUTED } },
         ]),
       ];
-      deepSlide.addTable(safePptTableRows(rcaRows as any) as any, {
+      addPptShapeTable(deepSlide, pptx.ShapeType.rect, rcaRows as any, {
         x: 0.45,
         y: 0.85,
-        w: 12.4,
         fontSize: 8,
         rowH: 0.35,
         colW: [2.7, 0.8, 1.1, 1.1, 1.1, 5.6],
-        border: { type: "solid", color: "1e3a5f", pt: 0.4 },
-        fill: { color: CARD_BG },
+        fontFace: "Segoe UI",
+        borderColor: "1e3a5f",
+        fillColor: CARD_BG,
+        textColor: WHITE,
       } as any);
       deepSlide.addText("Recommended Management Actions", {
         x: 0.55,
@@ -1149,14 +1322,14 @@ const exportTicketsPpt = (
           ];
         }),
       ];
-      slide.addTable(safePptTableRows(tableRows as any) as any, {
+      addPptShapeTable(slide, pptx.ShapeType.rect, tableRows as any, {
         x: 0.4,
         y: 0.7,
-        w: 12.5,
         fontSize: 9,
         fontFace: "Segoe UI",
-        border: { type: "solid", color: "1e3a5f", pt: 0.5 },
-        fill: { color: CARD_BG },
+        borderColor: "1e3a5f",
+        fillColor: CARD_BG,
+        textColor: WHITE,
         rowH: 0.35,
         colW: [0.6, 1.2, 1.8, 1.8, 0.8, 5.1, 1.2],
       });
@@ -4070,16 +4243,17 @@ export default function Home() {
   const [perfRegions, setPerfRegions] = useState<string[]>([]);
   const [dashboardTheme, setDashboardTheme] = useState<DashboardTheme>("dark");
   const [collapsedSections, setCollapsedSections] = useState<Record<DashboardSectionId, boolean>>(INITIAL_COLLAPSED_SECTIONS);
+  const [activeDashboardTab, setActiveDashboardTab] = useState<DashboardSectionId>("ticketsTable");
   const [savedSnapshotAvailable, setSavedSnapshotAvailable] = useState(false);
-  const activeThemeImage = THEME_IMAGES[dashboardTheme];
+  const activeThemeImage = THEME_IMAGES.dark;
   const heroThemeOverlay =
     dashboardTheme === "dark"
       ? "linear-gradient(90deg, rgba(3,7,18,.94) 0%, rgba(3,7,18,.70) 42%, rgba(3,7,18,.18) 100%)"
-      : "linear-gradient(90deg, rgba(248,250,252,.92) 0%, rgba(248,250,252,.68) 44%, rgba(248,250,252,.18) 100%)";
+      : "linear-gradient(90deg, rgba(255,255,255,.55) 0%, rgba(248,250,252,.36) 42%, rgba(255,255,255,.10) 100%)";
   const ribbonThemeOverlay =
     dashboardTheme === "dark"
       ? "linear-gradient(90deg, rgba(4,13,31,.88), rgba(4,13,31,.70))"
-      : "linear-gradient(90deg, rgba(248,250,252,.88), rgba(226,232,240,.66))";
+      : "linear-gradient(90deg, rgba(255,255,255,.48), rgba(248,250,252,.28))";
 
   // ══════════════════════════════════════════════════════════════════════════
   // TABLE COLUMN WIDTHS — edit the px values below to size each column.
@@ -4171,20 +4345,82 @@ export default function Home() {
     getPerfColumnWidth
   );
 
-  async function handleFile(file?: File) {
-    if (!file) return;
+  function normalizeSelectedFiles(files?: FileList | File[] | null): File[] {
+    return Array.from(files ?? []).filter(file =>
+      /\.(xlsx|xls|xlsm)$/i.test(file.name)
+    );
+  }
+
+  async function parseWorkbookFile(file: File): Promise<DashboardData> {
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+    const parsed = parseRows(workbook, file.name);
+
+    if (!parsed.rows.length || !parsed.uniqueTickets.length) {
+      throw new Error(
+        `No ticket rows with TT numbers were found in ${file.name}. Please upload the Follow-Up Sheets workbook with the Tickets_Data sheet.`
+      );
+    }
+
+    return parsed;
+  }
+
+  function mergeDashboardRegions(regionsToMerge: DashboardData[]): DashboardData {
+    const allRows = regionsToMerge.flatMap(region => region.rows);
+    const ttMap = new Map<string, TicketAggregate>();
+
+    for (const row of allRows) {
+      if (!row.tt) continue;
+      const existing = ttMap.get(row.tt);
+
+      if (!existing) {
+        ttMap.set(row.tt, {
+          tt: row.tt,
+          primary: row,
+          siteIds: new Set([row.siteId].filter(Boolean)),
+          siteNames: new Set([row.siteName].filter(Boolean)),
+          rows: [row],
+        });
+      } else {
+        existing.rows.push(row);
+        if (row.siteId) existing.siteIds.add(row.siteId);
+        if (row.siteName) existing.siteNames.add(row.siteName);
+      }
+    }
+
+    const mergedSiteOrder = [...(regionsToMerge[0]?.siteOrder ?? [])];
+    const mergedIds = new Set(mergedSiteOrder.map(site => site.siteId));
+
+    regionsToMerge.slice(1).forEach(region => {
+      region.siteOrder.forEach(site => {
+        if (!mergedIds.has(site.siteId)) {
+          mergedIds.add(site.siteId);
+          mergedSiteOrder.push(site);
+        }
+      });
+    });
+
+    return {
+      fileName: regionsToMerge.map(region => region.fileName).join(" + "),
+      sheetName: regionsToMerge[0]?.sheetName ?? "Tickets_Data",
+      generatedAt: new Date().toLocaleString(),
+      rows: allRows,
+      uniqueTickets: Array.from(ttMap.values()),
+      siteOrder: mergedSiteOrder,
+    };
+  }
+
+  async function handleFile(files?: FileList | File[] | null) {
+    const selectedFiles = normalizeSelectedFiles(files);
+    if (!selectedFiles.length) return;
+
     setError("");
     try {
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-      const parsed = parseRows(workbook, file.name);
-      if (!parsed.rows.length || !parsed.uniqueTickets.length) {
-        throw new Error(
-          "No ticket rows with TT numbers were found. Please upload the Follow-Up Sheets workbook with the Tickets_Data sheet."
-        );
-      }
-      setData(parsed);
-      setRegions([parsed]);
+      const parsedFiles = await Promise.all(selectedFiles.map(parseWorkbookFile));
+      const merged = mergeDashboardRegions(parsedFiles);
+
+      setData(merged);
+      setRegions(parsedFiles);
       setExportMonths([]);
       setExportRegions([]);
       setPerfMonths([]);
@@ -4194,73 +4430,33 @@ export default function Home() {
       if (inputRef.current) inputRef.current.value = "";
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Unable to read this workbook."
+        err instanceof Error ? err.message : "Unable to read the selected workbook files."
       );
     }
   }
 
-  async function handleAddRegion(file?: File) {
-    if (!file) return;
+  async function handleAddRegion(files?: FileList | File[] | null) {
+    const selectedFiles = normalizeSelectedFiles(files);
+    if (!selectedFiles.length) return;
+
     setError("");
     try {
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-      const parsed = parseRows(workbook, file.name);
-      if (!parsed.rows.length || !parsed.uniqueTickets.length) {
-        throw new Error(
-          "No ticket rows with TT numbers were found in the additional workbook."
-        );
-      }
+      const parsedFiles = await Promise.all(selectedFiles.map(parseWorkbookFile));
+
       setRegions(prev => {
-        const updated = [...prev, parsed];
-        const allRows = updated.flatMap(r => r.rows);
-        const ttMap = new Map<string, TicketAggregate>();
-        for (const row of allRows) {
-          if (!row.tt) continue;
-          const existing = ttMap.get(row.tt);
-          if (!existing) {
-            ttMap.set(row.tt, {
-              tt: row.tt,
-              primary: row,
-              siteIds: new Set([row.siteId].filter(Boolean)),
-              siteNames: new Set([row.siteName].filter(Boolean)),
-              rows: [row],
-            });
-          } else {
-            existing.rows.push(row);
-            if (row.siteId) existing.siteIds.add(row.siteId);
-            if (row.siteName) existing.siteNames.add(row.siteName);
-          }
-        }
-        // Merge site orders: use first region's order, append any new entries from additional regions
-        const mergedSiteOrder = [...updated[0].siteOrder];
-        const mergedIds = new Set(mergedSiteOrder.map(s => s.siteId));
-        updated.slice(1).forEach(r => {
-          r.siteOrder.forEach(s => {
-            if (!mergedIds.has(s.siteId)) {
-              mergedIds.add(s.siteId);
-              mergedSiteOrder.push(s);
-            }
-          });
-        });
-        const merged: DashboardData = {
-          fileName: updated.map(r => r.fileName).join(" + "),
-          sheetName: updated[0].sheetName,
-          generatedAt: new Date().toLocaleString(),
-          rows: allRows,
-          uniqueTickets: Array.from(ttMap.values()),
-          siteOrder: mergedSiteOrder,
-        };
+        const updated = [...prev, ...parsedFiles];
+        const merged = mergeDashboardRegions(updated);
         setData(merged);
         return updated;
       });
+
       setTablePage(1);
       if (addRegionRef.current) addRegionRef.current.value = "";
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : "Unable to read the additional workbook."
+          : "Unable to read the additional workbook files."
       );
     }
   }
@@ -5047,7 +5243,7 @@ export default function Home() {
   }, [allDataRows, perfMonths, perfRegions, perfRows]);
 
 
-  const allSectionsCollapsed = DASHBOARD_SECTIONS.every(section => collapsedSections[section.id]);
+  const activeDashboardSection = DASHBOARD_SECTIONS.find(section => section.id === activeDashboardTab) ?? DASHBOARD_SECTIONS[0];
 
   function makeFileSafeName(value: string) {
     return clean(value).replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "") || "dashboard_export";
@@ -5105,45 +5301,28 @@ export default function Home() {
     setTablePage(1);
     setPerfPage(1);
     setCollapsedSections(INITIAL_COLLAPSED_SECTIONS);
+    setActiveDashboardTab("ticketsTable");
     setSavedSnapshotAvailable(Boolean(localStorage.getItem(SAVED_DASHBOARD_KEY)));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function scrollToDashboardTop() {
-    const nav = document.querySelector<HTMLElement>("#dashboard-section-nav");
-    if (nav) {
-      nav.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
-    }
-
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function scrollToDashboardSection(sectionId: DashboardSectionId) {
-    const definition = DASHBOARD_SECTIONS.find(section => section.id === sectionId);
-    if (!definition) return;
-
-    const sectionHeader = document.querySelector<HTMLElement>(`#section-control-${definition.id}`);
-    const target = sectionHeader ?? document.querySelector<HTMLElement>(definition.selector);
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  function openDashboardTab(sectionId: DashboardSectionId) {
+    setActiveDashboardTab(sectionId);
+    window.setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }, 30);
   }
 
   function toggleDashboardSection(sectionId: DashboardSectionId) {
-    setCollapsedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
+    setActiveDashboardTab(sectionId);
   }
 
-  function setAllDashboardSections(collapsed: boolean) {
-    setCollapsedSections({
-      reports: collapsed,
-      performanceKpis: collapsed,
-      kpis: collapsed,
-      executive: collapsed,
-      deepDive: collapsed,
-      overviewCharts: collapsed,
-      trendCharts: collapsed,
-      ticketsTable: collapsed,
-      performanceTable: collapsed,
-    });
+  function setAllDashboardSections(_collapsed: boolean) {
+    setActiveDashboardTab("ticketsTable");
   }
 
   async function exportElementToPng(element: HTMLElement | null, fileName: string) {
@@ -5201,42 +5380,44 @@ export default function Home() {
     DASHBOARD_SECTIONS.forEach(section => {
       const target = document.querySelector<HTMLElement>(section.selector);
       if (!target) return;
+      const isActive = section.id === activeDashboardTab;
       target.classList.add("dashboard-section-content-block");
-      target.classList.toggle("dashboard-section-collapsed", collapsedSections[section.id]);
+      target.classList.remove("dashboard-section-collapsed");
+      target.classList.toggle("dashboard-section-tab-hidden", !isActive);
+
+      if (!isActive) return;
 
       const panel = document.createElement("div");
       panel.id = `section-control-${section.id}`;
-      panel.className = `section-control-panel no-print${collapsedSections[section.id] ? " section-control-panel-collapsed" : ""}`;
+      panel.className = "section-control-panel section-control-panel-tab-active no-print";
       panel.innerHTML = `
-        <div class="section-control-title"><span>${section.title}</span></div>
+        <div class="section-control-title section-control-title-static">
+          <span class="section-control-tab-dot" aria-hidden="true"></span>
+          <span class="section-control-title-text">${section.title}</span>
+        </div>
         <div class="section-control-actions">
           <button type="button" class="section-tool-button" data-action="png">Export PNG</button>
-          <button type="button" class="section-tool-button" data-action="toggle">${collapsedSections[section.id] ? "Expand" : "Collapse"}</button>
           <button type="button" class="section-tool-button" data-action="top">Top Nav</button>
         </div>
       `;
 
       const pngButton = panel.querySelector<HTMLButtonElement>('[data-action="png"]');
-      const toggleButton = panel.querySelector<HTMLButtonElement>('[data-action="toggle"]');
       const topButton = panel.querySelector<HTMLButtonElement>('[data-action="top"]');
       const pngHandler = () => exportElementToPng(target, section.title);
-      const toggleHandler = () => toggleDashboardSection(section.id);
       const topHandler = () => scrollToDashboardTop();
       pngButton?.addEventListener("click", pngHandler);
-      toggleButton?.addEventListener("click", toggleHandler);
       topButton?.addEventListener("click", topHandler);
       target.parentElement?.insertBefore(panel, target);
 
       cleanup.push(() => {
         pngButton?.removeEventListener("click", pngHandler);
-        toggleButton?.removeEventListener("click", toggleHandler);
         topButton?.removeEventListener("click", topHandler);
         panel.remove();
       });
     });
 
     return () => cleanup.forEach(remove => remove());
-  }, [data, collapsedSections]);
+  }, [data, activeDashboardTab]);
 
   useEffect(() => {
     if (!data) return;
@@ -5289,20 +5470,13 @@ export default function Home() {
       });
     });
     return () => cleanup.forEach(remove => remove());
-  }, [data, analytics, executiveInsights, deepDiveAnalytics, collapsedSections]);
+  }, [data, analytics, executiveInsights, deepDiveAnalytics, activeDashboardTab]);
 
   const filtersPanel = data ? (
     <section
       ref={filtersRef}
       className="filters-panel no-print dashboard-filters-panel"
-      style={{
-        width: "100%",
-        display: "grid",
-        gridTemplateColumns: "1.5fr repeat(7, 1fr) max-content",
-        gap: "10px",
-        alignItems: "end",
-        paddingBottom: "4px",
-      }}
+      style={{ width: "100%" }}
     >
       <label className="search-box" style={{ width: "100%", margin: 0 }}>
         <Search size={16} />
@@ -5395,8 +5569,8 @@ export default function Home() {
         className="hero-panel"
         style={{
           backgroundImage: `${heroThemeOverlay}, url(${activeThemeImage})`,
-          backgroundSize: "contain",
-          backgroundPosition: "top",
+          backgroundSize: "100% auto",
+          backgroundPosition: "center top",
           backgroundRepeat: "no-repeat",
           paddingTop: "12px",
         }}
@@ -5449,7 +5623,7 @@ export default function Home() {
                 className="ghost-button"
                 onClick={() => addRegionRef.current?.click()}
               >
-                <UploadCloud size={30} /> Add region
+                <UploadCloud size={30} /> Add regions
               </button>
             )}
             {data && (
@@ -5457,7 +5631,7 @@ export default function Home() {
                 className="ghost-button"
                 onClick={() => inputRef.current?.click()}
               >
-                <RefreshCw size={30} /> New workbook
+                <RefreshCw size={30} /> New workbook(s)
               </button>
             )}
             {data && (
@@ -5468,27 +5642,24 @@ export default function Home() {
           </div>
         </nav>
         {data && (
-          <div id="dashboard-section-nav" className="dashboard-section-nav no-print" aria-label="Dashboard section navigation">
-            <div className="section-nav-buttons">
+          <div id="dashboard-section-nav" className="dashboard-section-nav dashboard-tabs-nav no-print" aria-label="Dashboard tabs navigation">
+            <div className="section-nav-buttons section-tabs-buttons" role="tablist" aria-label="Dashboard sections">
               {DASHBOARD_SECTIONS.map(section => (
                 <button
                   key={section.id}
                   type="button"
-                  className="section-nav-button"
-                  onClick={() => scrollToDashboardSection(section.id)}
+                  role="tab"
+                  aria-selected={activeDashboardTab === section.id}
+                  className={`section-nav-button section-tab-button${activeDashboardTab === section.id ? " section-tab-button-active" : ""}`}
+                  onClick={() => openDashboardTab(section.id)}
                 >
                   {section.label}
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              className="section-nav-toggle"
-              onClick={() => setAllDashboardSections(!allSectionsCollapsed)}
-            >
-              {allSectionsCollapsed ? <Maximize2 size={15} /> : <Minimize2 size={15} />}
-              {allSectionsCollapsed ? "Expand All" : "Collapse All"}
-            </button>
+            <div className="section-tabs-current" aria-live="polite">
+              {activeDashboardSection.title}
+            </div>
           </div>
         )}
         {filtersPanel}
@@ -5780,14 +5951,16 @@ export default function Home() {
         className="sr-only"
         type="file"
         accept=".xlsx,.xls,.xlsm"
-        onChange={event => handleFile(event.target.files?.[0])}
+        multiple
+        onChange={event => handleFile(event.target.files)}
       />
       <input
         ref={addRegionRef}
         className="sr-only"
         type="file"
         accept=".xlsx,.xls,.xlsm"
-        onChange={event => handleAddRegion(event.target.files?.[0])}
+        multiple
+        onChange={event => handleAddRegion(event.target.files)}
       />
 
       {!data ? (
@@ -5802,14 +5975,14 @@ export default function Home() {
             onDrop={event => {
               event.preventDefault();
               setIsDragging(false);
-              handleFile(event.dataTransfer.files?.[0]);
+              handleFile(event.dataTransfer.files);
             }}
           >
             <div className="upload-copy">
               <span className="section-kicker">
                 <UploadCloud size={14} /> Workbooks Upload
               </span>
-              <h2>Load the tickets workbook</h2>
+              <h2>Load the tickets workbook(s)</h2>
               <p>
                 Start with the main Follow-Up Sheets workbook, then add regional
                 workbooks from the dashboard header after the first file is
@@ -5873,6 +6046,9 @@ export default function Home() {
             className="stats-grid workbook-cards dashboard-section-content-block"
             style={{
               backgroundImage: `${ribbonThemeOverlay}, url(${activeThemeImage})`,
+              backgroundSize: "100% auto",
+              backgroundPosition: "center top",
+              backgroundRepeat: "no-repeat",
               display: "grid",
               // 48 columns lets every card span 6 tracks: 8 cards per row, 2 rows total.
               gridTemplateColumns: "repeat(48, 1fr)",
@@ -8083,7 +8259,8 @@ export default function Home() {
                 <table
                   style={{
                     tableLayout: "fixed",
-                    width: "auto",
+                    width: "max-content",
+                    minWidth: "100%",
                     borderCollapse: "separate",
                   }}
                 >
@@ -8410,7 +8587,7 @@ export default function Home() {
 
           {/* Monthly Performance Table */}
           {perfRows.length > 0 && (
-            <section id="section-performance-table" className="table-card dashboard-section-content-block">
+            <section id="section-performance-table" className="table-card dashboard-section-content-block dashboard-section-tab-hidden">
               <div className="table-heading">
                 <div>
                   <h2>
@@ -8455,7 +8632,8 @@ export default function Home() {
                 <table
                   style={{
                     tableLayout: "fixed",
-                    width: "auto",
+                    width: "max-content",
+                    minWidth: "100%",
                     borderCollapse: "separate",
                   }}
                 >
