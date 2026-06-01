@@ -12,7 +12,6 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import nascoLogoSrc from "../assets/nascologo.png";
 import ngLogoSrc from "../assets/nglogo.png";
-import seLogoSrc from "../assets/se.png";
 
 const THEME_IMAGES = {
   dark: "/dark.png",
@@ -241,6 +240,225 @@ const ensureExcelAlignedStyle = (
   const beforeClose = stylesXml.slice(0, cellXfsEnd);
   const afterClose = stylesXml.slice(cellXfsEnd);
   stylesXml = `${beforeClose}${alignedXf}${afterClose}`;
+  stylesXml = stylesXml.replace(
+    /(<cellXfs\b[^>]*\bcount=")\d+(")/,
+    `$1${nextIndex + 1}$2`
+  );
+  files[stylesKey] = codec.strToU8(stylesXml);
+  return nextIndex;
+};
+
+const ensureExcelStyleVariant = (
+  files: ZipFileMap,
+  codec: ZipTextCodec,
+  baseStyleIndex: number,
+  options: {
+    horizontal?: ExcelHorizontalAlign;
+    fontId?: number;
+    fillId?: number;
+    borderId?: number;
+    numFmtId?: number;
+  }
+) => {
+  const stylesKey = "xl/styles.xml";
+  if (!files[stylesKey]) return baseStyleIndex;
+
+  let stylesXml = codec.strFromU8(files[stylesKey]);
+  const cellXfsStart = stylesXml.indexOf("<cellXfs");
+  const cellXfsEnd = stylesXml.indexOf("</cellXfs>", cellXfsStart);
+  if (cellXfsStart === -1 || cellXfsEnd === -1) return baseStyleIndex;
+
+  const openEnd = stylesXml.indexOf(">", cellXfsStart);
+  const cellXfsInner = stylesXml.slice(openEnd + 1, cellXfsEnd);
+  const xfs = cellXfsInner.match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g) ?? [];
+  const baseXf =
+    xfs[baseStyleIndex] ??
+    xfs[0] ??
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>';
+
+  const setAttr = (xf: string, attr: string, value: number | string) =>
+    xf.includes(`${attr}=`)
+      ? xf.replace(new RegExp(`${attr}="[^"]*"`), `${attr}="${value}"`)
+      : xf.replace(/^<xf\b/, `<xf ${attr}="${value}"`);
+
+  let variant = baseXf;
+  if (options.fontId !== undefined) {
+    variant = setAttr(variant, "fontId", options.fontId);
+    variant = variant.includes("applyFont=")
+      ? variant.replace(/applyFont="[^"]*"/, 'applyFont="1"')
+      : variant.replace(/^<xf\b/, '<xf applyFont="1"');
+  }
+  if (options.fillId !== undefined) {
+    variant = setAttr(variant, "fillId", options.fillId);
+    variant = variant.includes("applyFill=")
+      ? variant.replace(/applyFill="[^"]*"/, 'applyFill="1"')
+      : variant.replace(/^<xf\b/, '<xf applyFill="1"');
+  }
+  if (options.borderId !== undefined) {
+    variant = setAttr(variant, "borderId", options.borderId);
+    variant = variant.includes("applyBorder=")
+      ? variant.replace(/applyBorder="[^"]*"/, 'applyBorder="1"')
+      : variant.replace(/^<xf\b/, '<xf applyBorder="1"');
+  }
+  if (options.numFmtId !== undefined) {
+    variant = setAttr(variant, "numFmtId", options.numFmtId);
+    variant = variant.includes("applyNumberFormat=")
+      ? variant.replace(/applyNumberFormat="[^"]*"/, 'applyNumberFormat="1"')
+      : variant.replace(/^<xf\b/, '<xf applyNumberFormat="1"');
+  }
+  if (options.horizontal) {
+    const alignmentTag = `<alignment horizontal="${options.horizontal}" vertical="center" wrapText="1"/>`;
+    variant = variant.includes("applyAlignment=")
+      ? variant.replace(/applyAlignment="[^"]*"/, 'applyAlignment="1"')
+      : variant.replace(/^<xf\b/, '<xf applyAlignment="1"');
+    variant = variant.endsWith("/>")
+      ? variant.replace(/\/>$/, `>${alignmentTag}</xf>`)
+      : variant
+          .replace(
+            /<alignment\b[^>]*\/>|<alignment\b[^>]*>[\s\S]*?<\/alignment>/g,
+            ""
+          )
+          .replace("</xf>", `${alignmentTag}</xf>`);
+  }
+
+  const existingIndex = xfs.findIndex(xf => xf === variant);
+  if (existingIndex !== -1) return existingIndex;
+
+  const nextIndex = xfs.length;
+  stylesXml = `${stylesXml.slice(0, cellXfsEnd)}${variant}${stylesXml.slice(cellXfsEnd)}`;
+  stylesXml = stylesXml.replace(
+    /(<cellXfs\b[^>]*\bcount=")\d+(")/,
+    `$1${nextIndex + 1}$2`
+  );
+  files[stylesKey] = codec.strToU8(stylesXml);
+  return nextIndex;
+};
+
+const ensureExcelSolidFill = (
+  files: ZipFileMap,
+  codec: ZipTextCodec,
+  rgb: string
+) => {
+  const stylesKey = "xl/styles.xml";
+  if (!files[stylesKey]) return 0;
+
+  let stylesXml = codec.strFromU8(files[stylesKey]);
+  const fillsStart = stylesXml.indexOf("<fills");
+  const fillsEnd = stylesXml.indexOf("</fills>", fillsStart);
+  if (fillsStart === -1 || fillsEnd === -1) return 0;
+
+  const normalized = rgb.replace(/^#/, "").toUpperCase();
+  const fillXml = `<fill><patternFill patternType="solid"><fgColor rgb="${normalized}"/><bgColor indexed="64"/></patternFill></fill>`;
+  const openEnd = stylesXml.indexOf(">", fillsStart);
+  const fillsInner = stylesXml.slice(openEnd + 1, fillsEnd);
+  const fills = fillsInner.match(/<fill>[\s\S]*?<\/fill>/g) ?? [];
+  const existingIndex = fills.findIndex(fill => fill === fillXml);
+  if (existingIndex !== -1) return existingIndex;
+
+  const nextIndex = fills.length;
+  stylesXml = `${stylesXml.slice(0, fillsEnd)}${fillXml}${stylesXml.slice(fillsEnd)}`;
+  stylesXml = stylesXml.replace(
+    /(<fills\b[^>]*\bcount=")\d+(")/,
+    `$1${nextIndex + 1}$2`
+  );
+  files[stylesKey] = codec.strToU8(stylesXml);
+  return nextIndex;
+};
+
+const ensureExcelFont = (
+  files: ZipFileMap,
+  codec: ZipTextCodec,
+  options: { size: number; name?: string; bold?: boolean }
+) => {
+  const stylesKey = "xl/styles.xml";
+  if (!files[stylesKey]) return 0;
+
+  let stylesXml = codec.strFromU8(files[stylesKey]);
+  const fontsStart = stylesXml.indexOf("<fonts");
+  const fontsEnd = stylesXml.indexOf("</fonts>", fontsStart);
+  if (fontsStart === -1 || fontsEnd === -1) return 0;
+
+  const fontXml =
+    `<font>${options.bold ? "<b/>" : ""}<sz val="${options.size}"/><color theme="1"/>` +
+    `<name val="${options.name ?? "Calibri"}"/><family val="2"/><scheme val="minor"/></font>`;
+  const openEnd = stylesXml.indexOf(">", fontsStart);
+  const fontsInner = stylesXml.slice(openEnd + 1, fontsEnd);
+  const fonts = fontsInner.match(/<font>[\s\S]*?<\/font>/g) ?? [];
+  const existingIndex = fonts.findIndex(font => font === fontXml);
+  if (existingIndex !== -1) return existingIndex;
+
+  const nextIndex = fonts.length;
+  stylesXml = `${stylesXml.slice(0, fontsEnd)}${fontXml}${stylesXml.slice(fontsEnd)}`;
+  stylesXml = stylesXml.replace(
+    /(<fonts\b[^>]*\bcount=")\d+(")/,
+    `$1${nextIndex + 1}$2`
+  );
+  files[stylesKey] = codec.strToU8(stylesXml);
+  return nextIndex;
+};
+
+const ensureExcelThinBlackBorder = (
+  files: ZipFileMap,
+  codec: ZipTextCodec
+) => {
+  const stylesKey = "xl/styles.xml";
+  if (!files[stylesKey]) return 0;
+
+  let stylesXml = codec.strFromU8(files[stylesKey]);
+  const bordersStart = stylesXml.indexOf("<borders");
+  const bordersEnd = stylesXml.indexOf("</borders>", bordersStart);
+  if (bordersStart === -1 || bordersEnd === -1) return 0;
+
+  const side = '<left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/>';
+  const borderXml = `<border>${side}</border>`;
+  const openEnd = stylesXml.indexOf(">", bordersStart);
+  const bordersInner = stylesXml.slice(openEnd + 1, bordersEnd);
+  const borders = bordersInner.match(/<border>[\s\S]*?<\/border>/g) ?? [];
+  const existingIndex = borders.findIndex(border => border === borderXml);
+  if (existingIndex !== -1) return existingIndex;
+
+  const nextIndex = borders.length;
+  stylesXml = `${stylesXml.slice(0, bordersEnd)}${borderXml}${stylesXml.slice(bordersEnd)}`;
+  stylesXml = stylesXml.replace(
+    /(<borders\b[^>]*\bcount=")\d+(")/,
+    `$1${nextIndex + 1}$2`
+  );
+  files[stylesKey] = codec.strToU8(stylesXml);
+  return nextIndex;
+};
+
+const ensureExcelTableStyle = (
+  files: ZipFileMap,
+  codec: ZipTextCodec,
+  options: {
+    fillRgb: string;
+    numFmtId?: number;
+  }
+) => {
+  const stylesKey = "xl/styles.xml";
+  if (!files[stylesKey]) return 0;
+
+  const fillId = ensureExcelSolidFill(files, codec, options.fillRgb);
+  const fontId = ensureExcelFont(files, codec, { size: 12 });
+  const borderId = ensureExcelThinBlackBorder(files, codec);
+  let stylesXml = codec.strFromU8(files[stylesKey]);
+  const cellXfsStart = stylesXml.indexOf("<cellXfs");
+  const cellXfsEnd = stylesXml.indexOf("</cellXfs>", cellXfsStart);
+  if (cellXfsStart === -1 || cellXfsEnd === -1) return 0;
+
+  const openEnd = stylesXml.indexOf(">", cellXfsStart);
+  const cellXfsInner = stylesXml.slice(openEnd + 1, cellXfsEnd);
+  const xfs = cellXfsInner.match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g) ?? [];
+  const styleXml =
+    `<xf numFmtId="${options.numFmtId ?? 0}" fontId="${fontId}" fillId="${fillId}" borderId="${borderId}" xfId="0" ` +
+    `applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"` +
+    `${options.numFmtId !== undefined ? ' applyNumberFormat="1"' : ""}>` +
+    `<alignment horizontal="center" vertical="center" wrapText="1"/></xf>`;
+  const existingIndex = xfs.findIndex(xf => xf === styleXml);
+  if (existingIndex !== -1) return existingIndex;
+
+  const nextIndex = xfs.length;
+  stylesXml = `${stylesXml.slice(0, cellXfsEnd)}${styleXml}${stylesXml.slice(cellXfsEnd)}`;
   stylesXml = stylesXml.replace(
     /(<cellXfs\b[^>]*\bcount=")\d+(")/,
     `$1${nextIndex + 1}$2`
@@ -1724,6 +1942,72 @@ function perfReportRows(rows: PerfRow[]): string[][] {
   ]);
 }
 
+function rfSiteSortValue(siteId: string): number {
+  const match = clean(siteId).match(/rf\s*site\s*(\d+)/i);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+function aggregatePerfRowsForReport(rows: PerfRow[]): PerfRow[] {
+  const grouped = new Map<string, PerfRow>();
+  const periodHoursBySite = new Map<string, number>();
+
+  rows.filter(row => isRfSiteId(row.siteId)).forEach(row => {
+    const key = normalizeSiteId(clean(row.siteId)).toLowerCase() || clean(row.siteId).toLowerCase();
+    const periodHours = row.availHours + row.sitesDownHours;
+    periodHoursBySite.set(
+      key,
+      Math.max(periodHoursBySite.get(key) ?? 0, periodHours)
+    );
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, { ...row });
+      return;
+    }
+
+    existing.sitesDownHours =
+      Math.round((existing.sitesDownHours + row.sitesDownHours) * 10) / 10;
+    existing.channelBusy =
+      Math.round((safePptNumber(existing.channelBusy) + safePptNumber(row.channelBusy)) * 10) / 10;
+    existing.mwLinkPerf =
+      Math.round((safePptNumber(existing.mwLinkPerf) + safePptNumber(row.mwLinkPerf)) * 10) / 10;
+    existing.ticketCount = (existing.ticketCount ?? 0) + (row.ticketCount ?? 0);
+
+    const names = new Set(
+      [existing.siteName, row.siteName]
+        .map(value => clean(value))
+        .filter(Boolean)
+    );
+    existing.siteName = Array.from(names).join(" / ");
+  });
+
+  return Array.from(grouped.values())
+    .map(row => {
+      const key = normalizeSiteId(clean(row.siteId)).toLowerCase() || clean(row.siteId).toLowerCase();
+      const periodHours = periodHoursBySite.get(key) ?? row.availHours + row.sitesDownHours;
+      const availHours = Math.max(0, periodHours - row.sitesDownHours);
+      const totalHours = availHours + row.sitesDownHours;
+      const reliability = totalHours > 0 ? availHours / totalHours : 1;
+      const totalMins = Math.round(availHours * 60);
+      const dDays = Math.floor(totalMins / (60 * 24));
+      const dHrs = Math.floor((totalMins % (60 * 24)) / 60);
+      const dMins = Math.round(totalMins % 60);
+      return {
+        ...row,
+        availHours: Math.round(availHours * 10) / 10,
+        availDay: `${dDays} d, ${dHrs} h, ${dMins} m`,
+        reliability: `${(reliability * 100).toFixed(2)}%`,
+      };
+    })
+    .sort((a, b) => {
+      const byRfNumber = rfSiteSortValue(a.siteId) - rfSiteSortValue(b.siteId);
+      if (byRfNumber !== 0) return byRfNumber;
+      return clean(a.siteId).localeCompare(clean(b.siteId), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
+}
+
 function computePerfKPIs(rows: PerfRow[]): {
   pctAvailability: string;
   mttr: string;
@@ -1830,7 +2114,7 @@ async function exportPerfTemplate(
       .replace(/"/g, "&quot;");
 
   // Find a cell by ref, replace its value while keeping its style
-  const setCell = (
+    const setCell = (
     xml: string,
     ref: string,
     value: string | number
@@ -1865,6 +2149,74 @@ async function exportPerfTemplate(
     return xml.slice(0, cStart) + cell + xml.slice(cEnd);
   };
 
+  const normalizeTableRows = (
+    sheetXml: string,
+    firstRow: number,
+    lastRow: number
+  ) =>
+    sheetXml.replace(/<row\b[^>]*>/g, rowTag => {
+      const rowNumber = Number(rowTag.match(/\br="(\d+)"/)?.[1] ?? 0);
+      if (rowNumber < firstRow || rowNumber > lastRow) return rowTag;
+      return rowTag
+        .replace(/\s+s="[^"]*"/g, "")
+        .replace(/\s+customFormat="[^"]*"/g, "")
+        .replace(/\s+ht="[^"]*"/g, "")
+        .replace(/\s+customHeight="[^"]*"/g, "");
+    });
+
+  const setWorksheetColumns = (sheetXml: string): string => {
+    const colsXml =
+      '<cols>' +
+      '<col min="1" max="1" width="8" customWidth="1"/>' +
+      '<col min="2" max="2" width="14" customWidth="1"/>' +
+      '<col min="3" max="3" width="34" customWidth="1"/>' +
+      '<col min="4" max="4" width="20" customWidth="1"/>' +
+      '<col min="5" max="5" width="28" customWidth="1"/>' +
+      '<col min="6" max="6" width="20" customWidth="1"/>' +
+      '<col min="7" max="7" width="24" customWidth="1"/>' +
+      '<col min="8" max="8" width="18" customWidth="1"/>' +
+      '<col min="9" max="9" width="16" customWidth="1"/>' +
+      '</cols>';
+    return sheetXml.includes("<cols>")
+      ? sheetXml.replace(/<cols>[\s\S]*?<\/cols>/, colsXml)
+      : sheetXml.replace("<sheetData>", `${colsXml}<sheetData>`);
+  };
+
+  const rewriteWorksheetRow = (
+    sheetXml: string,
+    rowNumber: number,
+    rowXml: string
+  ) => {
+    const rowPattern = new RegExp(`<row\\b[^>]*\\br="${rowNumber}"[^>]*>[\\s\\S]*?<\\/row>`);
+    if (rowPattern.test(sheetXml)) return sheetXml.replace(rowPattern, rowXml);
+
+    const nextRowPattern = new RegExp(`<row\\b[^>]*\\br="${rowNumber + 1}"[^>]*>`);
+    const nextMatch = sheetXml.match(nextRowPattern);
+    if (nextMatch?.index !== undefined) {
+      return `${sheetXml.slice(0, nextMatch.index)}${rowXml}${sheetXml.slice(nextMatch.index)}`;
+    }
+    return sheetXml.replace("</sheetData>", `${rowXml}</sheetData>`);
+  };
+
+  const buildStyledCellXml = (
+    col: string,
+    rowNumber: number,
+    value: string | number,
+    styleIndex: number,
+    numeric = false
+  ) => {
+    if (numeric) {
+      const num = Number(value);
+      return `<c r="${col}${rowNumber}" s="${styleIndex}"><v>${Number.isFinite(num) ? num : 0}</v></c>`;
+    }
+    return `<c r="${col}${rowNumber}" s="${styleIndex}" t="inlineStr"><is><t>${xmlEsc(String(value ?? ""))}</t></is></c>`;
+  };
+
+  const stripTemplateTableFormatting = (sheetXml: string) =>
+    sheetXml
+      .replace(/<conditionalFormatting[\s\S]*?<\/conditionalFormatting>/g, "")
+      .replace(/<extLst>[\s\S]*?<\/extLst>/g, "");
+
   try {
     const res = await fetch("/Network_Performance_Report.xlsx");
     if (!res.ok)
@@ -1874,6 +2226,7 @@ async function exportPerfTemplate(
     const rawBuf = await res.arrayBuffer();
     const { unzipSync, zipSync, strFromU8, strToU8 } = await import("fflate");
     const files = unzipSync(new Uint8Array(rawBuf));
+    const exportRows = aggregatePerfRowsForReport(rows);
 
     // ── Month label & sheet name ──────────────────────────────────────────
     const full = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
@@ -1892,7 +2245,7 @@ async function exportPerfTemplate(
     let xml = strFromU8(files[sheetKey]);
 
     // ── KPI summary (row 3 = labels already in template, row 4 = values) ──
-    const kpi = computePerfKPIs(rows);
+    const kpi = computePerfKPIs(exportRows);
     xml = setCell(xml, "C3", mmm);
     xml = setCell(xml, "D4", kpi.totalDownHrs);
     xml = setCell(xml, "E4", String(kpi.affectedSites));
@@ -1902,7 +2255,7 @@ async function exportPerfTemplate(
     xml = setCell(xml, "I4", kpi.mttf);
 
     // ── Row count management ──────────────────────────────────────────────
-    const needed = rows.length;
+    const needed = exportRows.length;
 
     if (needed > TEMPLATE_N) {
       const extra = needed - TEMPLATE_N;
@@ -2052,7 +2405,7 @@ async function exportPerfTemplate(
     }
 
     // ── Fill data rows ──────────────────────────────────────────────────
-    rows.forEach((row, i) => {
+    exportRows.forEach((row, i) => {
       const r = DATA_START + i;
       const availDays =
         row.availDay || String(Math.round((row.availHours / 24) * 10) / 10);
@@ -2067,26 +2420,43 @@ async function exportPerfTemplate(
       xml = setCell(xml, `I${r}`, row.sitesDownHours);
     });
     const perfDataRows = Array.from(
-      { length: rows.length },
+      { length: exportRows.length },
       (_, i) => DATA_START + i
     );
-    const perfTableRows = [DATA_START - 1, ...perfDataRows];
-    xml = applyExcelColumnAlignment(
-      files,
-      { strFromU8, strToU8 },
+    const headerStyle = getExcelCellStyle(xml, `${COLS[0]}${DATA_START - 1}`) || 1;
+    const serialNoStyle = getExcelCellStyle(xml, `A${DATA_START}`) || 2;
+    const bodyTextStyle = getExcelCellStyle(xml, `B${DATA_START}`) || 23;
+    const bodyNumberStyle = getExcelCellStyle(xml, `D${DATA_START}`) || 22;
+    const headerRowXml = `<row r="${DATA_START - 1}">${PERF_TEMPLATE_PDF_HEADERS.map((header, index) =>
+      buildStyledCellXml(COLS[index], DATA_START - 1, header, headerStyle)
+    ).join("")}</row>`;
+    xml = rewriteWorksheetRow(xml, DATA_START - 1, headerRowXml);
+
+    exportRows.forEach((row, index) => {
+      const r = DATA_START + index;
+      const availDays =
+        row.availDay || String(Math.round((row.availHours / 24) * 10) / 10);
+      const rowXml = `<row r="${r}">` +
+        buildStyledCellXml("A", r, index + 1, serialNoStyle, true) +
+        buildStyledCellXml("B", r, row.siteId, bodyTextStyle) +
+        buildStyledCellXml("C", r, row.siteName, bodyTextStyle) +
+        buildStyledCellXml("D", r, row.availHours, bodyNumberStyle, true) +
+        buildStyledCellXml("E", r, availDays, bodyTextStyle) +
+        buildStyledCellXml("F", r, row.channelBusy, bodyNumberStyle, true) +
+        buildStyledCellXml("G", r, row.mwLinkPerf, bodyNumberStyle, true) +
+        buildStyledCellXml("H", r, row.reliability, bodyTextStyle) +
+        buildStyledCellXml("I", r, row.sitesDownHours, bodyNumberStyle, true) +
+        "</row>";
+      xml = rewriteWorksheetRow(xml, r, rowXml);
+    });
+    xml = normalizeTableRows(
       xml,
-      perfTableRows.flatMap(r =>
-        ["A", "D", "E", "F", "G", "H", "I"].map(col => `${col}${r}`)
-      ),
-      "center"
+      DATA_START - 1,
+      DATA_START + Math.max(exportRows.length, 1) - 1
     );
-    xml = applyExcelColumnAlignment(
-      files,
-      { strFromU8, strToU8 },
-      xml,
-      perfTableRows.flatMap(r => ["B", "C"].map(col => `${col}${r}`)),
-      "left"
-    );
+    xml = setWorksheetColumns(xml);
+    xml = stripTemplateTableFormatting(xml);
+    xml = xml.replace(/<f\b[^>]*\/>|<f\b[^>]*>[\s\S]*?<\/f>/g, "");
     files[sheetKey] = strToU8(xml);
 
     // ── Rename sheet in workbook.xml (use string ops — no regex needed) ──
@@ -2103,7 +2473,7 @@ async function exportPerfTemplate(
     }
 
     // ── Update chart XMLs: new sheet name + correct last data row ──────────
-    const lastRow = DATA_START + rows.length - 1;
+    const lastRow = DATA_START + Math.max(exportRows.length, 1) - 1;
     const chartKeys = Object.keys(files).filter(
       k => k.startsWith("xl/charts/chart") && k.endsWith(".xml")
     );
@@ -2148,6 +2518,43 @@ async function exportPerfTemplate(
       cxml = flattenRange(cxml, "G");
 
       files[ck] = strToU8(cxml);
+    });
+
+    // Keep charts below the expanded data table instead of on top of rows.
+    const drawingKeys = Object.keys(files).filter(
+      k => k.startsWith("xl/drawings/drawing") && k.endsWith(".xml")
+    );
+    const chartStartRow = DATA_START + Math.max(exportRows.length, TEMPLATE_N) + 4;
+    const chartLayout: Record<string, { fromCol: number; fromRow: number; toCol: number; toRow: number }> = {
+      rId6: { fromCol: 0, fromRow: chartStartRow, toCol: 9, toRow: chartStartRow + 20 },
+      rId3: { fromCol: 0, fromRow: chartStartRow + 22, toCol: 9, toRow: chartStartRow + 38 },
+      rId4: { fromCol: 0, fromRow: chartStartRow + 40, toCol: 4, toRow: chartStartRow + 54 },
+      rId5: { fromCol: 5, fromRow: chartStartRow + 40, toCol: 9, toRow: chartStartRow + 54 },
+    };
+    drawingKeys.forEach(dk => {
+      let dxml = strFromU8(files[dk]);
+      dxml = dxml.replace(
+        /<xdr:twoCellAnchor[\s\S]*?<\/xdr:twoCellAnchor>/g,
+        anchor => {
+          const relId = anchor.match(/r:id="(rId\d+)"/)?.[1];
+          const layout = relId ? chartLayout[relId] : null;
+          if (!layout) return anchor;
+          const replaceMarker = (
+            part: string,
+            marker: "from" | "to",
+            col: number,
+            row: number
+          ) =>
+            part.replace(
+              new RegExp(`(<xdr:${marker}>[\\s\\S]*?<xdr:col>)\\d+(<\\/xdr:col>[\\s\\S]*?<xdr:row>)\\d+(<\\/xdr:row>)`),
+              `$1${col}$2${row}$3`
+            );
+          let updated = replaceMarker(anchor, "from", layout.fromCol, layout.fromRow);
+          updated = replaceMarker(updated, "to", layout.toCol, layout.toRow);
+          return updated;
+        }
+      );
+      files[dk] = strToU8(dxml);
     });
 
     // Delete stale calc chain — Excel will rebuild on open
@@ -3015,6 +3422,119 @@ async function exportTicketTemplate(
     return xml.slice(0, cStart) + newCell + xml.slice(cEnd);
   };
 
+  const setWorksheetColumns = (sheetXml: string): string => {
+    const colsXml =
+      '<cols>' +
+      '<col min="1" max="1" width="6.21875" customWidth="1"/>' +
+      '<col min="2" max="2" width="51.77734375" customWidth="1"/>' +
+      '<col min="3" max="3" width="57.109375" customWidth="1"/>' +
+      '<col min="4" max="4" width="72.88671875" customWidth="1"/>' +
+      '<col min="5" max="5" width="46.5546875" customWidth="1"/>' +
+      '<col min="6" max="6" width="96.5546875" customWidth="1"/>' +
+      '<col min="7" max="7" width="57.33203125" customWidth="1"/>' +
+      '<col min="8" max="8" width="32.109375" customWidth="1"/>' +
+      '<col min="9" max="9" width="53.33203125" customWidth="1"/>' +
+      '<col min="10" max="10" width="28" customWidth="1"/>' +
+      '<col min="11" max="11" width="9" customWidth="1"/>' +
+      '<col min="12" max="12" width="9.33203125" customWidth="1"/>' +
+      '<col min="13" max="13" width="36.77734375" customWidth="1"/>' +
+      '<col min="14" max="14" width="14.5546875" customWidth="1"/>' +
+      '<col min="15" max="15" width="15.6640625" customWidth="1"/>' +
+      '<col min="16" max="16" width="20.44140625" customWidth="1"/>' +
+      '<col min="17" max="17" width="73.44140625" customWidth="1"/>' +
+      '</cols>';
+    return sheetXml.includes("<cols>")
+      ? sheetXml.replace(/<cols>[\s\S]*?<\/cols>/, colsXml)
+      : sheetXml.replace("<sheetData>", `${colsXml}<sheetData>`);
+  };
+
+  const rewriteWorksheetRow = (
+    sheetXml: string,
+    rowNumber: number,
+    rowXml: string
+  ) => {
+    const rowPattern = new RegExp(
+      `<row\\b[^>]*\\br="${rowNumber}"[^>]*>[\\s\\S]*?<\\/row>`
+    );
+    if (rowPattern.test(sheetXml)) return sheetXml.replace(rowPattern, rowXml);
+
+    const nextRowPattern = new RegExp(
+      `<row\\b[^>]*\\br="${rowNumber + 1}"[^>]*>`
+    );
+    const nextMatch = sheetXml.match(nextRowPattern);
+    if (nextMatch?.index !== undefined) {
+      return `${sheetXml.slice(0, nextMatch.index)}${rowXml}${sheetXml.slice(
+        nextMatch.index
+      )}`;
+    }
+    return sheetXml.replace("</sheetData>", `${rowXml}</sheetData>`);
+  };
+
+  const buildStyledCellXml = (
+    col: string,
+    rowNumber: number,
+    value: string | number,
+    styleIndex: number,
+    numeric = false
+  ) => {
+    if (numeric) {
+      const num = Number(value);
+      return `<c r="${col}${rowNumber}" s="${styleIndex}"><v>${
+        Number.isFinite(num) ? num : 0
+      }</v></c>`;
+    }
+    const text = xmlEsc(String(value ?? "")).replace(/\n/g, "&#10;");
+    return `<c r="${col}${rowNumber}" s="${styleIndex}" t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
+  };
+
+  const normalizeTicketTableRows = (
+    sheetXml: string,
+    firstRow: number,
+    lastRow: number
+  ) =>
+    sheetXml.replace(/<row\b[^>]*>/g, rowTag => {
+      const rowNumber = Number(rowTag.match(/\br="(\d+)"/)?.[1] ?? 0);
+      if (rowNumber < firstRow || rowNumber > lastRow) return rowTag;
+      return rowTag
+        .replace(/\s+s="[^"]*"/g, "")
+        .replace(/\s+customFormat="[^"]*"/g, "");
+    });
+
+  const normalizeTicketRegionLabel = (region: string) => {
+    const value = clean(region).toUpperCase();
+    if (value === "EOA" || value === "NEOA") return "EOA";
+    if (value === "SOA") return "SOA";
+    return value || "EOA";
+  };
+
+  const ticketSiteLinesForTemplate = (ticket: TicketAggregate) => {
+    const bySite = new Map<string, { siteId: string; siteName: string }>();
+    ticket.rows.forEach(row => {
+      const siteId = clean(row.siteId);
+      if (!siteId) return;
+      const key = normalizeSiteId(siteId).toUpperCase() || siteId.toUpperCase();
+      if (!bySite.has(key)) {
+        bySite.set(key, { siteId, siteName: clean(row.siteName) });
+      }
+    });
+
+    const rows = Array.from(bySite.values());
+    const rfRows = rows.filter(row => isRfSiteId(row.siteId));
+    const rowsToUse = rfRows.length ? rfRows : rows;
+
+    if (!rowsToUse.length) {
+      return {
+        siteIds: Array.from(ticket.siteIds).join("\n"),
+        siteNames: Array.from(ticket.siteNames).join("\n"),
+      };
+    }
+
+    return {
+      siteIds: rowsToUse.map(row => row.siteId).join("\n"),
+      siteNames: rowsToUse.map(row => row.siteName).join("\n"),
+    };
+  };
+
   try {
     // ── 1. Fetch template ───────────────────────────────────────────────
     const res = await fetch("/DMR_Monthly_Report.xlsx");
@@ -3043,8 +3563,17 @@ async function exportTicketTemplate(
     const label =
       parts.length === 2 ? `${parts[0].slice(0, 3)}-${parts[1]}` : full;
     const safeName = label.replace(/[\/*?[\]:]/g, "-").slice(0, 31);
+    const regionLabel =
+      Array.from(
+        new Set(
+          tickets
+            .map(ticket => normalizeTicketRegionLabel(ticket.primary.region))
+            .filter(Boolean)
+        )
+      ).join(" / ") || "EOA";
 
     // ── 5. Set Q5 (month value) ─────────────────────────────────────────
+    xml = setCell(xml, "C5", regionLabel);
     xml = setCell(xml, "Q5", label);
 
     // ── 6. Rename sheet in workbook.xml (sheet element + definedNames refs) ──
@@ -3133,52 +3662,66 @@ async function exportTicketTemplate(
     }
 
     // ── 8. Clear unused rows (fewer than 20 tickets) ────────────────────
-    for (let r = DATA_START + needed; r < PROTECTED; r++) {
-      COLS.forEach(col => {
-        xml = setCell(xml, `${col}${r}`, "");
-      });
-    }
+    const textStyle = getExcelCellStyle(xml, `A${DATA_START}`) || 11;
+    const dateTimeStyle = getExcelCellStyle(xml, `D${DATA_START}`) || textStyle;
+    const dateTimeCols = new Set(["D", "E", "G", "H", "I", "J"]);
+    const styleForCol = (col: string) =>
+      dateTimeCols.has(col) ? dateTimeStyle : textStyle;
 
-    // ── 9. Write ticket data ────────────────────────────────────────────
     tickets.forEach((ticket, i) => {
       const row = DATA_START + i;
       const p = ticket.primary;
-      const set = (col: string, val: string | number) => {
-        xml = setCell(xml, `${col}${row}`, val);
+      const siteLines = ticketSiteLinesForTemplate(ticket);
+      const values: Record<string, string | number> = {
+        A: i + 1,
+        B: siteLines.siteIds,
+        C: siteLines.siteNames,
+        D: p.managedResource || "",
+        E: p.severity || "",
+        F: p.issue || "",
+        G: p.observationDate || "",
+        H: p.observationTime || "",
+        I: p.recoveryDate || "",
+        J: p.recoveryTime || "",
+        K: p.escalatedForL3SupportDate || "",
+        L: p.escalatedForL3SupportTime || "",
+        M: p.duration || "",
+        N: ticket.tt || "",
+        O: p.status || "",
+        P: p.escalatedTo || "",
+        Q: p.actionTaken || "",
       };
-      set("A", i + 1);
-      set("B", Array.from(ticket.siteIds).join(", "));
-      set("C", Array.from(ticket.siteNames).join(", "));
-      set("D", p.managedResource || "");
-      set("E", p.severity || "");
-      set("F", p.issue || "");
-      set("G", p.observationDate || "");
-      set("H", p.observationTime || "");
-      set("I", p.recoveryDate || "");
-      set("J", p.recoveryTime || "");
-      set("K", p.escalatedForL3SupportDate || "");
-      set("L", p.escalatedForL3SupportTime || "");
-      set("M", p.duration || "");
-      set("N", ticket.tt || "");
-      set("O", p.status || "");
-      set("P", p.escalatedTo || "");
-      set("Q", p.actionTaken || "");
+      const rowXml =
+        `<row r="${row}">` +
+        COLS.map(col =>
+          buildStyledCellXml(
+            col,
+            row,
+            values[col] ?? "",
+            styleForCol(col),
+            col === "A"
+          )
+        ).join("") +
+        "</row>";
+      xml = rewriteWorksheetRow(xml, row, rowXml);
     });
 
-    // ── 10. Repack and download ─────────────────────────────────────────
-    const ticketDataRows = Array.from(
-      { length: tickets.length },
-      (_, i) => DATA_START + i
-    );
-    xml = applyExcelColumnAlignment(
-      files,
-      { strFromU8, strToU8 },
+    for (let r = DATA_START + needed; r < PROTECTED; r++) {
+      const rowXml =
+        `<row r="${r}">` +
+        COLS.map(col =>
+          buildStyledCellXml(col, r, "", styleForCol(col), false)
+        ).join("") +
+        "</row>";
+      xml = rewriteWorksheetRow(xml, r, rowXml);
+    }
+
+    xml = normalizeTicketTableRows(
       xml,
-      ticketDataRows.flatMap(r =>
-        ["D", "E", "G", "H", "I", "J"].map(col => `${col}${r}`)
-      ),
-      "center"
+      DATA_START,
+      DATA_START + Math.max(needed, 1) - 1
     );
+    xml = setWorksheetColumns(xml);
     files[sheetKey] = strToU8(xml);
     const output = zipSync(files, { level: 0 }); // store, no recompression
     const blob = new Blob([output], {
@@ -3877,37 +4420,20 @@ function StatCard({
 function PartnerLogoStrip() {
   return (
     <div
-      className="header-logo-group header-logo-group--left"
-      aria-label="Saudi Energy and National Grid logos"
+      className="header-logo-group header-logo-group--left header-logo-group--solo"
+      aria-label="NASCO logo"
     >
       <img
-        src={seLogoSrc}
-        alt="Saudi Energy"
-        className="header-logo-img se-logo"
-      />
-      <span className="logo-divider" aria-hidden="true" />
-      <img
-        src={ngLogoSrc}
-        alt="National Grid SA"
-        className="header-logo-img ng-logo"
+        src={nascoLogoSrc}
+        alt="NASCO"
+        className="header-logo-img nasco-logo nasco-logo--hero"
       />
     </div>
   );
 }
 
 function HeaderRightLogo() {
-  return (
-    <div
-      className="header-logo-group header-logo-group--right"
-      aria-label="NASCO logo"
-    >
-      <img
-        src={nascoLogoSrc}
-        alt="NASCO"
-        className="header-logo-img nasco-logo"
-      />
-    </div>
-  );
+  return <div className="header-logo-group--right" aria-hidden="true" />;
 }
 
 /**
@@ -4091,15 +4617,24 @@ function MultiSelectFilter({
     if (!triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
     const dropW = Math.max(rect.width, 220);
-    const dropH = Math.min(280, options.length * 36 + 48);
+    const preferredDropH = Math.min(280, options.length * 36 + 48);
     const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
     const left = Math.min(rect.left, window.innerWidth - dropW - 8);
-    if (spaceBelow >= dropH || spaceBelow >= 160) {
+    const openDown = spaceBelow >= preferredDropH || spaceBelow >= spaceAbove;
+    const availableHeight = Math.max(
+      120,
+      (openDown ? spaceBelow : spaceAbove) - 12
+    );
+    const maxHeight = Math.min(preferredDropH, availableHeight);
+
+    if (openDown) {
       setDropdownStyle({
         position: "fixed",
         top: rect.bottom + 4,
         left,
         width: dropW,
+        maxHeight,
         zIndex: 99999,
       });
     } else {
@@ -4108,6 +4643,7 @@ function MultiSelectFilter({
         bottom: window.innerHeight - rect.top + 4,
         left,
         width: dropW,
+        maxHeight,
         zIndex: 99999,
       });
     }

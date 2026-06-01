@@ -1727,6 +1727,22 @@ td small {
   max-width: 165px;
 }
 
+.header-logo-group--solo {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.header-logo-img.nasco-logo--hero {
+  height: 76px !important;
+  max-width: 92px !important;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.36));
+}
+
 /* Multi-select filter dropdown */
 .export-badge {
   display: inline-flex;
@@ -4110,4 +4126,119 @@ Does this choice reinforce or dilute our design philosophy?
 .dashboard-shell .section-tabs-panel .ghost-button svg {
   width: 13px !important;
   height: 13px !important;
+}
+
+/* Readability pass: make tab-top search/filter controls clear at normal zoom */
+.dashboard-shell .dashboard-filters-panel .search-box,
+.dashboard-shell .dashboard-filters-panel .filter-field,
+.dashboard-shell .filters-panel .search-box,
+.dashboard-shell .filters-panel .filter-field,
+.dashboard-shell .section-tabs-panel .search-box,
+.dashboard-shell .section-tabs-panel .filter-field {
+  min-height: 48px !important;
+  gap: 4px !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box > span,
+.dashboard-shell .dashboard-filters-panel .filter-field > span,
+.dashboard-shell .filters-panel .search-box > span,
+.dashboard-shell .filters-panel .filter-field > span,
+.dashboard-shell .section-tabs-panel .search-box > span,
+.dashboard-shell .section-tabs-panel .filter-field > span {
+  min-height: 14px !important;
+  height: auto !important;
+  line-height: 1.15 !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.075em !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box input,
+.dashboard-shell .dashboard-filters-panel .multi-select-trigger,
+.dashboard-shell .dashboard-filters-panel .select-wrap select,
+.dashboard-shell .filters-panel .search-box input,
+.dashboard-shell .filters-panel .multi-select-trigger,
+.dashboard-shell .filters-panel .select-wrap select,
+.dashboard-shell .section-tabs-panel .search-box input,
+.dashboard-shell .section-tabs-panel .multi-select-trigger,
+.dashboard-shell .section-tabs-panel .select-wrap select {
+  height: 30px !important;
+  min-height: 30px !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box input,
+.dashboard-shell .filters-panel .search-box input,
+.dashboard-shell .section-tabs-panel .search-box input {
+  padding-left: 12px !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box svg,
+.dashboard-shell .filters-panel .search-box svg,
+.dashboard-shell .section-tabs-panel .search-box svg {
+  display: none !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box,
+.dashboard-shell .filters-panel .search-box,
+.dashboard-shell .section-tabs-panel .search-box {
+  position: relative !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box::before,
+.dashboard-shell .filters-panel .search-box::before,
+.dashboard-shell .section-tabs-panel .search-box::before {
+  content: "Search";
+  min-height: 14px !important;
+  height: auto !important;
+  line-height: 1.15 !important;
+  margin: 0 !important;
+  color: #94a3b8;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.075em !important;
+  text-transform: uppercase;
+}
+
+.dashboard-shell .dashboard-filters-panel,
+.dashboard-shell .filters-panel,
+.dashboard-shell .filters-panel.dashboard-filters-panel,
+.dashboard-shell .section-tabs-panel .filters-panel,
+.dashboard-shell .section-tabs-panel .dashboard-filters-panel {
+  position: relative !important;
+  z-index: 35 !important;
+  background:
+    linear-gradient(135deg, rgba(8, 17, 34, 0.98), rgba(12, 29, 54, 0.96)) !important;
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box input,
+.dashboard-shell .dashboard-filters-panel .multi-select-trigger,
+.dashboard-shell .dashboard-filters-panel .select-wrap select,
+.dashboard-shell .filters-panel .search-box input,
+.dashboard-shell .filters-panel .multi-select-trigger,
+.dashboard-shell .filters-panel .select-wrap select,
+.dashboard-shell .section-tabs-panel .search-box input,
+.dashboard-shell .section-tabs-panel .multi-select-trigger,
+.dashboard-shell .section-tabs-panel .select-wrap select {
+  position: relative !important;
+  z-index: 2 !important;
+  border-color: rgba(125, 211, 252, 0.32) !important;
+  background: rgba(6, 16, 32, 0.96) !important;
+  color: #f8fafc !important;
+  opacity: 1 !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .ghost-button,
+.dashboard-shell .filters-panel .ghost-button,
+.dashboard-shell .section-tabs-panel .ghost-button {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 12px !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  border-radius: 9px !important;
 }
