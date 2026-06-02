@@ -1,0 +1,7 @@
+# Paste online sheet links for each region.
+# Google Sheets: open the TT-History tab before copying so the URL includes gid=.
+# Microsoft 365/OneDrive: use a shared Excel workbook link that allows view/download.
+
+EOA&NEOA=
+SOA=
+COA&WOA=

@@ -10,7 +10,16 @@ import type {
   TicketAggregate,
 } from "../types/dashboard";
 
-import { average, clean, combineDateTime, normalizeSiteId, parseDurationHours } from "./dateUtils";
+import {
+  average,
+  clean,
+  combineDateTime,
+  isRfSiteId,
+  normalizeSiteId,
+  openingMonthKey,
+  parseDurationHours,
+  totalHoursInMonth,
+} from "./dateUtils";
 import { getPreventability, getRcaFamily, getRecommendedAction, getResponsibleTeam, rcaNotProvided } from "./rcaRules";
 
 export type ExecutiveInsightsInput = {
@@ -39,6 +48,14 @@ function parseReliability(value: string | number | null | undefined): number {
   }
   const parsed = Number(String(value ?? "").replace("%", "").trim());
   return Number.isFinite(parsed) ? parsed : 100;
+}
+
+function ticketDurationHours(row: TicketRecord): number {
+  const parsed = parseDurationHours(row.duration);
+  if (parsed !== null && Number.isFinite(parsed)) return parsed;
+  return typeof row.resolutionHours === "number" && Number.isFinite(row.resolutionHours)
+    ? row.resolutionHours
+    : 0;
 }
 
 function countByName(values: string[]): Array<{ name: string; value: number }> {
@@ -83,23 +100,47 @@ export function calculateExecutiveInsights({
   const primaryRows = tickets.map(ticket => ticket.primary);
   const totalTickets = tickets.length;
   const totalDowntime = round1(
-    primaryRows.reduce((sum, row) => sum + (parseDurationHours(row.duration) ?? 0), 0)
+    primaryRows.reduce((sum, row) => sum + ticketDurationHours(row), 0)
   );
 
   const affectedSiteIds = new Set<string>();
   const affectedSiteNames = new Map<string, string>();
+  const ticketSitePairs = (ticket: TicketAggregate) => {
+    const pairs = new Map<string, string>();
+
+    ticket.rows.forEach(row => {
+      const siteId = normalizeSiteId(clean(row.siteId));
+      if (!isRfSiteId(siteId)) return;
+
+      const siteName = clean(row.siteName);
+      if (!pairs.has(siteId) || (!pairs.get(siteId) && siteName)) {
+        pairs.set(siteId, siteName);
+      }
+    });
+
+    if (!pairs.size) {
+      const primarySiteId = normalizeSiteId(clean(ticket.primary.siteId));
+      if (isRfSiteId(primarySiteId)) {
+        pairs.set(primarySiteId, clean(ticket.primary.siteName));
+      }
+    }
+
+    ticket.siteIds.forEach(site => {
+      const siteId = normalizeSiteId(clean(site));
+      if (isRfSiteId(siteId) && !pairs.has(siteId)) pairs.set(siteId, "");
+    });
+
+    return Array.from(pairs.entries()).map(([siteId, siteName]) => ({
+      siteId,
+      siteName,
+    }));
+  };
 
   tickets.forEach(ticket => {
-    const sites = ticket.siteIds.size
-      ? Array.from(ticket.siteIds)
-      : [ticket.primary.siteId || "Blank"];
-
-    sites.forEach(site => {
-      const siteId = normalizeSiteId(clean(site));
-      if (!siteId || siteId === "Blank") return;
+    ticketSitePairs(ticket).forEach(({ siteId, siteName }) => {
       affectedSiteIds.add(siteId);
-      if (ticket.primary.siteName && !affectedSiteNames.has(siteId)) {
-        affectedSiteNames.set(siteId, ticket.primary.siteName);
+      if (siteName && !affectedSiteNames.has(siteId)) {
+        affectedSiteNames.set(siteId, siteName);
       }
     });
   });
@@ -137,6 +178,7 @@ export function calculateExecutiveInsights({
     string,
     {
       siteId: string;
+      regions: string[];
       siteName: string;
       ticketCount: number;
       downtimeHours: number;
@@ -148,10 +190,8 @@ export function calculateExecutiveInsights({
   >();
 
   tickets.forEach(ticket => {
-    const sites = ticket.siteIds.size
-      ? Array.from(ticket.siteIds)
-      : [ticket.primary.siteId || "Blank"];
-    const duration = parseDurationHours(ticket.primary.duration) ?? 0;
+    const sites = ticketSitePairs(ticket);
+    const duration = ticketDurationHours(ticket.primary);
     const perSiteDowntime = sites.length ? duration / sites.length : duration;
     const isServiceImpact = clean(ticket.primary.impact)
       .toLowerCase()
@@ -160,10 +200,8 @@ export function calculateExecutiveInsights({
     const isMissingRca = rcaNotProvided(ticket.primary.rca);
     const rcaFamily = ticket.primary.rcaFamily || getRcaFamily(ticket.primary.rca);
 
-    sites.forEach(site => {
-      const siteId = normalizeSiteId(clean(site || ticket.primary.siteId || "Blank"));
-      if (!siteId || siteId === "Blank") return;
-      const siteName = ticket.primary.siteName || affectedSiteNames.get(siteId) || "";
+    sites.forEach(({ siteId, siteName: pairedSiteName }) => {
+      const siteName = pairedSiteName || affectedSiteNames.get(siteId) || "";
 
       const downtimeCurrent = downtimeBySite.get(siteId) ?? {
         siteId,
@@ -175,6 +213,7 @@ export function calculateExecutiveInsights({
 
       const current = siteRisk.get(siteId) ?? {
         siteId,
+        regions: [],
         siteName,
         ticketCount: 0,
         downtimeHours: 0,
@@ -185,6 +224,8 @@ export function calculateExecutiveInsights({
       };
 
       current.ticketCount += 1;
+      const region = clean(ticket.primary.region);
+      if (region && !current.regions.includes(region)) current.regions.push(region);
       current.downtimeHours += perSiteDowntime;
       if (isServiceImpact) current.serviceImpactCount += 1;
       if (isCritical) current.criticalCount += 1;
@@ -198,7 +239,18 @@ export function calculateExecutiveInsights({
     performanceRows.map(row => [normalizeSiteId(clean(row.siteId)), row])
   );
 
-  const highestDowntime = Array.from(downtimeBySite.values()).sort(
+  const performanceDowntimeBySite = performanceRows
+    .filter(row => isRfSiteId(row.siteId))
+    .map(row => ({
+      siteId: normalizeSiteId(clean(row.siteId)),
+      siteName: clean(row.siteName),
+      downtime: row.sitesDownHours,
+    }));
+  const downtimeSource = performanceDowntimeBySite.length
+    ? performanceDowntimeBySite
+    : Array.from(downtimeBySite.values());
+
+  const highestDowntime = downtimeSource.sort(
     (a, b) => b.downtime - a.downtime || a.siteId.localeCompare(b.siteId)
   )[0];
 
@@ -212,7 +264,13 @@ export function calculateExecutiveInsights({
     .sort((a, b) => a.reliability - b.reliability || a.siteId.localeCompare(b.siteId))[0];
 
   const maxTickets = Math.max(1, ...Array.from(siteRisk.values()).map(row => row.ticketCount));
-  const maxDowntime = Math.max(1, ...Array.from(siteRisk.values()).map(row => row.downtimeHours));
+  const maxDowntime = Math.max(
+    1,
+    ...Array.from(siteRisk.values()).map(row => {
+      const perf = perfBySite.get(row.siteId);
+      return perf ? perf.sitesDownHours : row.downtimeHours;
+    })
+  );
   const maxServiceImpact = Math.max(
     1,
     ...Array.from(siteRisk.values()).map(row => row.serviceImpactCount)
@@ -223,15 +281,22 @@ export function calculateExecutiveInsights({
     ...Array.from(siteRisk.values()).map(row => row.missingRcaCount)
   );
 
+  // High Risk Sites Ranking formula:
+  // score = ticket share * 20 + downtime share * 30 + service impact share * 20
+  //       + critical severity share * 15 + missing RCA share * 10
+  //       + reliability loss share * 5.
+  // Downtime uses performance "Sites Down, hrs" when available, so it stays
+  // aligned with the reliability shown in the same table.
   const highRiskSites: HighRiskSiteRow[] = Array.from(siteRisk.values())
     .map(site => {
       const perf = perfBySite.get(site.siteId);
       const reliability = perf ? parseReliability(perf.reliability) : 100;
+      const downtimeHours = perf ? perf.sitesDownHours : site.downtimeHours;
       const topRca = countByName(site.rcaValues)[0]?.name ?? "N/A";
       const riskScore = round1(
         clamp(
           (site.ticketCount / maxTickets) * 20 +
-            (site.downtimeHours / maxDowntime) * 30 +
+            (downtimeHours / maxDowntime) * 30 +
             (site.serviceImpactCount / maxServiceImpact) * 20 +
             (site.criticalCount / maxCritical) * 15 +
             (site.missingRcaCount / maxMissingRca) * 10 +
@@ -241,10 +306,11 @@ export function calculateExecutiveInsights({
 
       return {
         rank: 0,
+        region: site.regions.length ? site.regions.join(" / ") : "-",
         siteId: site.siteId,
         siteName: site.siteName || perf?.siteName || "",
         ticketCount: site.ticketCount,
-        downtimeHours: round1(site.downtimeHours),
+        downtimeHours: round1(downtimeHours),
         reliability: round2(reliability),
         topRca,
         riskScore,
@@ -415,12 +481,24 @@ export function calculateDeepDiveAnalytics({
   const preventabilityCountMap = new Map<string, { count: number; downtime: number }>();
   const siteMap = new Map<
     string,
-    { siteId: string; siteName: string; tickets: number; downtimeHours: number; rcas: string[] }
+    { siteId: string; regions: string[]; siteName: string; tickets: number; downtimeHours: number; rcas: string[] }
   >();
+  const durationMonthKeys = Array.from(
+    new Set(
+      primaryRows
+        .map(row => row.openingMonthKey || openingMonthKey(row.observationDate))
+        .filter(key => key && key !== "Unknown")
+    )
+  );
+  const selectedPeriodHours = durationMonthKeys.length
+    ? durationMonthKeys.reduce((sum, key) => sum + totalHoursInMonth(key), 0)
+    : 24 * 30;
+  const countedFamilyTickets = new Set<string>();
 
-  primaryRows.forEach(row => {
+  tickets.forEach(ticket => {
+    const row = ticket.primary;
     const rcaFamily = row.rcaFamily || getRcaFamily(row.rca);
-    const downtime = parseDurationHours(row.duration) ?? 0;
+    const downtime = Math.min(ticketDurationHours(row), selectedPeriodHours);
     const missingRca = rcaNotProvided(row.rca);
     const preventability = row.preventability || getPreventability(row.rca);
     const responsibleTeam = row.responsibleTeam || getResponsibleTeam(rcaFamily);
@@ -438,11 +516,15 @@ export function calculateDeepDiveAnalytics({
       recommendedAction,
     };
 
-    family.tickets += 1;
-    family.downtimeHours += downtime;
-    if (missingRca) family.missingRca += 1;
-    if (preventability === "Preventable") family.preventableTickets += 1;
-    if (isServiceImpact) family.serviceImpactTickets += 1;
+    const familyTicketKey = `${clean(row.tt) || row.rowNo}||${rcaFamily}`;
+    if (!countedFamilyTickets.has(familyTicketKey)) {
+      countedFamilyTickets.add(familyTicketKey);
+      family.tickets += 1;
+      family.downtimeHours += downtime;
+      if (missingRca) family.missingRca += 1;
+      if (preventability === "Preventable") family.preventableTickets += 1;
+      if (isServiceImpact) family.serviceImpactTickets += 1;
+    }
     familyMap.set(rcaFamily, family);
 
     if (missingRca) {
@@ -460,20 +542,37 @@ export function calculateDeepDiveAnalytics({
     preventabilityItem.downtime += downtime;
     preventabilityCountMap.set(preventability, preventabilityItem);
 
-    const siteId = normalizeSiteId(clean(row.siteId));
-    if (siteId) {
+    const sitePairs = new Map<string, string>();
+    ticket.rows.forEach(siteRow => {
+      const siteId = normalizeSiteId(clean(siteRow.siteId));
+      if (!isRfSiteId(siteId)) return;
+      const siteName = clean(siteRow.siteName);
+      if (!sitePairs.has(siteId) || (!sitePairs.get(siteId) && siteName)) {
+        sitePairs.set(siteId, siteName);
+      }
+    });
+    if (!sitePairs.size) {
+      const siteId = normalizeSiteId(clean(row.siteId));
+      if (isRfSiteId(siteId)) sitePairs.set(siteId, clean(row.siteName));
+    }
+    const perSiteDowntime = sitePairs.size ? downtime / sitePairs.size : downtime;
+
+    sitePairs.forEach((siteName, siteId) => {
       const current = siteMap.get(siteId) ?? {
         siteId,
-        siteName: clean(row.siteName) || perfBySite.get(siteId)?.siteName || "",
+        regions: [],
+        siteName: siteName || perfBySite.get(siteId)?.siteName || "",
         tickets: 0,
         downtimeHours: 0,
         rcas: [],
       };
       current.tickets += 1;
-      current.downtimeHours += downtime;
+      const region = clean(row.region);
+      if (region && !current.regions.includes(region)) current.regions.push(region);
+      current.downtimeHours += perSiteDowntime;
       current.rcas.push(rcaFamily);
       siteMap.set(siteId, current);
-    }
+    });
   });
 
   const rcaFamilyDeepDive = Array.from(familyMap.values())
@@ -546,30 +645,56 @@ export function calculateDeepDiveAnalytics({
     })),
   };
 
+  // Repeated Offender Sites formula:
+  // include RF Sites with more than one ticket or any downtime, then rank by
+  // total per-site downtime descending, ticket count descending, and site ID.
   const repeatedOffenderSites = Array.from(siteMap.values())
+    .map(site => {
+      const perf = perfBySite.get(site.siteId);
+      const downtimeHours = perf ? perf.sitesDownHours : site.downtimeHours;
+      return {
+        region: site.regions.length ? site.regions.join(" / ") : "-",
+        siteId: site.siteId,
+        siteName: site.siteName || perf?.siteName || "",
+        tickets: site.tickets,
+        downtimeHours: round1(downtimeHours),
+        topRca: countByName(site.rcas)[0]?.name ?? "N/A",
+      };
+    })
     .filter(site => site.tickets > 1 || site.downtimeHours > 0)
-    .map(site => ({
-      siteId: site.siteId,
-      siteName: site.siteName,
-      tickets: site.tickets,
-      downtimeHours: round1(site.downtimeHours),
-      topRca: countByName(site.rcas)[0]?.name ?? "N/A",
-    }))
-    .sort((a, b) => b.downtimeHours - a.downtimeHours || b.tickets - a.tickets)
+    .sort(
+      (a, b) =>
+        b.downtimeHours - a.downtimeHours ||
+        b.tickets - a.tickets ||
+        a.siteId.localeCompare(b.siteId)
+    )
     .slice(0, 10);
 
+  const topRcaFamilyByTickets = [...rcaFamilyDeepDive].sort(
+    (a, b) => b.tickets - a.tickets || b.serviceImpactTickets - a.serviceImpactTickets
+  )[0];
+  const missingRcaLeader = missingRcaByRegion[0];
+  const longPendingCount =
+    slaSummary.pendingAgingBuckets.find(bucket => bucket.name === "7d+")?.value ?? 0;
+  const topRepeatedSite = repeatedOffenderSites[0];
+
+  // Recommended Management Actions:
+  // 1) address the most frequent RCA family,
+  // 2) close the largest RCA completion gap,
+  // 3) escalate long-aging pending tickets,
+  // 4) create an action plan for the top repeated/high-downtime RF Site.
   const recommendations = [
-    rcaFamilyDeepDive[0]
-      ? `Prioritize ${rcaFamilyDeepDive[0].family}; it contributes ${rcaFamilyDeepDive[0].downtimeHours.toLocaleString()} downtime hours.`
+    topRcaFamilyByTickets
+      ? `Prioritize ${topRcaFamilyByTickets.family}; it appears in ${topRcaFamilyByTickets.tickets.toLocaleString()} tickets, including ${topRcaFamilyByTickets.serviceImpactTickets.toLocaleString()} service-impact tickets. Recommended action: ${topRcaFamilyByTickets.recommendedAction}`
       : "No dominant RCA family detected in the selected scope.",
-    missingRcaByRegion[0]
-      ? `Close RCA gaps in ${missingRcaByRegion[0].name}; it has ${missingRcaByRegion[0].value} missing RCA records.`
+    missingRcaLeader
+      ? `Close RCA gaps in ${missingRcaLeader.name}; it has ${missingRcaLeader.value.toLocaleString()} missing RCA records (${missingRcaLeader.percentage}% of selected tickets).`
       : "RCA completion is acceptable in the selected scope.",
-    slaSummary.pendingAgingBuckets.find(bucket => bucket.name === "7d+")?.value
-      ? "Escalate pending tickets older than 7 days and assign accountable owners."
+    longPendingCount
+      ? `Escalate ${longPendingCount.toLocaleString()} pending tickets older than 7 days and assign accountable owners.`
       : "No critical long-aging pending bucket detected.",
-    repeatedOffenderSites[0]
-      ? `Create a recovery action plan for ${repeatedOffenderSites[0].siteId}; it is the top repeated/high-downtime site.`
+    topRepeatedSite
+      ? `Create a recovery action plan for ${topRepeatedSite.siteId}${topRepeatedSite.siteName ? ` - ${topRepeatedSite.siteName}` : ""}; it has ${topRepeatedSite.tickets.toLocaleString()} repeated tickets, ${topRepeatedSite.downtimeHours.toLocaleString()} downtime hours, and top RCA family ${topRepeatedSite.topRca}.`
       : "No repeated offender site detected in the selected scope.",
   ];
 

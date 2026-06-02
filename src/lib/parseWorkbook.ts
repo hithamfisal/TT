@@ -104,9 +104,10 @@ export function parseSiteOrder(
 }
 
 export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
-  const preferred = workbook.SheetNames.find(name =>
-    name.toLowerCase().includes("tickets_data")
-  );
+  const preferred = workbook.SheetNames.find(name => {
+    const normalized = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return normalized.includes("ticketsdata") || normalized === "tthistory";
+  });
   const sheetName = preferred ?? workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
@@ -171,7 +172,7 @@ export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardD
         ]) ?? ""
       );
       const l3Date = toDateStr(
-        getField(row, [
+        getRawField(row, [
           "Escalated for L3 Support Date",
           "Escalated For L3 Support Date",
           "L3 Support Date",
@@ -225,12 +226,18 @@ export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardD
         "RCA",
         "Root Cause Analysis",
         "Root Cause",
-        "Action Taken/RCA",
       ]);
       const rcaFamily = getRcaFamily(rca);
       return {
         rowNo: index + 2,
-        tt: getField(row, ["TT", "Ticket", "Ticket Number"]),
+        tt: getField(row, [
+          "TT",
+          "TT Number",
+          "TT No",
+          "TT #",
+          "Ticket",
+          "Ticket Number",
+        ]),
         siteId: getField(row, ["Site ID", "SiteID", "Site Name", "SiteName"]),
         siteName: getField(row, ["Site Name", "SiteName"]),
         managedResource: getField(row, [

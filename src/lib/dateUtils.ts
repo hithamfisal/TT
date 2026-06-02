@@ -51,7 +51,13 @@ export function isRfSiteId(value: unknown): boolean {
 
 export function parseDateValue(value: unknown): Date | null {
   if (value === null || value === undefined || value === "") return null;
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return new Date(
+      value.getUTCFullYear(),
+      value.getUTCMonth(),
+      value.getUTCDate()
+    );
+  }
 
   const numericValue =
     typeof value === "number"
@@ -331,18 +337,28 @@ export function formatMonthMMMMYYYY(monthKey: string): string {
 }
 
 export function parseDurationHours(duration: string): number | null {
-  if (!duration) return null;
+  const text = clean(duration);
+  if (!text) return null;
 
-  if (/days?/i.test(duration) || /hrs?/i.test(duration)) {
-    const days = Number(duration.match(/(\d+)\s*days?/i)?.[1] ?? 0);
-    const hrs = Number(duration.match(/(\d+)\s*hrs?/i)?.[1] ?? 0);
-    const mins = Number(duration.match(/(\d+)\s*mins?/i)?.[1] ?? 0);
+  if (/(?:days?|d|hrs?|hours?|h|mins?|minutes?|m)\b/i.test(text)) {
+    const days = Number(text.match(/(\d+(?:\.\d+)?)\s*(?:days?|d)\b/i)?.[1] ?? 0);
+    const hrs = Number(text.match(/(\d+(?:\.\d+)?)\s*(?:hrs?|hours?|h)\b/i)?.[1] ?? 0);
+    const mins = Number(text.match(/(\d+(?:\.\d+)?)\s*(?:mins?|minutes?|m)\b/i)?.[1] ?? 0);
 
     const total = days * 24 + hrs + mins / 60;
     return Number.isFinite(total) ? total : null;
   }
 
-  const num = Number(duration);
+  const hhmmMatch = text.match(/^(\d+):(\d{1,2})(?::(\d{1,2}))?$/);
+  if (hhmmMatch) {
+    const hours = Number(hhmmMatch[1]);
+    const minutes = Number(hhmmMatch[2]);
+    const seconds = Number(hhmmMatch[3] ?? 0);
+    const total = hours + minutes / 60 + seconds / 3600;
+    return Number.isFinite(total) ? Math.round(total * 10) / 10 : null;
+  }
+
+  const num = Number(text);
 
   if (Number.isFinite(num) && num >= 0) {
     if (num > 0 && num < 1) return Math.round(num * 24 * 10) / 10;

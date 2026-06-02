@@ -480,6 +480,69 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
+.google-sheet-loader {
+  display: grid;
+  gap: 7px;
+  max-width: 620px;
+  margin-top: 16px;
+}
+.google-sheet-loader label {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.google-region-grid {
+  display: grid;
+  gap: 8px;
+}
+.google-region-row {
+  display: grid !important;
+  grid-template-columns: 18px 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+}
+.google-region-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #22d3ee;
+}
+.google-region-row span {
+  color: #dbeafe;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.google-region-row input[type="url"] {
+  width: 100%;
+  min-width: 180px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.44);
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 700;
+  outline: none;
+}
+.google-region-row input[type="url"]::placeholder {
+  color: rgba(148, 163, 184, 0.72);
+}
+.google-region-row input[type="url"]:focus {
+  border-color: rgba(103, 232, 249, 0.62);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.12);
+}
+.google-load-selected {
+  justify-self: start;
+}
+.google-sheet-loader button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
 .upload-checks {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1277,6 +1340,8 @@
 }
 
 .perf-gauge-card__status {
+  flex: 0 0 auto;
+  min-width: 82px;
   padding: 4px 8px;
   border-radius: 999px;
   font-size: 0.7rem;
@@ -1286,6 +1351,8 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.05);
   color: #e2e8f0;
+  text-align: center;
+  white-space: nowrap;
 }
 .perf-gauge-card__status--excellent { color: #34d399; }
 .perf-gauge-card__status--good { color: #22d3ee; }
@@ -3561,6 +3628,35 @@ Does this choice reinforce or dilute our design philosophy?
   background-attachment: fixed;
 }
 
+/* Visible borders for every dashboard table */
+.dashboard-shell table {
+  border-collapse: collapse !important;
+  border-spacing: 0 !important;
+  border: 1px solid rgba(125, 211, 252, 0.32) !important;
+}
+
+.dashboard-shell table th,
+.dashboard-shell table td {
+  border: 1px solid rgba(125, 211, 252, 0.26) !important;
+}
+
+.dashboard-shell table thead th {
+  border-color: rgba(103, 232, 249, 0.42) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] table {
+  border-color: rgba(14, 116, 144, 0.34) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] table th,
+.dashboard-shell[data-dashboard-theme="light"] table td {
+  border-color: rgba(14, 116, 144, 0.28) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] table thead th {
+  border-color: rgba(14, 116, 144, 0.46) !important;
+}
+
 @media (min-width: 1440px) {
   .dashboard-shell .table-card {
     width: min(100%, calc(100vw - 44px));
@@ -4241,4 +4337,919 @@ Does this choice reinforce or dilute our design philosophy?
   font-size: 13px !important;
   font-weight: 800 !important;
   border-radius: 9px !important;
+}
+
+/* Compact first-load upload shell: sit below header and match media height */
+.dashboard-shell .upload-stage {
+  margin: 18px auto 34px !important;
+  max-width: 1240px !important;
+  padding: 0 18px !important;
+}
+
+.dashboard-shell .upload-card {
+  grid-template-columns: minmax(0, 0.95fr) minmax(360px, 0.9fr) !important;
+  align-items: center !important;
+  gap: 18px !important;
+  min-height: 0 !important;
+  padding: 16px !important;
+}
+
+.dashboard-shell .upload-copy {
+  justify-content: center !important;
+  padding: 16px 20px !important;
+}
+
+.dashboard-shell .upload-copy h2 {
+  max-width: 560px !important;
+  margin: 10px 0 8px !important;
+  font-size: clamp(30px, 3vw, 44px) !important;
+  line-height: 1.04 !important;
+}
+
+.dashboard-shell .upload-copy p {
+  max-width: 560px !important;
+  margin-bottom: 16px !important;
+  font-size: 14px !important;
+  line-height: 1.55 !important;
+}
+
+.dashboard-shell .upload-actions {
+  flex-wrap: wrap !important;
+  gap: 10px !important;
+  align-items: center !important;
+}
+
+.dashboard-shell .upload-actions .primary-button.large,
+.dashboard-shell .upload-actions .ghost-button.large {
+  min-height: 42px !important;
+  height: 42px !important;
+  padding: 0 18px !important;
+  border-radius: 999px !important;
+  font-size: 13px !important;
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-shell .upload-actions > span {
+  flex-basis: 100% !important;
+  margin-top: 4px !important;
+  font-size: 11px !important;
+}
+
+.dashboard-shell .google-sheet-loader {
+  max-width: 610px !important;
+  margin-top: 12px !important;
+  gap: 5px !important;
+}
+
+.dashboard-shell .google-sheet-loader > label {
+  font-size: 11px !important;
+}
+
+.dashboard-shell .google-region-grid {
+  gap: 8px !important;
+}
+
+.dashboard-shell .google-region-row {
+  grid-template-columns: 16px 78px minmax(0, 1fr) !important;
+  gap: 8px !important;
+}
+
+.dashboard-shell .google-region-row span {
+  font-size: 11px !important;
+}
+
+.dashboard-shell .google-region-row input[type="url"] {
+  height: 34px !important;
+  min-height: 34px !important;
+  border-radius: 999px !important;
+  background: rgba(2, 6, 23, 0.48) !important;
+  color: #f8fafc !important;
+}
+
+.dashboard-shell .google-sheet-loader .ghost-button.large {
+  min-height: 42px !important;
+  height: 42px !important;
+  padding: 0 16px !important;
+  border-radius: 999px !important;
+  font-size: 13px !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .google-sheet-loader > label,
+.dashboard-shell[data-dashboard-theme="light"] .google-region-row span {
+  color: #3f6174 !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .google-region-row input[type="url"] {
+  color: #092033 !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(0, 115, 176, 0.24) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .google-region-row input[type="url"]::placeholder {
+  color: rgba(63, 97, 116, 0.72) !important;
+}
+
+.dashboard-shell .upload-visual,
+.dashboard-shell .upload-visual img {
+  min-height: 0 !important;
+  height: 284px !important;
+}
+
+.dashboard-shell .upload-visual img {
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+/* First-load screen: keep the upload card inside the viewport. */
+.dashboard-shell.dashboard-shell--welcome {
+  padding-bottom: 18px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .topbar {
+  min-height: 168px !important;
+  padding: 12px 20px 8px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .upload-stage {
+  margin: 8px auto 18px !important;
+  max-width: 1180px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .upload-card {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.78fr) !important;
+  align-items: stretch !important;
+  gap: 12px !important;
+  padding: 12px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .upload-card::before {
+  inset: 8px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .upload-copy {
+  padding: 12px 16px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .section-kicker {
+  font-size: 11px !important;
+  margin-bottom: 6px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .upload-copy h2 {
+  margin: 6px 0 !important;
+  font-size: clamp(24px, 2.3vw, 34px) !important;
+  line-height: 1.03 !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .upload-copy p {
+  margin-bottom: 10px !important;
+  font-size: 13px !important;
+  line-height: 1.42 !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .upload-actions {
+  gap: 8px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .upload-actions .primary-button.large,
+.dashboard-shell.dashboard-shell--welcome .upload-actions .ghost-button.large,
+.dashboard-shell.dashboard-shell--welcome .google-sheet-loader .ghost-button.large {
+  min-height: 36px !important;
+  height: 36px !important;
+  padding: 0 14px !important;
+  font-size: 12px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .upload-actions > span {
+  margin-top: 0 !important;
+  font-size: 10px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .google-sheet-loader {
+  margin-top: 8px !important;
+  gap: 4px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .google-region-grid {
+  gap: 5px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .google-region-row {
+  grid-template-columns: 16px 72px minmax(0, 1fr) !important;
+  gap: 6px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .google-region-row input[type="url"] {
+  min-height: 30px !important;
+  height: 30px !important;
+  font-size: 12px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .upload-visual,
+.dashboard-shell.dashboard-shell--welcome .upload-visual img {
+  height: auto !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .upload-visual {
+  min-height: 300px !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .upload-visual img {
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+.dashboard-shell.dashboard-shell--welcome .upload-visual img {
+  object-fit: fill !important;
+  object-position: center !important;
+}
+
+@media (max-height: 760px) and (min-width: 901px) {
+  .dashboard-shell.dashboard-shell--welcome .topbar {
+    min-height: 154px !important;
+  }
+
+  .dashboard-shell.dashboard-shell--welcome .upload-visual,
+  .dashboard-shell.dashboard-shell--welcome .upload-visual img {
+    min-height: 230px !important;
+  }
+
+  .dashboard-shell.dashboard-shell--welcome .upload-copy h2 {
+    font-size: clamp(22px, 2vw, 30px) !important;
+  }
+}
+
+/* CDR header system parity for the ticketing dashboard */
+.dashboard-shell {
+  padding: 18px clamp(14px, 3vw, 38px) 48px !important;
+}
+
+.dashboard-shell .hero-panel {
+  position: relative !important;
+  isolation: isolate !important;
+  overflow: visible !important;
+  width: 100% !important;
+  min-height: auto !important;
+  margin: 0 auto 18px !important;
+  padding: 18px 24px 20px !important;
+  border: 1px solid rgba(34, 211, 238, 0.2) !important;
+  border-radius: 24px !important;
+  background:
+    url("./assets/h.png") center top / cover no-repeat,
+    linear-gradient(135deg, rgba(2, 10, 28, 0.94), rgba(0, 34, 74, 0.78)) !important;
+  background-blend-mode: normal !important;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.38),
+    inset 0 1px rgba(255, 255, 255, 0.08) !important;
+  filter: none !important;
+}
+
+.dashboard-shell .hero-panel::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  display: block !important;
+  pointer-events: none !important;
+  border-radius: inherit !important;
+  background:
+    linear-gradient(90deg, rgba(2, 6, 23, 0.28), rgba(2, 13, 28, 0.04) 54%, rgba(2, 6, 23, 0.2)),
+    radial-gradient(circle at 18% 58%, rgba(14, 165, 233, 0.12), transparent 32%),
+    radial-gradient(circle at 84% 78%, rgba(20, 184, 166, 0.1), transparent 28%) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .hero-panel {
+  background:
+    url("./assets/h.png") center top / cover no-repeat,
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(226, 246, 255, 0.58)) !important;
+  border-color: rgba(0, 120, 180, 0.2) !important;
+  box-shadow:
+    0 18px 42px rgba(24, 78, 119, 0.16),
+    inset 0 1px rgba(255, 255, 255, 0.72) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .hero-panel::after {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.12) 54%, rgba(255, 255, 255, 0.34)),
+    radial-gradient(circle at 18% 58%, rgba(14, 165, 233, 0.08), transparent 32%),
+    radial-gradient(circle at 84% 78%, rgba(20, 184, 166, 0.07), transparent 28%) !important;
+}
+
+.dashboard-shell .topbar,
+.dashboard-shell .dashboard-section-nav,
+.dashboard-shell .dashboard-filters-panel,
+.dashboard-shell .filters-panel.dashboard-filters-panel {
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+.dashboard-shell .topbar {
+  display: grid !important;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  min-height: 198px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 18px 24px 18px !important;
+  gap: 12px 18px !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.dashboard-shell .topbar-brand-row {
+  display: contents !important;
+}
+
+.dashboard-shell .header-logo-group--left.header-logo-group--solo {
+  position: absolute !important;
+  top: 6px !important;
+  left: 6px !important;
+  z-index: 5 !important;
+  display: grid !important;
+  place-items: start !important;
+  width: 170px !important;
+  height: 170px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  pointer-events: none !important;
+}
+
+.dashboard-shell .header-logo-img.nasco-logo--hero {
+  width: 166px !important;
+  height: 166px !important;
+  max-width: none !important;
+  object-fit: contain !important;
+  object-position: top left !important;
+  filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.32)) !important;
+}
+
+.dashboard-shell .header-logo-group--right {
+  grid-column: 3 !important;
+  grid-row: 1 !important;
+  justify-self: end !important;
+  min-width: 180px !important;
+}
+
+.dashboard-shell .brand-title-center {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  justify-self: center !important;
+  width: auto !important;
+  min-height: 68px !important;
+  padding: 12px 34px !important;
+  gap: 0 !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(34, 211, 238, 0.26) !important;
+  background: rgba(2, 10, 28, 0.74) !important;
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.08),
+    0 14px 34px rgba(0, 0, 0, 0.22) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .brand-title-center {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border-color: rgba(0, 120, 180, 0.24) !important;
+  box-shadow: 0 14px 34px rgba(24, 78, 119, 0.13) !important;
+}
+
+.dashboard-shell .brand-title-center span {
+  font-family: Arial, system-ui, sans-serif !important;
+  font-size: clamp(24px, 2.4vw, 36px) !important;
+  font-style: italic !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  letter-spacing: 0.055em !important;
+  text-align: center !important;
+  text-transform: uppercase !important;
+  white-space: nowrap !important;
+  color: #f8fbff !important;
+  text-shadow: 0 4px 14px rgba(0, 0, 0, 0.34) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .brand-title-center span {
+  color: #062033 !important;
+  text-shadow: none !important;
+}
+
+.dashboard-shell .topbar-actions {
+  grid-column: 1 / -1 !important;
+  grid-row: 2 !important;
+  display: flex !important;
+  align-items: center !important;
+  align-self: start !important;
+  justify-content: center !important;
+  flex-wrap: wrap !important;
+  gap: 10px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  padding-top: 0 !important;
+}
+
+.dashboard-shell .topbar-actions .theme-toggle {
+  display: inline-flex !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.dashboard-shell .topbar-actions .theme-toggle button,
+.dashboard-shell .topbar-actions .ghost-button,
+.dashboard-shell .topbar-actions .primary-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 9px !important;
+  min-height: 46px !important;
+  height: 46px !important;
+  padding: 10px 15px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(116, 181, 214, 0.38) !important;
+  font-size: 16px !important;
+  font-weight: 750 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  color: #f4fbff !important;
+  background: #092536 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.dashboard-shell .topbar-actions .theme-toggle button.active,
+.dashboard-shell .topbar-actions .primary-button {
+  color: #031225 !important;
+  background: linear-gradient(135deg, #22d3ee, #60a5fa) !important;
+  border-color: rgba(125, 211, 252, 0.62) !important;
+  box-shadow: 0 12px 28px rgba(34, 211, 238, 0.24) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .topbar-actions .theme-toggle button,
+.dashboard-shell[data-dashboard-theme="light"] .topbar-actions .ghost-button,
+.dashboard-shell[data-dashboard-theme="light"] .topbar-actions .primary-button {
+  color: #083047 !important;
+  background: rgba(255, 255, 255, 0.82) !important;
+  border-color: rgba(0, 120, 180, 0.25) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .topbar-actions .theme-toggle button.active,
+.dashboard-shell[data-dashboard-theme="light"] .topbar-actions .primary-button {
+  color: #06283d !important;
+  background: linear-gradient(135deg, #22d3ee, #60a5fa) !important;
+  border-color: rgba(0, 120, 200, 0.34) !important;
+}
+
+.dashboard-shell .topbar-actions svg {
+  width: 22px !important;
+  height: 22px !important;
+  stroke-width: 2.4 !important;
+}
+
+.dashboard-shell .dashboard-section-nav.dashboard-tabs-nav {
+  position: relative !important;
+  top: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-height: 52px !important;
+  margin: 8px 0 0 !important;
+  padding: 10px 12px !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(116, 181, 214, 0.38) !important;
+  background: rgba(7, 28, 42, 0.94) !important;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.34),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.025) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .dashboard-section-nav.dashboard-tabs-nav {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(0, 100, 150, 0.2) !important;
+  box-shadow:
+    0 16px 36px rgba(17, 86, 128, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72) !important;
+}
+
+.dashboard-shell .section-nav-buttons,
+.dashboard-shell .section-tabs-buttons {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+.dashboard-shell .section-nav-button,
+.dashboard-shell .section-tab-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: fit-content !important;
+  min-height: 34px !important;
+  padding: 7px 12px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(116, 181, 214, 0.38) !important;
+  color: #f4fbff !important;
+  background: #092536 !important;
+  background-image: none !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  box-shadow: none !important;
+}
+
+.dashboard-shell .section-nav-button.section-tab-button-active,
+.dashboard-shell .section-tab-button.section-tab-button-active {
+  color: #031225 !important;
+  background: linear-gradient(135deg, #22d3ee, #20d3b0) !important;
+  border-color: rgba(125, 211, 252, 0.66) !important;
+  box-shadow: 0 10px 24px rgba(34, 211, 238, 0.24) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .section-nav-button,
+.dashboard-shell[data-dashboard-theme="light"] .section-tab-button {
+  color: #083047 !important;
+  background: #ffffff !important;
+  border-color: rgba(0, 100, 150, 0.26) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .section-nav-button.section-tab-button-active,
+.dashboard-shell[data-dashboard-theme="light"] .section-tab-button.section-tab-button-active {
+  color: #06283d !important;
+  background: linear-gradient(135deg, #22d3ee, #20d3b0) !important;
+}
+
+.dashboard-shell .section-tabs-current {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 34px !important;
+  max-width: 320px !important;
+  padding: 7px 12px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(116, 181, 214, 0.32) !important;
+  color: #f4fbff !important;
+  background: #092536 !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .section-tabs-current {
+  color: #083047 !important;
+  background: #ffffff !important;
+  border-color: rgba(0, 100, 150, 0.22) !important;
+}
+
+.dashboard-shell .dashboard-filters-panel,
+.dashboard-shell .filters-panel.dashboard-filters-panel {
+  display: grid !important;
+  grid-template-columns: minmax(240px, 1.25fr) repeat(7, minmax(110px, 0.75fr)) auto !important;
+  align-items: end !important;
+  justify-content: start !important;
+  column-gap: 10px !important;
+  row-gap: 8px !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  margin: 12px 0 0 !important;
+  padding: 10px !important;
+  border-radius: 9px !important;
+  border: 1px solid rgba(116, 181, 214, 0.38) !important;
+  background: rgba(7, 28, 42, 0.94) !important;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.34),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.025) !important;
+  overflow: visible !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel,
+.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(0, 100, 150, 0.2) !important;
+  box-shadow:
+    0 16px 36px rgba(17, 86, 128, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72) !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box,
+.dashboard-shell .dashboard-filters-panel .filter-field,
+.dashboard-shell .filters-panel.dashboard-filters-panel .search-box,
+.dashboard-shell .filters-panel.dashboard-filters-panel .filter-field {
+  display: grid !important;
+  gap: 6px !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  font-size: 11px !important;
+  font-weight: 850 !important;
+  line-height: 1 !important;
+  letter-spacing: 0.07em !important;
+  color: #9fb6c7 !important;
+  text-transform: uppercase !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box::before,
+.dashboard-shell .filters-panel.dashboard-filters-panel .search-box::before {
+  content: none !important;
+  display: none !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box > span,
+.dashboard-shell .dashboard-filters-panel .filter-field > span,
+.dashboard-shell .filters-panel.dashboard-filters-panel .search-box > span,
+.dashboard-shell .filters-panel.dashboard-filters-panel .filter-field > span {
+  display: block !important;
+  height: auto !important;
+  min-height: 11px !important;
+  margin: 0 !important;
+  font-size: 11px !important;
+  font-weight: 850 !important;
+  line-height: 1 !important;
+  letter-spacing: 0.07em !important;
+  color: #9fb6c7 !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .search-box,
+.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .filter-field,
+.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .search-box,
+.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .filter-field,
+.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .search-box > span,
+.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .filter-field > span,
+.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .search-box > span,
+.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .filter-field > span {
+  color: #3f6174 !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box svg,
+.dashboard-shell .filters-panel.dashboard-filters-panel .search-box svg {
+  display: block !important;
+  position: absolute !important;
+  left: 13px !important;
+  bottom: 12px !important;
+  width: 16px !important;
+  height: 16px !important;
+  color: #67e8f9 !important;
+  pointer-events: none !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box input,
+.dashboard-shell .dashboard-filters-panel .multi-select-trigger,
+.dashboard-shell .dashboard-filters-panel .select-wrap select,
+.dashboard-shell .filters-panel.dashboard-filters-panel .search-box input,
+.dashboard-shell .filters-panel.dashboard-filters-panel .multi-select-trigger,
+.dashboard-shell .filters-panel.dashboard-filters-panel .select-wrap select {
+  width: 100% !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 12px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(116, 181, 214, 0.36) !important;
+  background: #092536 !important;
+  background-image: none !important;
+  color: #f4fbff !important;
+  font-size: 13px !important;
+  font-weight: 750 !important;
+  line-height: 1 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .search-box input,
+.dashboard-shell .filters-panel.dashboard-filters-panel .search-box input {
+  padding-left: 40px !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .search-box input,
+.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .multi-select-trigger,
+.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .select-wrap select,
+.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .search-box input,
+.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .multi-select-trigger,
+.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .select-wrap select {
+  color: #092033 !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-color: rgba(0, 115, 176, 0.28) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .ghost-button,
+.dashboard-shell .filters-panel.dashboard-filters-panel .ghost-button {
+  align-self: end !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 13px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(116, 181, 214, 0.38) !important;
+  color: #f4fbff !important;
+  background: #092536 !important;
+  font-size: 13px !important;
+  font-weight: 850 !important;
+  line-height: 1 !important;
+  box-shadow: none !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .ghost-button,
+.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .ghost-button {
+  color: #083047 !important;
+  background: #ffffff !important;
+  border-color: rgba(0, 100, 150, 0.26) !important;
+}
+
+.dashboard-shell .dashboard-filters-panel .ghost-button svg,
+.dashboard-shell .filters-panel.dashboard-filters-panel .ghost-button svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+.dashboard-shell .online-source-panel {
+  position: relative !important;
+  z-index: 3 !important;
+  display: grid !important;
+  gap: 12px !important;
+  margin: 10px 20px 16px !important;
+  padding: 14px 16px !important;
+  border: 1px solid rgba(34, 211, 238, 0.22) !important;
+  border-radius: 18px !important;
+  background:
+    linear-gradient(135deg, rgba(8, 18, 38, 0.92), rgba(9, 62, 82, 0.58)) !important;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.24),
+    inset 0 1px rgba(255, 255, 255, 0.07) !important;
+}
+
+.dashboard-shell .online-source-panel__head {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+}
+
+.dashboard-shell .online-source-panel__head span {
+  display: block !important;
+  color: #67e8f9 !important;
+  font-size: 12px !important;
+  font-weight: 1000 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+
+.dashboard-shell .online-source-panel__head strong {
+  display: block !important;
+  margin-top: 3px !important;
+  color: #dbeafe !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+}
+
+.dashboard-shell .online-source-actions {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 10px !important;
+}
+
+.dashboard-shell .online-source-actions .primary-button,
+.dashboard-shell .online-source-actions .ghost-button,
+.dashboard-shell .online-source-panel__head .ghost-button {
+  min-height: 40px !important;
+  padding: 0 16px !important;
+  border-radius: 999px !important;
+  font-size: 13px !important;
+}
+
+.dashboard-shell .online-source-links {
+  max-width: none !important;
+  margin-top: 0 !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .online-source-panel {
+  border-color: rgba(14, 116, 144, 0.22) !important;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(224, 242, 254, 0.7)) !important;
+  box-shadow: 0 16px 34px rgba(24, 78, 119, 0.13) !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .online-source-panel__head span {
+  color: #0e7490 !important;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .online-source-panel__head strong {
+  color: #0f172a !important;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-shell .topbar {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto auto !important;
+    min-height: auto !important;
+    padding: 16px !important;
+  }
+
+  .dashboard-shell .topbar-brand-row {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    justify-items: center !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-shell .header-logo-group--left.header-logo-group--solo {
+    position: static !important;
+    justify-self: center !important;
+    width: auto !important;
+    height: auto !important;
+    margin-bottom: 2px !important;
+  }
+
+  .dashboard-shell .header-logo-img.nasco-logo--hero {
+    width: 82px !important;
+    height: 82px !important;
+  }
+
+  .dashboard-shell .brand-title-center,
+  .dashboard-shell .topbar-actions {
+    grid-column: auto !important;
+    grid-row: auto !important;
+  }
+
+  .dashboard-shell .header-logo-group--right {
+    display: none !important;
+  }
+
+  .dashboard-shell .dashboard-filters-panel,
+  .dashboard-shell .filters-panel.dashboard-filters-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-shell {
+    padding: 12px 10px 36px !important;
+  }
+
+  .dashboard-shell .hero-panel {
+    padding: 12px !important;
+    border-radius: 18px !important;
+  }
+
+  .dashboard-shell .brand-title-center {
+    min-height: 58px !important;
+    width: 100% !important;
+    padding: 10px 18px !important;
+  }
+
+  .dashboard-shell .brand-title-center span {
+    font-size: clamp(19px, 7vw, 26px) !important;
+    white-space: normal !important;
+  }
+
+  .dashboard-shell .topbar-actions .theme-toggle,
+  .dashboard-shell .topbar-actions .theme-toggle button,
+  .dashboard-shell .topbar-actions .ghost-button,
+  .dashboard-shell .topbar-actions .primary-button {
+    width: 100% !important;
+  }
+
+  .dashboard-shell .google-region-row {
+    grid-template-columns: 18px minmax(72px, auto) minmax(0, 1fr) !important;
+  }
+
+  .dashboard-shell .google-region-row input[type="url"],
+  .dashboard-shell .google-sheet-loader .ghost-button.large {
+    width: 100% !important;
+  }
+
+  .dashboard-shell .dashboard-section-nav.dashboard-tabs-nav {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+
+  .dashboard-shell .section-nav-buttons,
+  .dashboard-shell .section-tabs-buttons {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-shell .section-nav-button,
+  .dashboard-shell .section-tab-button,
+  .dashboard-shell .section-tabs-current {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .dashboard-shell .dashboard-filters-panel,
+  .dashboard-shell .filters-panel.dashboard-filters-panel {
+    grid-template-columns: 1fr !important;
+  }
 }

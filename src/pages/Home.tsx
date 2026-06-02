@@ -61,6 +61,28 @@ const INITIAL_COLLAPSED_SECTIONS: Record<DashboardSectionId, boolean> = {
 
 const SAVED_DASHBOARD_KEY = "followup-dashboard:last-workbook:v1";
 
+const GOOGLE_REGION_LINKS = [
+  { key: "eoaNeoa", label: "EOA&NEOA" },
+  { key: "soa", label: "SOA" },
+  { key: "coaWoa", label: "COA&WOA" },
+] as const;
+
+type GoogleRegionKey = (typeof GOOGLE_REGION_LINKS)[number]["key"];
+type GoogleRegionLinks = Record<GoogleRegionKey, string>;
+type GoogleRegionSelection = Record<GoogleRegionKey, boolean>;
+
+const EMPTY_GOOGLE_REGION_LINKS: GoogleRegionLinks = {
+  eoaNeoa: "",
+  soa: "",
+  coaWoa: "",
+};
+
+const EMPTY_GOOGLE_REGION_SELECTION: GoogleRegionSelection = {
+  eoaNeoa: true,
+  soa: true,
+  coaWoa: true,
+};
+
 import {
   Activity,
   AlertTriangle,
@@ -76,6 +98,7 @@ import {
   Home as HomeIcon,
   Layers3,
   ImageDown,
+  Link as LinkIcon,
   Maximize2,
   Minimize2,
   Moon,
@@ -162,6 +185,14 @@ import {
 import { groupTickets, parseRows } from "../lib/parseWorkbook";
 import { calculateDeepDiveAnalytics, calculateExecutiveInsights } from "../lib/ticketAnalytics";
 
+
+function ticketDurationHours(row: TicketRecord): number {
+  const parsed = parseDurationHours(row.duration);
+  if (parsed !== null && Number.isFinite(parsed)) return parsed;
+  return typeof row.resolutionHours === "number" && Number.isFinite(row.resolutionHours)
+    ? row.resolutionHours
+    : 0;
+}
 
 type ZipFileMap = Record<string, Uint8Array>;
 type ZipTextCodec = {
@@ -1674,6 +1705,7 @@ const DISTINCT_REPORT_HEADERS = [
   "TT",
   "Status",
   "Escalated to",
+  "RCA",
   "Action",
 ];
 const PERF_REPORT_HEADERS = [
@@ -1716,6 +1748,7 @@ const TICKET_TEMPLATE_PDF_HEAD = [
     "TT Number",
     "TT Status",
     "TT Owner",
+    "RCA",
     "Comments",
   ],
   [
@@ -1731,6 +1764,7 @@ const TICKET_TEMPLATE_PDF_HEAD = [
     "Time",
     "Date",
     "Time",
+    "",
     "",
     "",
     "",
@@ -1802,12 +1836,26 @@ function computePerfRows(
   siteOrder: { siteId: string; siteName: string }[] = []
 ): PerfRow[] {
   const range = monthKey !== "all" ? selectedMonthRange(monthKey) : null;
-  const monthHours = monthKey !== "all" ? totalHoursInMonth(monthKey) : 24 * 30;
+  const allMonthKeys = Array.from(
+    new Set(
+      allRows
+        .map(row => row.openingMonthKey || openingMonthKey(row.observationDate))
+        .filter(key => key && key !== "Unknown")
+    )
+  );
+  const monthHours =
+    monthKey !== "all"
+      ? totalHoursInMonth(monthKey)
+      : allMonthKeys.length
+        ? allMonthKeys.reduce((sum, key) => sum + totalHoursInMonth(key), 0)
+        : 24 * 30;
   const siteNameMap = new Map<string, string>();
   const siteIdMap = new Map<string, string>();
   const sourceMap = new Map<string, string>();
   const siteTicketCount = new Map<string, number>();
   const siteDownHours = new Map<string, number>();
+  const countedSiteTickets = new Set<string>();
+  const countedSiteDowntime = new Set<string>();
 
   allRows.forEach(row => {
     if (!row.siteId) return;
@@ -1817,7 +1865,11 @@ function computePerfRows(
     if (!sourceMap.has(key)) sourceMap.set(key, sourceLabel);
     if (!siteNameMap.has(key) && row.siteName)
       siteNameMap.set(key, row.siteName);
-    siteTicketCount.set(key, (siteTicketCount.get(key) ?? 0) + 1);
+    const ticketKey = `${key}||${clean(row.tt) || row.rowNo}`;
+    if (!countedSiteTickets.has(ticketKey)) {
+      countedSiteTickets.add(ticketKey);
+      siteTicketCount.set(key, (siteTicketCount.get(key) ?? 0) + 1);
+    }
   });
 
   function combineDatetime(dateStr: string, timeStr: string): Date | null {
@@ -1847,9 +1899,13 @@ function computePerfRows(
       row.recoveryTime
     );
     const sourceLabel = perfSourceLabel(row);
+    const key = perfEntryKey(sourceLabel, row.siteId);
+    const ticketKey = `${key}||${clean(row.tt) || row.rowNo}`;
+    if (countedSiteDowntime.has(ticketKey)) return;
+    countedSiteDowntime.add(ticketKey);
+
     if (monthKey === "all") {
-      const hours = parseDurationHours(row.duration) ?? 0;
-      const key = perfEntryKey(sourceLabel, row.siteId);
+      const hours = ticketDurationHours(row);
       siteDownHours.set(
         key,
         Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10
@@ -1868,7 +1924,6 @@ function computePerfRows(
     const overlapMs = effectiveEnd.getTime() - effectiveStart.getTime();
     if (overlapMs <= 0) return;
     const hours = Math.round((overlapMs / (1000 * 60 * 60)) * 10) / 10;
-    const key = perfEntryKey(sourceLabel, row.siteId);
     siteDownHours.set(
       key,
       Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10
@@ -1902,7 +1957,7 @@ function computePerfRows(
   }
 
   return siteEntries.map(({ siteId, siteName, sourceLabel, perfKey }) => {
-    const downHours = siteDownHours.get(perfKey) ?? 0;
+    const downHours = Math.min(siteDownHours.get(perfKey) ?? 0, monthHours);
     const availHours = Math.max(0, monthHours - downHours);
     const totalHours = availHours + downHours;
     const reliability = totalHours > 0 ? availHours / totalHours : 1;
@@ -3266,6 +3321,9 @@ function uniqueTicketValues(
 
 function distinctReportRow(ticket: TicketAggregate, index: number): string[] {
   const row = ticket.primary;
+  const rca = row.rca || uniqueTicketValues(ticket, "rca") || "";
+  const actionTaken =
+    row.actionTaken || uniqueTicketValues(ticket, "actionTaken") || "";
   return [
     String(index + 1),
     Array.from(ticket.siteIds).join(", "),
@@ -3283,7 +3341,8 @@ function distinctReportRow(ticket: TicketAggregate, index: number): string[] {
     ticket.tt || "",
     row.status || "",
     row.escalatedTo || "",
-    row.actionTaken || "",
+    rca,
+    actionTaken,
   ];
 }
 
@@ -3340,11 +3399,75 @@ function exportExcel(rows: TicketAggregate[]) {
     { wch: 18 },
     { wch: 14 },
     { wch: 20 },
+    { wch: 52 },
     { wch: 34 },
   ];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Distinct TT Report");
   XLSX.writeFile(workbook, "follow-up-distinct-tt-report.xlsx");
+}
+
+function exportAnalyticsTableExcel(
+  headers: string[],
+  rows: Array<Array<string | number>>,
+  sheetName: string,
+  fileName: string
+) {
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  const columnWidths = headers.map((header, colIndex) => {
+    const maxCellLength = Math.max(
+      header.length,
+      ...rows.map(row => String(row[colIndex] ?? "").length)
+    );
+    return { wch: Math.min(Math.max(maxCellLength + 2, 12), 42) };
+  });
+  worksheet["!cols"] = columnWidths;
+  const range = XLSX.utils.decode_range(worksheet["!ref"] ?? "A1:A1");
+  for (let r = range.s.r; r <= range.e.r; r += 1) {
+    for (let c = range.s.c; c <= range.e.c; c += 1) {
+      applySheetCellAlignment(
+        worksheet,
+        XLSX.utils.encode_cell({ r, c }),
+        "center"
+      );
+    }
+  }
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  XLSX.writeFile(workbook, fileName);
+}
+
+function exportAnalyticsWorkbookExcel(
+  sheets: Array<{
+    name: string;
+    headers: string[];
+    rows: Array<Array<string | number>>;
+  }>,
+  fileName: string
+) {
+  const workbook = XLSX.utils.book_new();
+  sheets.forEach(sheet => {
+    const worksheet = XLSX.utils.aoa_to_sheet([sheet.headers, ...sheet.rows]);
+    worksheet["!cols"] = sheet.headers.map((header, colIndex) => {
+      const maxCellLength = Math.max(
+        header.length,
+        ...sheet.rows.map(row => String(row[colIndex] ?? "").length)
+      );
+      return { wch: Math.min(Math.max(maxCellLength + 2, 12), 44) };
+    });
+    const range = XLSX.utils.decode_range(worksheet["!ref"] ?? "A1:A1");
+    for (let r = range.s.r; r <= range.e.r; r += 1) {
+      for (let c = range.s.c; c <= range.e.c; c += 1) {
+        applySheetCellAlignment(
+          worksheet,
+          XLSX.utils.encode_cell({ r, c }),
+          "center"
+        );
+      }
+    }
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name);
+  });
+  XLSX.writeFile(workbook, fileName);
 }
 
 async function exportTicketTemplate(
@@ -3355,9 +3478,44 @@ async function exportTicketTemplate(
   // Only the worksheet XML is touched — xl/styles.xml, xl/drawings/, xl/media/
   // (logos, borders, fills) are never opened, so they survive byte-for-byte.
 
-  const DATA_START = 39; // first data row
-  const PROTECTED = 59; // Remarks row — never modified
-  const AVAIL = PROTECTED - DATA_START; // 20 template rows
+  const normalizeTicketRegionLabel = (region: string) => {
+    const value = clean(region).toUpperCase();
+    if (value === "EOA" || value === "NEOA") return "EOA";
+    if (value === "SOA") return "SOA";
+    if (value === "COA") return "COA";
+    if (value === "WOA") return "WOA";
+    return value || "EOA";
+  };
+
+  const ticketRegionSet = new Set(
+    tickets
+      .map(ticket => normalizeTicketRegionLabel(ticket.primary.region))
+      .filter(Boolean)
+  );
+  const templateRegionOrder = ["EOA", "SOA", "COA", "WOA"] as const;
+  if (ticketRegionSet.size > 1) {
+    for (const region of templateRegionOrder) {
+      const regionTickets = tickets.filter(
+        ticket => normalizeTicketRegionLabel(ticket.primary.region) === region
+      );
+      if (regionTickets.length) {
+        await exportTicketTemplate(regionTickets, monthKey);
+      }
+    }
+    return;
+  }
+  const templateKind =
+    templateRegionOrder.find(region => ticketRegionSet.has(region)) ?? "EOA";
+  const templateConfig = {
+    EOA: { url: "/EOA_DMR_Monthly_Report.xlsx", dataStart: 39, protectedRow: 48 },
+    SOA: { url: "/SOA_DMR_Monthly_Report.xlsx", dataStart: 42, protectedRow: 58 },
+    COA: { url: "/COA_DMR_Monthly_Report.xlsx", dataStart: 32, protectedRow: 48 },
+    WOA: { url: "/WOA_DMR_Monthly_Report.xlsx", dataStart: 32, protectedRow: 35 },
+  }[templateKind];
+
+  const DATA_START = templateConfig.dataStart; // first data row
+  const PROTECTED = templateConfig.protectedRow; // Remarks row - never modified
+  const AVAIL = PROTECTED - DATA_START; // template rows
   const COLS = [
     "A",
     "B",
@@ -3500,12 +3658,29 @@ async function exportTicketTemplate(
         .replace(/\s+customFormat="[^"]*"/g, "");
     });
 
-  const normalizeTicketRegionLabel = (region: string) => {
-    const value = clean(region).toUpperCase();
-    if (value === "EOA" || value === "NEOA") return "EOA";
-    if (value === "SOA") return "SOA";
-    return value || "EOA";
+  const removeTicketSiteNameMerges = (
+    sheetXml: string,
+    firstRow: number,
+    lastRow: number
+  ) => {
+    let removed = 0;
+    const nextXml = sheetXml.replace(
+      /<mergeCell ref="C(\d+):D\1"\/>/g,
+      (match, rowNumber) => {
+        const row = Number(rowNumber);
+        if (row < firstRow || row > lastRow) return match;
+        removed += 1;
+        return "";
+      }
+    );
+    if (!removed) return nextXml;
+    return nextXml.replace(
+      /<mergeCells\b([^>]*)count="(\d+)"([^>]*)>/,
+      (_match, before, count, after) =>
+        `<mergeCells${before}count="${Math.max(0, Number(count) - removed)}"${after}>`
+    );
   };
+
 
   const ticketSiteLinesForTemplate = (ticket: TicketAggregate) => {
     const bySite = new Map<string, { siteId: string; siteName: string }>();
@@ -3537,10 +3712,10 @@ async function exportTicketTemplate(
 
   try {
     // ── 1. Fetch template ───────────────────────────────────────────────
-    const res = await fetch("/DMR_Monthly_Report.xlsx");
+    const res = await fetch(templateConfig.url);
     if (!res.ok)
       throw new Error(
-        `HTTP ${res.status} — make sure DMR_Monthly_Report.xlsx is inside your project's public/ folder`
+        `HTTP ${res.status} - make sure ${templateConfig.url.slice(1)} is inside your project public folder`
       );
     const buf = await res.arrayBuffer();
 
@@ -3663,33 +3838,45 @@ async function exportTicketTemplate(
 
     // ── 8. Clear unused rows (fewer than 20 tickets) ────────────────────
     const textStyle = getExcelCellStyle(xml, `A${DATA_START}`) || 11;
-    const dateTimeStyle = getExcelCellStyle(xml, `D${DATA_START}`) || textStyle;
-    const dateTimeCols = new Set(["D", "E", "G", "H", "I", "J"]);
-    const styleForCol = (col: string) =>
-      dateTimeCols.has(col) ? dateTimeStyle : textStyle;
+    const styleCodec = { strFromU8, strToU8 };
+    const bodyFontId = ensureExcelFont(files, styleCodec, { size: 20 });
+    const bodyStyleCache = new Map<number, number>();
+    const styleForCol = (col: string) => {
+      const baseStyle = getExcelCellStyle(xml, `${col}${DATA_START}`) || textStyle;
+      const cached = bodyStyleCache.get(baseStyle);
+      if (cached !== undefined) return cached;
+      const nextStyle = ensureExcelStyleVariant(files, styleCodec, baseStyle, {
+        fontId: bodyFontId,
+      });
+      bodyStyleCache.set(baseStyle, nextStyle);
+      return nextStyle;
+    };
 
     tickets.forEach((ticket, i) => {
       const row = DATA_START + i;
       const p = ticket.primary;
       const siteLines = ticketSiteLinesForTemplate(ticket);
+      const actionTaken =
+        p.actionTaken || uniqueTicketValues(ticket, "actionTaken") || "";
+      const rca = p.rca || uniqueTicketValues(ticket, "rca") || "";
       const values: Record<string, string | number> = {
         A: i + 1,
         B: siteLines.siteIds,
         C: siteLines.siteNames,
         D: p.managedResource || "",
         E: p.severity || "",
-        F: p.issue || "",
-        G: p.observationDate || "",
-        H: p.observationTime || "",
-        I: p.recoveryDate || "",
-        J: p.recoveryTime || "",
-        K: p.escalatedForL3SupportDate || "",
-        L: p.escalatedForL3SupportTime || "",
-        M: p.duration || "",
-        N: ticket.tt || "",
-        O: p.status || "",
-        P: p.escalatedTo || "",
-        Q: p.actionTaken || "",
+        F: p.observationDate || "",
+        G: p.observationTime || "",
+        H: p.recoveryDate || "",
+        I: p.recoveryTime || "",
+        J: p.escalatedForL3SupportDate || "",
+        K: p.escalatedForL3SupportTime || "",
+        L: p.duration || "",
+        M: ticket.tt || "",
+        N: p.status || "",
+        O: p.escalatedTo || "",
+        P: rca,
+        Q: actionTaken,
       };
       const rowXml =
         `<row r="${row}">` +
@@ -3721,7 +3908,11 @@ async function exportTicketTemplate(
       DATA_START,
       DATA_START + Math.max(needed, 1) - 1
     );
-    xml = setWorksheetColumns(xml);
+    xml = removeTicketSiteNameMerges(
+      xml,
+      DATA_START,
+      DATA_START + Math.max(needed, AVAIL) - 1
+    );
     files[sheetKey] = strToU8(xml);
     const output = zipSync(files, { level: 0 }); // store, no recompression
     const blob = new Blob([output], {
@@ -3730,7 +3921,10 @@ async function exportTicketTemplate(
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `DMR_Monthly_Report_${label}.xlsx`;
+    const regionForFile =
+      regionLabel.replace(/\s*\/\s*/g, "_").replace(/[^A-Za-z0-9_-]/g, "") ||
+      templateKind;
+    a.download = `DMR_Monthly_Report_${regionForFile}_${label}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   } catch (err: any) {
@@ -3750,6 +3944,22 @@ async function exportPdf(rows: TicketAggregate[], monthKey: string) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
   const monthLabel =
     monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
+  const normalizePdfRegion = (region: string) => {
+    const value = clean(region).toUpperCase();
+    if (value === "EOA" || value === "NEOA") return "EOA";
+    if (value === "SOA") return "SOA";
+    if (value === "COA") return "COA";
+    if (value === "WOA") return "WOA";
+    return value;
+  };
+  const regionLabel =
+    Array.from(
+      new Set(
+        rows
+          .flatMap(ticket => ticket.rows.map(row => normalizePdfRegion(row.region)))
+          .filter(Boolean)
+      )
+    ).join(" / ") || "All";
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   {
@@ -3762,7 +3972,7 @@ async function exportPdf(rows: TicketAggregate[], monthKey: string) {
     const templatePageW = templateDoc.internal.pageSize.getWidth();
     const templatePageH = templateDoc.internal.pageSize.getHeight();
     const C = TEMPLATE_PDF_COLORS;
-    const ticketTableWidth = 363;
+    const ticketTableWidth = 390;
     const ticketTableMargin = Math.max(
       12,
       (templatePageW - ticketTableWidth) / 2
@@ -3784,7 +3994,7 @@ async function exportPdf(rows: TicketAggregate[], monthKey: string) {
       templateDoc.text("DMR SYSTEM", 12, 26);
 
       const info = [
-        ["Region", ""],
+        ["Region", regionLabel],
         ["Network", "DMR Hytera"],
         ["Month", monthLabel],
       ];
@@ -3853,7 +4063,8 @@ async function exportPdf(rows: TicketAggregate[], monthKey: string) {
         13: { cellWidth: 18, halign: "center", fontStyle: "bold" },
         14: { cellWidth: 16, halign: "center", fontStyle: "bold" },
         15: { cellWidth: 22, halign: "center" },
-        16: { cellWidth: 44, halign: "center" },
+        16: { cellWidth: 46, halign: "center" },
+        17: { cellWidth: 31, halign: "center" },
       },
       margin: {
         left: ticketTableMargin,
@@ -3972,7 +4183,8 @@ async function exportPdf(rows: TicketAggregate[], monthKey: string) {
       },
       14: { cellWidth: 14, halign: "center", fontStyle: "bold" },
       15: { cellWidth: 18 },
-      16: { cellWidth: 36 },
+      16: { cellWidth: 52 },
+      17: { cellWidth: 36 },
     },
     margin: { left: 10, right: 10, top: 20 },
     didParseCell: d => {
@@ -4179,7 +4391,7 @@ const PERFORMANCE_GAUGE_CONFIG: PerformanceGaugeConfig[] = [
     getValue: kpi => kpi.totalDown,
     getScale: (_, ctx) => ({ min: 0, max: Math.max(1, ctx.totalHours || 1) }),
     formatValue: kpi => kpi.totalDownHrs,
-    caption: kpi => `${kpi.totalDown.toFixed(1)} hrs lost during selected window`,
+    caption: kpi => `${kpi.totalDownHrs} lost during selected window`,
     helper: (kpi, ctx) => `${((kpi.totalDown / Math.max(1, ctx.totalHours)) * 100).toFixed(2)}% downtime share`,
     sparkline: rows => rows.map(r => r.sitesDownHours),
   },
@@ -4780,6 +4992,15 @@ export default function Home() {
   const [collapsedSections, setCollapsedSections] = useState<Record<DashboardSectionId, boolean>>(INITIAL_COLLAPSED_SECTIONS);
   const [activeDashboardTab, setActiveDashboardTab] = useState<DashboardSectionId>("performanceKpis");
   const [savedSnapshotAvailable, setSavedSnapshotAvailable] = useState(false);
+  const [googleRegionLinks, setGoogleRegionLinks] = useState<GoogleRegionLinks>(
+    EMPTY_GOOGLE_REGION_LINKS
+  );
+  const [googleRegionSelection, setGoogleRegionSelection] =
+    useState<GoogleRegionSelection>(EMPTY_GOOGLE_REGION_SELECTION);
+  const [googleSheetLoading, setGoogleSheetLoading] = useState(false);
+  const [onlineSourceMode, setOnlineSourceMode] = useState<
+    "add" | "replace" | null
+  >(null);
   const activeThemeImage = THEME_IMAGES.dark;
   const heroThemeOverlay =
     dashboardTheme === "dark"
@@ -4816,6 +5037,7 @@ export default function Home() {
     TT: 90, // width =
     Status: 110, // width =
     "Escalated to": 130, // width =
+    RCA: 360, // width =
     Action: 400, // width =
   };
 
@@ -4886,18 +5108,250 @@ export default function Home() {
     );
   }
 
-  async function parseWorkbookFile(file: File): Promise<DashboardData> {
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-    const parsed = parseRows(workbook, file.name);
+  async function parseWorkbookBuffer(
+    buffer: ArrayBuffer,
+    fileName: string
+  ): Promise<DashboardData> {
+    const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
+    const parsed = parseRows(workbook, fileName);
 
     if (!parsed.rows.length || !parsed.uniqueTickets.length) {
       throw new Error(
-        `No ticket rows with TT numbers were found in ${file.name}. Please upload the Follow-Up Sheets workbook with the Tickets_Data sheet.`
+        `No ticket rows with TT numbers were found in ${fileName}. Please use the Follow-Up workbook with the Tickets_Data or TT-History sheet.`
       );
     }
 
     return parsed;
+  }
+
+  async function parseWorkbookFile(file: File): Promise<DashboardData> {
+    return parseWorkbookBuffer(await file.arrayBuffer(), file.name);
+  }
+
+  function extractGoogleSpreadsheetId(value: string): string {
+    const text = value.trim();
+    const match = text.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (match?.[1]) return match[1];
+    if (/^[a-zA-Z0-9-_]{20,}$/.test(text)) return text;
+    return "";
+  }
+
+  function extractGoogleSheetGid(value: string): string {
+    const text = value.trim();
+    const match = text.match(/[?#&]gid=(\d+)/);
+    return match?.[1] ?? "";
+  }
+
+  function isMicrosoftOnlineSheetLink(value: string): boolean {
+    const text = value.trim().toLowerCase();
+    return (
+      text.includes("sharepoint.com") ||
+      text.includes("onedrive.live.com") ||
+      text.includes("1drv.ms") ||
+      text.includes("office.com")
+    );
+  }
+
+  function microsoftShareId(value: string): string {
+    const bytes = new TextEncoder().encode(value.trim());
+    let binary = "";
+    bytes.forEach(byte => {
+      binary += String.fromCharCode(byte);
+    });
+    return `u!${btoa(binary)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "")}`;
+  }
+
+  function googleRegionLabelToKey(label: string): GoogleRegionKey | null {
+    const normalized = normalizeHeader(label);
+    if (normalized === "eoaneoa") return "eoaNeoa";
+    if (normalized === "soa") return "soa";
+    if (normalized === "coawoa") return "coaWoa";
+    return null;
+  }
+
+  function parseGoogleSheetsConfig(text: string): Partial<GoogleRegionLinks> {
+    const next: Partial<GoogleRegionLinks> = {};
+    text.split(/\r?\n/).forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return;
+      const separator = trimmed.indexOf("=");
+      if (separator === -1) return;
+      const key = googleRegionLabelToKey(trimmed.slice(0, separator));
+      if (!key) return;
+      next[key] = trimmed.slice(separator + 1).trim();
+    });
+    return next;
+  }
+
+  function setGoogleRegionLink(key: GoogleRegionKey, value: string) {
+    setGoogleRegionLinks(prev => ({ ...prev, [key]: value }));
+  }
+
+  function setGoogleRegionChecked(key: GoogleRegionKey, checked: boolean) {
+    setGoogleRegionSelection(prev => ({ ...prev, [key]: checked }));
+  }
+
+  function loadGoogleSheetTable(
+    spreadsheetId: string,
+    gid: string
+  ): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const callbackName = `__ttHistoryCallback_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2)}`;
+      const script = document.createElement("script");
+      const cleanup = () => {
+        script.remove();
+        delete (window as any)[callbackName];
+      };
+
+      (window as any)[callbackName] = (payload: any) => {
+        cleanup();
+        resolve(payload);
+      };
+
+      script.onerror = () => {
+        cleanup();
+        reject(
+          new Error(
+            "Could not read TT-History from Google Sheets. Share the file as 'Anyone with the link can view' and try again."
+          )
+        );
+      };
+
+      const tabSelector = gid
+        ? `gid=${encodeURIComponent(gid)}`
+        : `sheet=${encodeURIComponent("TT-History")}`;
+      script.src =
+        `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?` +
+        `tqx=responseHandler:${callbackName}&${tabSelector}`;
+      document.body.appendChild(script);
+    });
+  }
+
+  function googleCellValue(cell: any): unknown {
+    const value = cell?.f ?? cell?.v ?? "";
+    if (typeof value !== "string") return value;
+    const match = value.match(
+      /^Date\((\d+),(\d+),(\d+)(?:,(\d+),(\d+),(\d+))?\)$/
+    );
+    if (!match) return value;
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const hour = Number(match[4] ?? 0);
+    const minute = Number(match[5] ?? 0);
+    const second = Number(match[6] ?? 0);
+    return new Date(year, month, day, hour, minute, second);
+  }
+
+  async function parseGoogleSheetLink(value: string): Promise<DashboardData> {
+    const spreadsheetId = extractGoogleSpreadsheetId(value);
+    if (!spreadsheetId) {
+      throw new Error("Paste a valid Google Sheets link or spreadsheet ID.");
+    }
+
+    const gid = extractGoogleSheetGid(value);
+    if (!gid) {
+      throw new Error(
+        "Open the TT-History tab in Google Sheets, then copy/paste the full browser URL. The link must include gid= so the dashboard can load the correct tab."
+      );
+    }
+    const payload = await loadGoogleSheetTable(spreadsheetId, gid);
+    if (payload?.status && payload.status !== "ok") {
+      throw new Error(
+        "Could not read TT-History from Google Sheets. Share the file as 'Anyone with the link can view' and try again."
+      );
+    }
+
+    const table = payload?.table;
+    const cols = table?.cols ?? [];
+    const rows = table?.rows ?? [];
+    if (!cols.length || !rows.length) {
+      throw new Error("TT-History is empty or could not be read from Google Sheets.");
+    }
+
+    const googleRows = rows.map((row: any) =>
+      cols.map((_col: any, index: number) => {
+        return googleCellValue(row?.c?.[index]);
+      })
+    );
+    let headers = cols.map((col: any) => clean(col?.label || col?.id || ""));
+    const headerRowIndex = googleRows.findIndex(row =>
+      row.some(value => normalizeHeader(String(value)) === "tt")
+    );
+    let dataRows = googleRows;
+    if (headerRowIndex >= 0) {
+      headers = googleRows[headerRowIndex].map(value => clean(value));
+      dataRows = googleRows.slice(headerRowIndex + 1);
+    }
+    const hasTicketHeader = headers.some(header =>
+      ["tt", "ttnumber", "ttno", "tt", "ticket", "ticketnumber"].includes(
+        normalizeHeader(header)
+      )
+    );
+    if (!hasTicketHeader && headers.length > 1) {
+      headers[1] = "TT";
+    }
+    const aoa = [
+      headers,
+      ...dataRows.map((row: unknown[]) =>
+        headers.map((_header, index) => {
+          return row[index] ?? "";
+        })
+      ),
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "TT-History");
+
+    const parsed = parseRows(workbook, "Google Sheet TT-History");
+    if (!parsed.rows.length || !parsed.uniqueTickets.length) {
+      throw new Error(
+        "TT-History was loaded from Google Sheets, but no ticket rows with TT numbers were found."
+      );
+    }
+
+    return parsed;
+  }
+
+  async function parseMicrosoftOnlineSheetLink(value: string): Promise<DashboardData> {
+    const url = value.trim();
+    if (!url) {
+      throw new Error("Paste a valid Microsoft 365 or OneDrive Excel link.");
+    }
+
+    const response = await fetch(
+      `https://api.onedrive.com/v1.0/shares/${microsoftShareId(url)}/root/content`
+    );
+    if (!response.ok) {
+      throw new Error(
+        "Could not download the Microsoft 365 workbook. Share the file so anyone with the link can view/download it, then try again."
+      );
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    const buffer = await response.arrayBuffer();
+    if (
+      contentType.includes("text/html") ||
+      contentType.includes("application/json")
+    ) {
+      throw new Error(
+        "The Microsoft 365 link opened a web page instead of the workbook file. Use a shared Excel workbook link with view/download permission."
+      );
+    }
+
+    return parseWorkbookBuffer(buffer, "Microsoft 365 Online Workbook");
+  }
+
+  async function parseOnlineSheetLink(value: string): Promise<DashboardData> {
+    return isMicrosoftOnlineSheetLink(value)
+      ? parseMicrosoftOnlineSheetLink(value)
+      : parseGoogleSheetLink(value);
   }
 
   function mergeDashboardRegions(regionsToMerge: DashboardData[]): DashboardData {
@@ -4962,11 +5416,67 @@ export default function Home() {
       setPerfRegions([]);
       setFilters(EMPTY_FILTERS);
       setTablePage(1);
+      setOnlineSourceMode(null);
       if (inputRef.current) inputRef.current.value = "";
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Unable to read the selected workbook files."
       );
+    }
+  }
+
+  async function handleGoogleSheetLoad(mode: "replace" | "add" = "replace") {
+    if (googleSheetLoading) return;
+    const selectedLinks = GOOGLE_REGION_LINKS
+      .filter(region => googleRegionSelection[region.key])
+      .map(region => ({
+        ...region,
+        url: googleRegionLinks[region.key].trim(),
+      }));
+    if (!selectedLinks.length) {
+      setError("Select at least one online sheet region to load.");
+      return;
+    }
+    const missingLink = selectedLinks.find(region => !region.url);
+    if (missingLink) {
+      setError(`Add the online sheet link for ${missingLink.label}, or uncheck it.`);
+      return;
+    }
+
+    setError("");
+    setGoogleSheetLoading(true);
+    try {
+      const parsedSheets = await Promise.all(
+        selectedLinks.map(region => parseOnlineSheetLink(region.url))
+      );
+      if (mode === "add" && data) {
+        setRegions(prev => {
+          const updated = [...prev, ...parsedSheets];
+          const merged = mergeDashboardRegions(updated);
+          setData(merged);
+          return updated;
+        });
+      } else {
+        const merged = mergeDashboardRegions(parsedSheets);
+        setData(merged);
+        setRegions(parsedSheets);
+        setExportMonths([]);
+        setExportRegions([]);
+        setPerfMonths([]);
+        setPerfRegions([]);
+        setFilters(EMPTY_FILTERS);
+      }
+      setTablePage(1);
+      setPerfPage(1);
+      setOnlineSourceMode(null);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to read the online sheet link."
+      );
+    } finally {
+      setGoogleSheetLoading(false);
     }
   }
 
@@ -4986,6 +5496,7 @@ export default function Home() {
       });
 
       setTablePage(1);
+      setOnlineSourceMode(null);
       if (addRegionRef.current) addRegionRef.current.value = "";
     } catch (err) {
       setError(
@@ -5104,70 +5615,80 @@ export default function Home() {
     });
   }, [filters, uniqueRows]);
 
-  const monthlyExportBaseTickets = useMemo(() => {
-    const q = filters.search.toLowerCase().trim();
-    return uniqueRows.filter(ticket => {
-      const row = ticket.primary;
-      const allSites = Array.from(ticket.siteIds).join(" ");
-      const allSiteNames = Array.from(ticket.siteNames).join(" ");
-      const haystack = [
-        ticket.tt,
-        row.siteId,
-        row.siteName,
-        allSites,
-        allSiteNames,
-        row.managedResource,
-        row.issue,
-        row.status,
-        row.severity,
-        row.region,
-        row.impact,
-        row.escalationLevel,
-        row.escalatedTo,
-        row.rca,
-        row.rcaFamily || getRcaFamily(row.rca),
-        row.responsibleTeam ||
-          getResponsibleTeam(row.rcaFamily || getRcaFamily(row.rca)),
-        row.escalatedForL3SupportDate,
-        row.escalatedForL3SupportTime,
-      ]
-        .join(" ")
-        .toLowerCase();
-      return (
-        (!q || haystack.includes(q)) &&
-        (!filters.severity.length || filters.severity.includes(row.severity)) &&
-        (!filters.region.length || filters.region.includes(row.region)) &&
-        (!filters.impact.length || filters.impact.includes(row.impact)) &&
-        (!filters.site.length ||
-          filters.site.some(s => ticket.siteIds.has(s))) &&
-        (!filters.rcaFamily.length ||
-          filters.rcaFamily.includes(row.rcaFamily || getRcaFamily(row.rca)))
-      );
-    });
-  }, [
-    filters.impact,
-    filters.rcaFamily,
-    filters.region,
-    filters.search,
-    filters.severity,
-    filters.site,
-    uniqueRows,
-  ]);
-
   const monthlyExportTickets = useMemo(() => {
-    // Apply export region filter
-    const regionFiltered =
-      exportRegions.length === 0
-        ? monthlyExportBaseTickets
-        : monthlyExportBaseTickets.filter(ticket =>
-            exportRegions.includes(ticket.primary.region)
-          );
-    // Apply export month filter
-    if (exportMonths.length === 0) return regionFiltered;
-    return regionFiltered.filter(ticket =>
-      exportMonths.some(m => ticketMatchesMonthlyExport(ticket, m))
-    );
-  }, [exportMonths, exportRegions, monthlyExportBaseTickets]);
+    const sourceRows = allDataRows.filter(row => {
+      const matchesReportRegion =
+        !exportRegions.length || exportRegions.includes(row.region);
+      const matchesReportMonth =
+        !exportMonths.length ||
+        exportMonths.some(m =>
+          ticketMatchesMonthlyExport(
+            {
+              tt: row.tt,
+              primary: row,
+              siteIds: new Set(row.siteId ? [row.siteId] : []),
+              siteNames: new Set(row.siteName ? [row.siteName] : []),
+              rows: [row],
+            },
+            m
+          )
+        );
+      return matchesReportRegion && matchesReportMonth;
+    });
+    return groupTickets(sourceRows);
+  }, [allDataRows, exportMonths, exportRegions]);
+
+  const monthlyExcelExportGroups = useMemo(() => {
+    const selectedRegions = exportRegions.length ? new Set(exportRegions) : null;
+    const sourceRows = regions.length
+      ? regions.flatMap(region => region.rows)
+      : allDataRows;
+    const regionOrder = ["EOA", "SOA", "COA", "WOA"] as const;
+    const normalizeTemplateRegion = (region: string) => {
+      const value = clean(region).toUpperCase();
+      if (value === "EOA" || value === "NEOA") return "EOA";
+      if (value === "SOA") return "SOA";
+      if (value === "COA") return "COA";
+      if (value === "WOA") return "WOA";
+      return value || "EOA";
+    };
+    const rowsByTemplateRegion = new Map<string, TicketRecord[]>();
+
+    sourceRows.forEach(row => {
+      const matchesReportRegion =
+        !selectedRegions || selectedRegions.has(row.region);
+      const matchesReportMonth =
+        !exportMonths.length ||
+        exportMonths.some(m =>
+          ticketMatchesMonthlyExport(
+            {
+              tt: row.tt,
+              primary: row,
+              siteIds: new Set(row.siteId ? [row.siteId] : []),
+              siteNames: new Set(row.siteName ? [row.siteName] : []),
+              rows: [row],
+            },
+            m
+          )
+        );
+      if (!matchesReportRegion || !matchesReportMonth) return;
+
+      const key = normalizeTemplateRegion(row.region);
+      rowsByTemplateRegion.set(key, [...(rowsByTemplateRegion.get(key) ?? []), row]);
+    });
+
+    return regionOrder
+      .map(region => ({
+        region,
+        tickets: groupTickets(rowsByTemplateRegion.get(region) ?? []),
+      }))
+      .filter(group => group.tickets.length);
+  }, [
+    allDataRows,
+    exportMonths,
+    exportRegions,
+    regions,
+  ]);
 
   const selectedExportMonthLabel =
     exportMonths.length === 0
@@ -5393,8 +5914,8 @@ export default function Home() {
         .toLowerCase()
         .trim();
       if (s !== "closed" && s !== "resolved") return;
-      const hours = parseDurationHours(row.duration);
-      if (hours === null || !Number.isFinite(hours) || hours <= 0) return;
+      const hours = ticketDurationHours(row);
+      if (!Number.isFinite(hours) || hours <= 0) return;
       const key = row.openingMonthKey || openingMonthKey(row.observationDate);
       if (!key || key === "Unknown") return;
       const label = openingMonthLabel(key);
@@ -5471,8 +5992,8 @@ export default function Home() {
           .trim();
         return s === "closed" || s === "resolved";
       })
-      .map(row => parseDurationHours(row.duration))
-      .filter((v): v is number => v !== null && Number.isFinite(v) && v > 0);
+      .map(row => ticketDurationHours(row))
+      .filter(value => Number.isFinite(value) && value > 0);
 
     const avgReplyTime = {
       frt: average(primaryRows.map(row => row.frtHours)),
@@ -5484,8 +6005,8 @@ export default function Home() {
     };
 
     const avgHoursSource = primaryRows
-      .map(row => parseDurationHours(row.duration))
-      .filter((value): value is number => value !== null);
+      .map(row => ticketDurationHours(row))
+      .filter(value => Number.isFinite(value));
     const avgHours = avgHoursSource.length
       ? avgHoursSource.reduce((sum, value) => sum + value, 0) /
         avgHoursSource.length
@@ -5521,13 +6042,31 @@ export default function Home() {
       rcaNotProvided(row.rca) ? "RCA not Provided" : row.rca
     );
     const topRcaByCount = rcaByCount[0] ?? { name: "", value: 0 };
+    const selectedDurationMonthKeys = filters.openingMonth.length
+      ? filters.openingMonth
+      : Array.from(
+          new Set(
+            primaryRows
+              .map(row => row.openingMonthKey || openingMonthKey(row.observationDate))
+              .filter(key => key && key !== "Unknown")
+          )
+        );
+    const selectedDurationPeriodHours = selectedDurationMonthKeys.length
+      ? selectedDurationMonthKeys.reduce((sum, key) => sum + totalHoursInMonth(key), 0)
+      : 24 * 30;
+    const cappedTicketDuration = (row: TicketRecord) =>
+      Math.min(ticketDurationHours(row), selectedDurationPeriodHours);
     const downtimeByRcaMap = new Map<
       string,
       { name: string; value: number; count: number }
     >();
+    const countedRcaTickets = new Set<string>();
     primaryRows.forEach(row => {
       const name = rcaNotProvided(row.rca) ? "RCA not Provided" : row.rca;
-      const hours = parseDurationHours(row.duration) ?? 0;
+      const key = `${clean(row.tt) || row.rowNo}||${name}`;
+      if (countedRcaTickets.has(key)) return;
+      countedRcaTickets.add(key);
+      const hours = cappedTicketDuration(row);
       const current = downtimeByRcaMap.get(name) ?? {
         name,
         value: 0,
@@ -5808,12 +6347,24 @@ export default function Home() {
       const parsed = JSON.parse(raw) as {
         data?: ReturnType<typeof serializeDashboardData>;
         regions?: Array<ReturnType<typeof serializeDashboardData>>;
+        googleRegionLinks?: Partial<GoogleRegionLinks>;
+        googleRegionSelection?: Partial<GoogleRegionSelection>;
       };
       if (!parsed.data?.rows?.length) return;
       const restoredData = hydrateDashboardData(parsed.data);
       const restoredRegions = (parsed.regions ?? []).map(hydrateDashboardData);
       setData(restoredData);
       setRegions(restoredRegions.length ? restoredRegions : [restoredData]);
+      setGoogleRegionLinks(prev => ({
+        ...prev,
+        ...(parsed.googleRegionLinks ?? {}),
+      }));
+      if (parsed.googleRegionSelection) {
+        setGoogleRegionSelection(prev => ({
+          ...prev,
+          ...parsed.googleRegionSelection,
+        }));
+      }
       setError("");
       setFilters(EMPTY_FILTERS);
       setTablePage(1);
@@ -5861,9 +6412,13 @@ export default function Home() {
   }
 
   async function exportElementToPng(element: HTMLElement | null, fileName: string) {
-    if (!element) return;
+    if (!element) {
+      setError("PNG export target was not found. Please open the section and try again.");
+      return;
+    }
     const { default: html2canvas } = await import("html2canvas");
     try {
+      element.classList.add("png-export-active");
       const canvas = await html2canvas(element, {
         backgroundColor: null,
         scale: Math.min(2, window.devicePixelRatio || 1.5),
@@ -5884,11 +6439,160 @@ export default function Home() {
     } catch (err) {
       console.error("PNG export failed:", err);
       setError("PNG export failed. Please try again after the section finishes rendering.");
+    } finally {
+      element.classList.remove("png-export-active");
+    }
+  }
+
+  function hasDashboardSectionExcel(sectionId: DashboardSectionId) {
+    switch (sectionId) {
+      case "performanceKpis":
+        return performanceKpiRows.length > 0;
+      case "ticketsTable":
+        return filteredTickets.length > 0;
+      case "executive":
+        return executiveInsights.highRiskSites.length > 0;
+      case "deepDive":
+        return (
+          deepDiveAnalytics.repeatedOffenderSites.length > 0 ||
+          deepDiveAnalytics.rcaFamilyDeepDive.length > 0
+        );
+      default:
+        return false;
+    }
+  }
+
+  function exportDashboardSectionExcel(sectionId: DashboardSectionId) {
+    if (sectionId === "performanceKpis") {
+      exportAnalyticsTableExcel(
+        PERF_REPORT_HEADERS,
+        perfReportRows(performanceKpiRows),
+        "Performance KPIs",
+        "Performance-KPI-Data.xlsx"
+      );
+      return;
+    }
+
+    if (sectionId === "ticketsTable") {
+      exportExcel(filteredTickets);
+      return;
+    }
+
+    if (sectionId === "executive") {
+      exportAnalyticsTableExcel(
+        ["Region", "Rank", "Site ID", "Site Name", "Tickets", "Downtime", "Reliability", "Top RCA", "Risk Level", "Risk Score"],
+        executiveInsights.highRiskSites.map(site => [
+          site.region,
+          site.rank,
+          site.siteId,
+          site.siteName || "-",
+          site.ticketCount,
+          `${site.downtimeHours} hrs`,
+          `${site.reliability.toFixed(2)}%`,
+          site.topRca,
+          site.riskLevel,
+          site.riskScore,
+        ]),
+        "High Risk Sites",
+        "High-Risk-Sites-Ranking.xlsx"
+      );
+      return;
+    }
+
+    if (sectionId === "deepDive") {
+      exportAnalyticsWorkbookExcel(
+        [
+          {
+            name: "Repeated Offenders",
+            headers: ["Region", "Site ID", "Site Name", "Tickets", "Downtime", "Top RCA"],
+            rows: deepDiveAnalytics.repeatedOffenderSites.map(site => [
+              site.region,
+              site.siteId,
+              site.siteName || "-",
+              site.tickets,
+              `${site.downtimeHours} hrs`,
+              site.topRca,
+            ]),
+          },
+          {
+            name: "RCA Families",
+            headers: ["RCA Family", "Tickets", "Downtime", "Missing RCA", "Preventable", "Service Impact", "Responsible Team", "Recommended Action"],
+            rows: deepDiveAnalytics.rcaFamilyDeepDive.map(row => [
+              row.family,
+              row.tickets,
+              `${row.downtimeHours} hrs`,
+              row.missingRca,
+              row.preventableTickets,
+              row.serviceImpactTickets,
+              row.responsibleTeam,
+              row.recommendedAction,
+            ]),
+          },
+          {
+            name: "Pending Aging",
+            headers: ["Bucket", "Tickets", "Label"],
+            rows: deepDiveAnalytics.slaSummary.pendingAgingBuckets.map(row => [
+              row.name,
+              row.value,
+              row.label,
+            ]),
+          },
+          {
+            name: "Actions",
+            headers: ["No", "Recommended Management Action"],
+            rows: deepDiveAnalytics.recommendations.map((item, index) => [
+              index + 1,
+              item,
+            ]),
+          },
+        ],
+        "Operational-Quality-Follow-Up-Priorities.xlsx"
+      );
     }
   }
 
   useEffect(() => {
-    setSavedSnapshotAvailable(Boolean(localStorage.getItem(SAVED_DASHBOARD_KEY)));
+    const raw = localStorage.getItem(SAVED_DASHBOARD_KEY);
+    setSavedSnapshotAvailable(Boolean(raw));
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as {
+        googleRegionLinks?: Partial<GoogleRegionLinks>;
+        googleRegionSelection?: Partial<GoogleRegionSelection>;
+      };
+      if (parsed.googleRegionLinks) {
+        setGoogleRegionLinks(prev => ({ ...prev, ...parsed.googleRegionLinks }));
+      }
+      if (parsed.googleRegionSelection) {
+        setGoogleRegionSelection(prev => ({
+          ...prev,
+          ...parsed.googleRegionSelection,
+        }));
+      }
+    } catch {
+      // Ignore older saved payloads that do not include Google links.
+    }
+  }, []);
+
+  useEffect(() => {
+    fetch("/google-sheets-config.txt")
+      .then(response => (response.ok ? response.text() : ""))
+      .then(text => {
+        if (!text) return;
+        const configLinks = parseGoogleSheetsConfig(text);
+        setGoogleRegionLinks(prev => {
+          const next = { ...prev };
+          GOOGLE_REGION_LINKS.forEach(region => {
+            if (!next[region.key] && configLinks[region.key]) {
+              next[region.key] = configLinks[region.key] ?? "";
+            }
+          });
+          return next;
+        });
+      })
+      .catch(() => {
+        // The config file is optional; users can still paste links in the UI.
+      });
   }, []);
 
   useEffect(() => {
@@ -5899,13 +6603,15 @@ export default function Home() {
         JSON.stringify({
           data: serializeDashboardData(data),
           regions: regions.map(serializeDashboardData),
+          googleRegionLinks,
+          googleRegionSelection,
         })
       );
       setSavedSnapshotAvailable(true);
     } catch (err) {
       console.warn("Could not save dashboard snapshot:", err);
     }
-  }, [data, regions]);
+  }, [data, regions, googleRegionLinks, googleRegionSelection]);
 
   useEffect(() => {
     if (!data) return;
@@ -5922,6 +6628,7 @@ export default function Home() {
 
       if (!isActive) return;
 
+      const showExcel = hasDashboardSectionExcel(section.id);
       const panel = document.createElement("div");
       panel.id = `section-control-${section.id}`;
       panel.className = "section-control-panel section-control-panel-tab-active no-print";
@@ -5932,20 +6639,43 @@ export default function Home() {
         </div>
         <div class="section-control-actions">
           <button type="button" class="section-tool-button" data-action="png">Export PNG</button>
+          ${
+            showExcel
+              ? '<button type="button" class="section-tool-button" data-action="excel">Export Excel</button>'
+              : ""
+          }
           <button type="button" class="section-tool-button" data-action="top">Top Nav</button>
         </div>
       `;
 
       const pngButton = panel.querySelector<HTMLButtonElement>('[data-action="png"]');
+      const excelButton = panel.querySelector<HTMLButtonElement>('[data-action="excel"]');
       const topButton = panel.querySelector<HTMLButtonElement>('[data-action="top"]');
-      const pngHandler = () => exportElementToPng(target, section.title);
+      const pngHandler = async () => {
+        const latestTarget = document.querySelector<HTMLElement>(section.selector);
+        if (pngButton) {
+          pngButton.disabled = true;
+          pngButton.textContent = "Exporting...";
+        }
+        try {
+          await exportElementToPng(latestTarget, section.title);
+        } finally {
+          if (pngButton) {
+            pngButton.disabled = false;
+            pngButton.textContent = "Export PNG";
+          }
+        }
+      };
+      const excelHandler = () => exportDashboardSectionExcel(section.id);
       const topHandler = () => scrollToDashboardTop();
       pngButton?.addEventListener("click", pngHandler);
+      excelButton?.addEventListener("click", excelHandler);
       topButton?.addEventListener("click", topHandler);
       target.parentElement?.insertBefore(panel, target);
 
       cleanup.push(() => {
         pngButton?.removeEventListener("click", pngHandler);
+        excelButton?.removeEventListener("click", excelHandler);
         topButton?.removeEventListener("click", topHandler);
         panel.remove();
       });
@@ -5972,12 +6702,19 @@ export default function Home() {
     const explicitChartSelector = [
       ".dashboard-chart-grid > .glass-card",
       ".chart-mosaic > .glass-card",
+      ".chart-2col > .glass-card",
+      ".dashboard-chart-grid .glass-card",
+      ".dashboard-chart-grid article",
+      ".chart-mosaic article",
       ".deep-dive-chart-grid .deep-dive-panel",
       ".client-delivery-section .deep-dive-panel",
+      ".perf-gauge-card",
       ".glass-card:has(.recharts-wrapper)",
       ".glass-card:has(.recharts-surface)",
       ".deep-dive-panel:has(.recharts-wrapper)",
       ".deep-dive-panel:has(.recharts-surface)",
+      "article:has(.recharts-wrapper)",
+      "article:has(.recharts-surface)",
     ].join(",");
 
     document.querySelectorAll<HTMLElement>(explicitChartSelector).forEach(card => {
@@ -5986,7 +6723,7 @@ export default function Home() {
 
     document.querySelectorAll<HTMLElement>(".recharts-wrapper, .recharts-surface").forEach(chart => {
       const host = chart.closest<HTMLElement>(
-        ".glass-card, .deep-dive-panel, .chart-card, article, section"
+        ".glass-card, .deep-dive-panel, .perf-gauge-card, .chart-card, article"
       );
       if (host) chartHosts.add(host);
     });
@@ -6017,13 +6754,14 @@ export default function Home() {
     return () => cleanup.forEach(remove => remove());
   }, [data, analytics, executiveInsights, deepDiveAnalytics, activeDashboardTab]);
 
-  const filtersPanel = data ? (
+  const filtersPanel = data && activeDashboardTab !== "reports" ? (
     <section
       ref={filtersRef}
       className="filters-panel no-print dashboard-filters-panel"
       style={{ width: "100%" }}
     >
       <label className="search-box" style={{ width: "100%", margin: 0 }}>
+        <span>Search</span>
         <Search size={16} />
         <input
           value={filters.search}
@@ -6109,7 +6847,10 @@ export default function Home() {
   ) : null;
 
   return (
-    <main className="dashboard-shell" data-dashboard-theme={dashboardTheme}>
+    <main
+      className={`dashboard-shell ${data ? "dashboard-shell--loaded" : "dashboard-shell--welcome"}`}
+      data-dashboard-theme={dashboardTheme}
+    >
       <section
         className="hero-panel"
         style={{
@@ -6166,7 +6907,9 @@ export default function Home() {
             {data && (
               <button
                 className="ghost-button"
-                onClick={() => addRegionRef.current?.click()}
+                onClick={() =>
+                  setOnlineSourceMode(prev => (prev === "add" ? null : "add"))
+                }
               >
                 <UploadCloud size={30} /> Add regions
               </button>
@@ -6174,7 +6917,11 @@ export default function Home() {
             {data && (
               <button
                 className="ghost-button"
-                onClick={() => inputRef.current?.click()}
+                onClick={() =>
+                  setOnlineSourceMode(prev =>
+                    prev === "replace" ? null : "replace"
+                  )
+                }
               >
                 <RefreshCw size={30} /> New workbook(s)
               </button>
@@ -6204,6 +6951,91 @@ export default function Home() {
             </div>
             <div className="section-tabs-current" aria-live="polite">
               {activeDashboardSection.title}
+            </div>
+          </div>
+        )}
+        {data && onlineSourceMode && (
+          <div className="online-source-panel no-print">
+            <div className="online-source-panel__head">
+              <div>
+                <span>
+                  {onlineSourceMode === "add"
+                    ? "Add regional sources"
+                    : "Load new workbook sources"}
+                </span>
+                <strong>
+                  Choose local Excel files or load the selected Google/Microsoft
+                  365 links.
+                </strong>
+              </div>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => setOnlineSourceMode(null)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="online-source-actions">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() =>
+                  onlineSourceMode === "add"
+                    ? addRegionRef.current?.click()
+                    : inputRef.current?.click()
+                }
+              >
+                <FileSpreadsheet size={18} />
+                {onlineSourceMode === "add"
+                  ? "Select Excel region file(s)"
+                  : "Select Excel workbook(s)"}
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => handleGoogleSheetLoad(onlineSourceMode)}
+                disabled={
+                  googleSheetLoading ||
+                  !GOOGLE_REGION_LINKS.some(
+                    region =>
+                      googleRegionSelection[region.key] &&
+                      googleRegionLinks[region.key].trim()
+                  )
+                }
+              >
+                <LinkIcon size={18} />
+                {googleSheetLoading
+                  ? "Loading..."
+                  : onlineSourceMode === "add"
+                    ? "Add selected online sheets"
+                    : "Load selected online sheets"}
+              </button>
+            </div>
+            <div className="google-sheet-loader online-source-links">
+              <label>Online sheet region links</label>
+              <div className="google-region-grid">
+                {GOOGLE_REGION_LINKS.map(region => (
+                  <label key={region.key} className="google-region-row">
+                    <input
+                      type="checkbox"
+                      checked={googleRegionSelection[region.key]}
+                      onChange={event =>
+                        setGoogleRegionChecked(region.key, event.target.checked)
+                      }
+                    />
+                    <span>{region.label}</span>
+                    <input
+                      type="url"
+                      value={googleRegionLinks[region.key]}
+                      onChange={event =>
+                        setGoogleRegionLink(region.key, event.target.value)
+                      }
+                      placeholder="Google TT-History URL or Microsoft 365 Excel link"
+                    />
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -6300,12 +7132,17 @@ export default function Home() {
                 >
                   <button
                     className="ghost-button"
-                    onClick={() =>
-                      exportTicketTemplate(
-                        monthlyExportTickets,
-                        exportMonths[0] ?? "all"
-                      )
-                    }
+                    onClick={async () => {
+                      const groupsToExport = monthlyExcelExportGroups.length
+                        ? monthlyExcelExportGroups
+                        : [{ tickets: monthlyExportTickets }];
+                      for (const group of groupsToExport) {
+                        await exportTicketTemplate(
+                          group.tickets,
+                          exportMonths[0] ?? "all"
+                        );
+                      }
+                    }}
                   >
                     <FileSpreadsheet size={16} /> Excel
                   </button>
@@ -6527,30 +7364,50 @@ export default function Home() {
                 )}
                 <span>or drop the workbook here</span>
               </div>
-              <div className="upload-checks" aria-label="Workbook readiness">
-                <div>
-                  <CheckCircle2 size={18} />
-                  <span>Tickets_Data</span>
+              <div className="google-sheet-loader">
+                <label>Online sheet region links</label>
+                <div className="google-region-grid">
+                  {GOOGLE_REGION_LINKS.map(region => (
+                    <label key={region.key} className="google-region-row">
+                      <input
+                        type="checkbox"
+                        checked={googleRegionSelection[region.key]}
+                        onChange={event =>
+                          setGoogleRegionChecked(region.key, event.target.checked)
+                        }
+                      />
+                      <span>{region.label}</span>
+                      <input
+                        type="url"
+                        value={googleRegionLinks[region.key]}
+                        onChange={event =>
+                          setGoogleRegionLink(region.key, event.target.value)
+                        }
+                        placeholder="Google TT-History URL or Microsoft 365 Excel link"
+                      />
+                    </label>
+                  ))}
                 </div>
-                <div>
-                  <Layers3 size={18} />
-                  <span>Regional merge</span>
-                </div>
-                <div>
-                  <BarChart3 size={18} />
-                  <span>Charts & reports</span>
-                </div>
+                <button
+                  type="button"
+                  className="ghost-button large google-load-selected"
+                  onClick={handleGoogleSheetLoad}
+                  disabled={
+                    googleSheetLoading ||
+                    !GOOGLE_REGION_LINKS.some(
+                      region =>
+                        googleRegionSelection[region.key] &&
+                        googleRegionLinks[region.key].trim()
+                    )
+                  }
+                >
+                  <LinkIcon size={20} />
+                  {googleSheetLoading ? "Loading..." : "Load selected"}
+                </button>
               </div>
             </div>
             <div className="upload-visual">
               <img src={activeThemeImage} alt="Dashboard workbook preview" />
-              <div className="upload-preview-card">
-                <span>Ready For</span>
-                <strong>Excel · PDF · PPT</strong>
-                <small>
-                  Tickets, performance, RCA, and site availability reports
-                </small>
-              </div>
             </div>
           </div>
         </section>
@@ -7188,13 +8045,42 @@ export default function Home() {
                     Risk score uses ticket count, downtime, service impact, critical severity, missing RCA, and reliability.
                   </p>
                 </div>
-                <span>Top {executiveInsights.highRiskSites.length}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span>Top {executiveInsights.highRiskSites.length}</span>
+                  <button
+                    className="ghost-button"
+                    onClick={() =>
+                      exportAnalyticsTableExcel(
+                        ["Region", "Rank", "Site ID", "Site Name", "Tickets", "Downtime", "Reliability", "Top RCA", "Risk Level", "Risk Score"],
+                        executiveInsights.highRiskSites.map(site => [
+                          site.region,
+                          site.rank,
+                          site.siteId,
+                          site.siteName || "-",
+                          site.ticketCount,
+                          `${site.downtimeHours} hrs`,
+                          `${site.reliability.toFixed(2)}%`,
+                          site.topRca,
+                          site.riskLevel,
+                          site.riskScore,
+                        ]),
+                        "High Risk Sites",
+                        "High-Risk-Sites-Ranking.xlsx"
+                      )
+                    }
+                    disabled={!executiveInsights.highRiskSites.length}
+                    title="Export high risk sites ranking to Excel"
+                  >
+                    <FileSpreadsheet size={16} /> Excel
+                  </button>
+                </div>
               </div>
 
               <div className="table-scroll executive-risk-table-scroll">
                 <table className="data-table executive-risk-table">
                   <thead>
                     <tr>
+                      <th>Region</th>
                       <th>Rank</th>
                       <th>Site ID</th>
                       <th>Site Name</th>
@@ -7209,6 +8095,7 @@ export default function Home() {
                     {executiveInsights.highRiskSites.length ? (
                       executiveInsights.highRiskSites.map(site => (
                         <tr key={`${site.rank}-${site.siteId}`}>
+                          <td>{site.region}</td>
                           <td>{site.rank}</td>
                           <td>{site.siteId}</td>
                           <td>{site.siteName || "-"}</td>
@@ -7227,7 +8114,7 @@ export default function Home() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={8} className="empty-table-cell">
+                        <td colSpan={9} className="empty-table-cell">
                           No high-risk sites found for the selected filters.
                         </td>
                       </tr>
@@ -7342,13 +8229,38 @@ export default function Home() {
             <div className="deep-dive-bottom-grid">
               <div className="deep-dive-table-card">
                 <div className="deep-dive-panel-heading">
-                  <strong>Repeated Offender Sites</strong>
-                  <small>Prioritized by downtime and repeated tickets</small>
+                  <div>
+                    <strong>Repeated Offender Sites</strong>
+                    <small>Prioritized by downtime and repeated tickets</small>
+                  </div>
+                  <button
+                    className="ghost-button"
+                    onClick={() =>
+                      exportAnalyticsTableExcel(
+                        ["Region", "Site ID", "Site Name", "Tickets", "Downtime", "Top RCA"],
+                        deepDiveAnalytics.repeatedOffenderSites.map(site => [
+                          site.region,
+                          site.siteId,
+                          site.siteName || "-",
+                          site.tickets,
+                          `${site.downtimeHours} hrs`,
+                          site.topRca,
+                        ]),
+                        "Repeated Offenders",
+                        "Repeated-Offender-Sites.xlsx"
+                      )
+                    }
+                    disabled={!deepDiveAnalytics.repeatedOffenderSites.length}
+                    title="Export repeated offender sites to Excel"
+                  >
+                    <FileSpreadsheet size={16} /> Excel
+                  </button>
                 </div>
                 <div className="table-scroll deep-dive-table-scroll">
                   <table className="data-table compact-table">
                     <thead>
                       <tr>
+                        <th>Region</th>
                         <th>Site ID</th>
                         <th>Site Name</th>
                         <th>Tickets</th>
@@ -7360,6 +8272,7 @@ export default function Home() {
                       {deepDiveAnalytics.repeatedOffenderSites.length ? (
                         deepDiveAnalytics.repeatedOffenderSites.slice(0, 8).map(site => (
                           <tr key={site.siteId}>
+                            <td>{site.region}</td>
                             <td>{site.siteId}</td>
                             <td>{site.siteName || "-"}</td>
                             <td>{site.tickets}</td>
@@ -7369,7 +8282,7 @@ export default function Home() {
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={5} className="empty-table-cell">No repeated offender sites found.</td>
+                          <td colSpan={6} className="empty-table-cell">No repeated offender sites found.</td>
                         </tr>
                       )}
                     </tbody>
@@ -8788,6 +9701,14 @@ export default function Home() {
                   )}{" "}
                   &mdash; {filteredTickets.length.toLocaleString()} total
                 </span>
+                <button
+                  className="ghost-button"
+                  onClick={() => exportExcel(filteredTickets)}
+                  disabled={!filteredTickets.length}
+                  title="Export filtered tickets table to Excel"
+                >
+                  <FileSpreadsheet size={16} /> Excel
+                </button>
               </div>
             </div>
             <div className="table-scroll" id="ticket-table-wrapper">

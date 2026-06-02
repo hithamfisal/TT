@@ -93,6 +93,7 @@ export type ExecutiveInsightCard = {
 
 export type HighRiskSiteRow = {
   rank: number;
+  region: string;
   siteId: string;
   siteName: string;
   ticketCount: number;
@@ -165,6 +166,7 @@ export type DeepDiveAnalytics = {
   responsibleTeamLoad: AnalyticsBucket[];
   slaSummary: SlaSummary;
   repeatedOffenderSites: Array<{
+    region: string;
     siteId: string;
     siteName: string;
     tickets: number;
