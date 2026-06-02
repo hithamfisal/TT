@@ -2,6 +2,6 @@
 # Google Sheets: open the TT-History tab before copying so the URL includes gid=.
 # Microsoft 365/OneDrive: use a shared Excel workbook link that allows view/download.
 
-EOA&NEOA=
-SOA=
+EOA&NEOA= https://docs.google.com/spreadsheets/d/1YhPcJt3Gech-BP6MJYAWOHRjMb-sHlUr9a7276mnSQU/edit?gid=1563375692#gid=1563375692
+SOA= https://docs.google.com/spreadsheets/d/1NqCezkUjyhXLM9AV997B8OdgFhWOL-huWogU4pFAAM8/edit?gid=1353903534#gid=1353903534
 COA&WOA=
