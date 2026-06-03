@@ -506,7 +506,7 @@ const ensureExcelTableStyle = (
   return nextIndex;
 };
 
-// ─── MODIFIED: plain body style — font size 20, thin black border, white fill ─
+// ─── MODIFIED: plain body style — no inherited fill/border/font from template ─
 const ensureExcelPlainTicketBodyStyle = (
   files: ZipFileMap,
   codec: ZipTextCodec
@@ -514,10 +514,8 @@ const ensureExcelPlainTicketBodyStyle = (
   const stylesKey = "xl/styles.xml";
   if (!files[stylesKey]) return 0;
 
-  // Build the components we need: a size-20 font, a white fill, a thin black border.
-  const fontId   = ensureExcelFont(files, codec, { size: 20 });   // ← font size 20
-  const fillId   = ensureExcelWhiteFill(files, codec);            // ← no colour fill (white)
-  const borderId = ensureExcelThinBlackBorder(files, codec);      // ← border on all sides
+  // Guarantee a true white fill exists (OOXML reserves fillId 0 & 1, so we add our own)
+  const whiteFillId = ensureExcelWhiteFill(files, codec);
 
   let stylesXml = codec.strFromU8(files[stylesKey]);
   const cellXfsStart = stylesXml.indexOf("<cellXfs");
@@ -528,11 +526,11 @@ const ensureExcelPlainTicketBodyStyle = (
   const cellXfsInner = stylesXml.slice(openEnd + 1, cellXfsEnd);
   const xfs          = cellXfsInner.match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g) ?? [];
 
-  // xf: General format, size-20 font, white fill, thin black border, center+middle, wrap on
+  // Minimal xf: General format, default font, white fill, no border, center+middle, no wrap
   const styleXml =
-    `<xf numFmtId="0" fontId="${fontId}" fillId="${fillId}" borderId="${borderId}" xfId="0" ` +
-    `applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">` +
-    `<alignment horizontal="center" vertical="center" wrapText="1"/></xf>`;
+    `<xf numFmtId="0" fontId="0" fillId="${whiteFillId}" borderId="0" xfId="0" ` +
+    `applyFill="1" applyAlignment="1">` +
+    `<alignment horizontal="center" vertical="center" wrapText="0"/></xf>`;
 
   const existingIndex = xfs.findIndex(xf => xf === styleXml);
   if (existingIndex !== -1) return existingIndex;
@@ -1935,6 +1933,7 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // END OF PART 1 — continue in Part 2
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // PART 2 — paste directly after the last line of Part 1
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2071,7 +2070,7 @@ async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string
   const templateKind = templateRegionOrder.find(region => ticketRegionSet.has(region)) ?? "EOA";
   const templateConfig = {
     EOA: { url: "/EOA_DMR_Monthly_Report.xlsx", dataStart: 39, protectedRow: 48 },
-    SOA: { url: "/SOA_DMR_Monthly_Report.xlsx", dataStart: 41, protectedRow: 58 },
+    SOA: { url: "/SOA_DMR_Monthly_Report.xlsx", dataStart: 42, protectedRow: 58 },
     COA: { url: "/COA_DMR_Monthly_Report.xlsx", dataStart: 32, protectedRow: 48 },
     WOA: { url: "/WOA_DMR_Monthly_Report.xlsx", dataStart: 32, protectedRow: 35 },
   }[templateKind];

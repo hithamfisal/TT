@@ -506,7 +506,6 @@ const ensureExcelTableStyle = (
   return nextIndex;
 };
 
-// ─── MODIFIED: plain body style — font size 20, thin black border, white fill ─
 const ensureExcelPlainTicketBodyStyle = (
   files: ZipFileMap,
   codec: ZipTextCodec
@@ -514,26 +513,21 @@ const ensureExcelPlainTicketBodyStyle = (
   const stylesKey = "xl/styles.xml";
   if (!files[stylesKey]) return 0;
 
-  // Build the components we need: a size-20 font, a white fill, a thin black border.
-  const fontId   = ensureExcelFont(files, codec, { size: 20 });   // ← font size 20
-  const fillId   = ensureExcelWhiteFill(files, codec);            // ← no colour fill (white)
-  const borderId = ensureExcelThinBlackBorder(files, codec);      // ← border on all sides
-
+  const fontId = ensureExcelFont(files, codec, { size: 20 });
+  const fillId = ensureExcelWhiteFill(files, codec);
+  const borderId = ensureExcelThinBlackBorder(files, codec);
   let stylesXml = codec.strFromU8(files[stylesKey]);
   const cellXfsStart = stylesXml.indexOf("<cellXfs");
-  const cellXfsEnd   = stylesXml.indexOf("</cellXfs>", cellXfsStart);
+  const cellXfsEnd = stylesXml.indexOf("</cellXfs>", cellXfsStart);
   if (cellXfsStart === -1 || cellXfsEnd === -1) return 0;
 
-  const openEnd      = stylesXml.indexOf(">", cellXfsStart);
+  const openEnd = stylesXml.indexOf(">", cellXfsStart);
   const cellXfsInner = stylesXml.slice(openEnd + 1, cellXfsEnd);
-  const xfs          = cellXfsInner.match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g) ?? [];
-
-  // xf: General format, size-20 font, white fill, thin black border, center+middle, wrap on
+  const xfs = cellXfsInner.match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g) ?? [];
   const styleXml =
     `<xf numFmtId="0" fontId="${fontId}" fillId="${fillId}" borderId="${borderId}" xfId="0" ` +
     `applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">` +
-    `<alignment horizontal="center" vertical="center" wrapText="1"/></xf>`;
-
+    `<alignment horizontal="center" vertical="center"/></xf>`;
   const existingIndex = xfs.findIndex(xf => xf === styleXml);
   if (existingIndex !== -1) return existingIndex;
 
@@ -838,25 +832,46 @@ const exportPerfPpt = (
     const s1 = pptx.addSlide();
     s1.background = { color: BG };
     s1.addShape(pptx.ShapeType.rect, {
-      x: 0, y: 0, w: PPT_SLIDE_W, h: 0.06,
+      x: 0,
+      y: 0,
+      w: PPT_SLIDE_W,
+      h: 0.06,
       fill: { color: CYAN },
     });
     s1.addText("DMR Monthly Performance Report", {
-      x: 0.7, y: 1.6, w: 11.6,
-      fontSize: 36, bold: true, color: WHITE, fontFace: "Segoe UI",
+      x: 0.7,
+      y: 1.6,
+      w: 11.6,
+      fontSize: 36,
+      bold: true,
+      color: WHITE,
+      fontFace: "Segoe UI",
     });
     s1.addText(`Month: ${monthLabel}`, {
-      x: 0.7, y: 2.5, w: 6,
-      fontSize: 16, color: CYAN, fontFace: "Segoe UI",
+      x: 0.7,
+      y: 2.5,
+      w: 6,
+      fontSize: 16,
+      color: CYAN,
+      fontFace: "Segoe UI",
     });
     if (executiveInsights) {
       s1.addText(`Network Health Score: ${executiveInsights.healthScore.score} / 100 · ${executiveInsights.healthScore.status}`, {
-        x: 0.7, y: 2.95, w: 9,
-        fontSize: 15, bold: true, color: WHITE, fontFace: "Segoe UI",
+        x: 0.7,
+        y: 2.95,
+        w: 9,
+        fontSize: 15,
+        bold: true,
+        color: WHITE,
+        fontFace: "Segoe UI",
       });
       s1.addText(safePptText(executiveInsights.healthScore.mainReason, 180), {
-        x: 0.7, y: 3.32, w: 9.5,
-        fontSize: 11, color: MUTED, fontFace: "Segoe UI",
+        x: 0.7,
+        y: 3.32,
+        w: 9.5,
+        fontSize: 11,
+        color: MUTED,
+        fontFace: "Segoe UI",
       });
     }
 
@@ -864,73 +879,208 @@ const exportPerfPpt = (
     const kpiSlide = pptx.addSlide();
     kpiSlide.background = { color: BG };
     kpiSlide.addShape(pptx.ShapeType.rect, {
-      x: 0, y: 0, w: PPT_SLIDE_W, h: 0.06,
+      x: 0,
+      y: 0,
+      w: PPT_SLIDE_W,
+      h: 0.06,
       fill: { color: CYAN },
     });
     kpiSlide.addText("KPI Summary", {
-      x: 0.5, y: 0.18, w: 12,
-      fontSize: 22, bold: true, color: WHITE, fontFace: "Segoe UI",
+      x: 0.5,
+      y: 0.18,
+      w: 12,
+      fontSize: 22,
+      bold: true,
+      color: WHITE,
+      fontFace: "Segoe UI",
     });
     kpiSlide.addText(`Month: ${monthLabel}  ·  ${data.length} sites`, {
-      x: 0.5, y: 0.55, w: 12,
-      fontSize: 11, color: MUTED, fontFace: "Segoe UI",
+      x: 0.5,
+      y: 0.55,
+      w: 12,
+      fontSize: 11,
+      color: MUTED,
+      fontFace: "Segoe UI",
     });
 
     const kpiItems = [
-      { label: "% Availability", value: kpi.pctAvailability, color: GREEN },
-      { label: "MTTR", value: kpi.mttr, color: AMBER },
-      { label: "MTBF", value: kpi.mtbf, color: CYAN },
-      { label: "MTTF", value: kpi.mttf, color: CYAN },
-      { label: "Affected Sites", value: String(kpi.affectedSites), color: kpi.affectedSites > 0 ? RED : GREEN },
-      { label: "Total Down Time", value: kpi.totalDownHrs, color: kpi.totalDownHrs === "0.0 hrs" ? GREEN : RED },
+      {
+        label: "% Availability",
+        value: kpi.pctAvailability,
+        color: GREEN,
+        icon: "✓",
+        labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" },
+        valueStyle: { fontSize: "20px", fontWeight: 700, color: GREEN },
+      },
+      {
+        label: "MTTR",
+        value: kpi.mttr,
+        color: AMBER,
+        icon: "⏱",
+        labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" },
+        valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER },
+      },
+      {
+        label: "MTBF",
+        value: kpi.mtbf,
+        color: CYAN,
+        icon: "↻",
+        labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" },
+        valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER },
+      },
+      {
+        label: "MTTF",
+        value: kpi.mttf,
+        color: CYAN,
+        icon: "↻",
+        labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" },
+        valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER },
+      },
+      {
+        label: "Affected Sites",
+        value: String(kpi.affectedSites),
+        color: kpi.affectedSites > 0 ? RED : GREEN,
+        icon: "⚠",
+        labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" },
+        valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER },
+      },
+      {
+        label: "Total Down Time",
+        value: kpi.totalDownHrs,
+        color: kpi.totalDownHrs === "0.0 hrs" ? GREEN : RED,
+        icon: "↓",
+        labelStyle: { fontSize: "20px", fontWeight: 900, color: "#94a3b8" },
+        valueStyle: { fontSize: "20px", fontWeight: 700, color: AMBER },
+      },
     ];
 
-    const cW = 4.0, cH = 2.5, cGapX = 0.18, cGapY = 0.22;
-    const cStartX = 0.4, cStartY = 0.95;
+    const cW = 4.0,
+      cH = 2.5,
+      cGapX = 0.18,
+      cGapY = 0.22;
+    const cStartX = 0.4,
+      cStartY = 0.95;
     kpiItems.forEach((item, idx) => {
       const col = idx % 3;
       const row = Math.floor(idx / 3);
       const x = cStartX + col * (cW + cGapX);
       const y = cStartY + row * (cH + cGapY);
       kpiSlide.addShape(pptx.ShapeType.roundRect, {
-        x, y, w: cW, h: cH,
+        x,
+        y,
+        w: cW,
+        h: cH,
         fill: { color: CARD_BG },
         line: { color: "1e3a5f", width: 0.5 },
       });
       kpiSlide.addShape(pptx.ShapeType.rect, {
-        x, y, w: cW, h: 0.06,
+        x,
+        y,
+        w: cW,
+        h: 0.06,
         fill: { color: item.color },
       });
       kpiSlide.addText(item.label.toUpperCase(), {
-        x: x + 0.18, y: y + 0.18, w: cW - 0.36,
-        fontSize: 9, color: MUTED, fontFace: "Segoe UI", bold: false,
+        x: x + 0.18,
+        y: y + 0.18,
+        w: cW - 0.36,
+        fontSize: 9,
+        color: MUTED,
+        fontFace: "Segoe UI",
+        bold: false,
       });
       kpiSlide.addText(item.value, {
-        x: x + 0.18, y: y + 0.6, w: cW - 0.36,
-        fontSize: 28, bold: true, color: item.color, fontFace: "Segoe UI",
+        x: x + 0.18,
+        y: y + 0.6,
+        w: cW - 0.36,
+        fontSize: 28,
+        bold: true,
+        color: item.color,
+        fontFace: "Segoe UI",
       });
       kpiSlide.addText(`Month: ${monthLabel}`, {
-        x: x + 0.18, y: y + cH - 0.4, w: cW - 0.36,
-        fontSize: 8, color: MUTED, fontFace: "Segoe UI",
+        x: x + 0.18,
+        y: y + cH - 0.4,
+        w: cW - 0.36,
+        fontSize: 8,
+        color: MUTED,
+        fontFace: "Segoe UI",
       });
     });
 
     const itemsPerSlide = 18;
     const headerRow = [
-      { text: "S No", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
-      { text: "Site Name", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
-      { text: "Availability (Hrs)", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
-      { text: "Down (Hrs)", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
-      { text: "Reliability", options: { bold: true, color: "0a1628", fill: { color: "22d3ee" }, align: "center", valign: "mid" } },
+      {
+        text: "S No",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: "22d3ee" },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Site Name",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: "22d3ee" },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Availability (Hrs)",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: "22d3ee" },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Down (Hrs)",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: "22d3ee" },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Reliability",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: "22d3ee" },
+          align: "center",
+          valign: "mid",
+        },
+      },
     ];
 
     for (let i = 0; i < data.length; i += itemsPerSlide) {
       const slide = pptx.addSlide();
       slide.background = { color: BG };
-      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: PPT_SLIDE_W, h: 0.06, fill: { color: CYAN } });
+      slide.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: PPT_SLIDE_W,
+        h: 0.06,
+        fill: { color: CYAN },
+      });
       const titleSuffix = i === 0 ? "" : " (Contd.)";
       slide.addText("Performance Table" + titleSuffix, {
-        x: 0.5, y: 0.18, w: 12, fontSize: 18, bold: true, color: WHITE, fontFace: "Segoe UI",
+        x: 0.5,
+        y: 0.18,
+        w: 12,
+        fontSize: 18,
+        bold: true,
+        color: WHITE,
+        fontFace: "Segoe UI",
       });
       const chunkData = data.slice(i, i + itemsPerSlide);
       const tableRows = [
@@ -938,51 +1088,148 @@ const exportPerfPpt = (
         ...chunkData.map((r, index) => {
           const actualIdx = i + index;
           const relNum = parseFloat(r.reliability);
-          const relColor = !r.sitesDownHours ? GREEN : relNum < 95 ? RED : relNum < 99 ? AMBER : GREEN;
+          const relColor = !r.sitesDownHours
+            ? GREEN
+            : relNum < 95
+              ? RED
+              : relNum < 99
+                ? AMBER
+                : GREEN;
           return [
-            { text: String(actualIdx + 1), options: { color: MUTED, align: "center", valign: "mid" } },
-            { text: r?.siteName || "N/A", options: { color: WHITE, bold: true, align: "left", valign: "mid" } },
-            { text: String(r?.availHours || 0), options: { color: GREEN, align: "center", valign: "mid" } },
-            { text: String(r?.sitesDownHours || 0), options: { color: r.sitesDownHours > 0 ? RED : MUTED, align: "center", valign: "mid" } },
-            { text: r?.reliability || "100%", options: { color: relColor, bold: true, align: "center", valign: "mid" } },
+            {
+              text: String(actualIdx + 1),
+              options: { color: MUTED, align: "center", valign: "mid" },
+            },
+            {
+              text: r?.siteName || "N/A",
+              options: {
+                color: WHITE,
+                bold: true,
+                align: "left",
+                valign: "mid",
+              },
+            },
+            {
+              text: String(r?.availHours || 0),
+              options: { color: GREEN, align: "center", valign: "mid" },
+            },
+            {
+              text: String(r?.sitesDownHours || 0),
+              options: {
+                color: r.sitesDownHours > 0 ? RED : MUTED,
+                align: "center",
+                valign: "mid",
+              },
+            },
+            {
+              text: r?.reliability || "100%",
+              options: {
+                color: relColor,
+                bold: true,
+                align: "center",
+                valign: "mid",
+              },
+            },
           ];
         }),
       ];
       addPptShapeTable(slide, pptx.ShapeType.rect, tableRows as any, {
-        x: 0.5, y: 0.65, fontSize: 10, fontFace: "Segoe UI",
-        borderColor: "1e3a5f", fillColor: CARD_BG, textColor: WHITE,
-        rowH: 0.28, colW: [0.6, 3.5, 2.2, 2.0, 1.7],
+        x: 0.5,
+        y: 0.65,
+        fontSize: 10,
+        fontFace: "Segoe UI",
+        borderColor: "1e3a5f",
+        fillColor: CARD_BG,
+        textColor: WHITE,
+        rowH: 0.28,
+        colW: [0.6, 3.5, 2.2, 2.0, 1.7],
       });
     }
 
     const slide3 = pptx.addSlide();
     slide3.background = { color: BG };
-    slide3.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: PPT_SLIDE_W, h: 0.06, fill: { color: CYAN } });
-    slide3.addText("Site Availability — Hours", { x: 0.5, y: 0.18, w: 12, fontSize: 18, bold: true, color: WHITE, fontFace: "Segoe UI" });
-    slide3.addText(`Month: ${monthLabel}`, { x: 0.5, y: 0.52, w: 6, fontSize: 11, color: MUTED, fontFace: "Segoe UI" });
+    slide3.addShape(pptx.ShapeType.rect, {
+      x: 0,
+      y: 0,
+      w: PPT_SLIDE_W,
+      h: 0.06,
+      fill: { color: CYAN },
+    });
+    slide3.addText("Site Availability — Hours", {
+      x: 0.5,
+      y: 0.18,
+      w: 12,
+      fontSize: 18,
+      bold: true,
+      color: WHITE,
+      fontFace: "Segoe UI",
+    });
+    slide3.addText(`Month: ${monthLabel}`, {
+      x: 0.5,
+      y: 0.52,
+      w: 6,
+      fontSize: 11,
+      color: MUTED,
+      fontFace: "Segoe UI",
+    });
     addPptShapeBarChart(slide3, pptx.ShapeType.rect, availabilityChartRows, {
-      x: 0.4, y: 0.85, w: 12.2, h: 5.8,
-      barColor: GREEN, bgColor: CARD_BG, gridColor: "1e3a5f",
-      labelColor: MUTED, valueColor: WHITE,
+      x: 0.4,
+      y: 0.85,
+      w: 12.2,
+      h: 5.8,
+      barColor: GREEN,
+      bgColor: CARD_BG,
+      gridColor: "1e3a5f",
+      labelColor: MUTED,
+      valueColor: WHITE,
       emptyText: "No availability data available for this selection.",
     });
 
     const slide4 = pptx.addSlide();
     slide4.background = { color: BG };
-    slide4.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: PPT_SLIDE_W, h: 0.06, fill: { color: RED } });
-    slide4.addText("Site Downtime — Hours", { x: 0.5, y: 0.18, w: 12, fontSize: 18, bold: true, color: WHITE, fontFace: "Segoe UI" });
+    slide4.addShape(pptx.ShapeType.rect, {
+      x: 0,
+      y: 0,
+      w: PPT_SLIDE_W,
+      h: 0.06,
+      fill: { color: RED },
+    });
+    slide4.addText("Site Downtime — Hours", {
+      x: 0.5,
+      y: 0.18,
+      w: 12,
+      fontSize: 18,
+      bold: true,
+      color: WHITE,
+      fontFace: "Segoe UI",
+    });
     slide4.addText(
       `Month: ${monthLabel}  ·  ${data.filter(r => r.sitesDownHours > 0).length} of ${data.length} sites affected`,
-      { x: 0.5, y: 0.52, w: 10, fontSize: 11, color: MUTED, fontFace: "Segoe UI" }
+      {
+        x: 0.5,
+        y: 0.52,
+        w: 10,
+        fontSize: 11,
+        color: MUTED,
+        fontFace: "Segoe UI",
+      }
     );
     addPptShapeBarChart(slide4, pptx.ShapeType.rect, downtimeChartRows, {
-      x: 0.4, y: 0.85, w: 12.2, h: 5.8,
-      barColor: RED, bgColor: CARD_BG, gridColor: "1e3a5f",
-      labelColor: MUTED, valueColor: WHITE,
+      x: 0.4,
+      y: 0.85,
+      w: 12.2,
+      h: 5.8,
+      barColor: RED,
+      bgColor: CARD_BG,
+      gridColor: "1e3a5f",
+      labelColor: MUTED,
+      valueColor: WHITE,
       emptyText: "No downtime data available for this selection.",
     });
 
-    pptx.writeFile({ fileName: `Performance_Report_${monthLabel.replace(/\s+/g, "_")}.pptx` });
+    pptx.writeFile({
+      fileName: `Performance_Report_${monthLabel.replace(/\s+/g, "_")}.pptx`,
+    });
   } catch (error) {
     console.error("Failed to generate Performance PPT:", error);
   }
@@ -998,30 +1245,108 @@ const exportTicketsPpt = (
   try {
     const pptx = new PptxGenJS();
     pptx.layout = "LAYOUT_WIDE";
-    const BG = "0a1628", CARD_BG = "0f1f38", CYAN = "22d3ee", WHITE = "f8fafc", MUTED = "94a3b8";
+    const BG = "0a1628",
+      CARD_BG = "0f1f38",
+      CYAN = "22d3ee",
+      WHITE = "f8fafc",
+      MUTED = "94a3b8";
 
     const slide1 = pptx.addSlide();
     slide1.background = { color: BG };
-    slide1.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: PPT_SLIDE_W, h: 0.06, fill: { color: CYAN } });
-    slide1.addText("DMR Monthly Tickets Report", { x: 0.5, y: 2.5, w: 12, fontSize: 36, bold: true, color: WHITE, fontFace: "Segoe UI" });
-    slide1.addText(`Target Month: ${monthLabel}`, { x: 0.5, y: 3.2, w: 12, fontSize: 18, color: CYAN, fontFace: "Segoe UI" });
-    slide1.addText(`Total Aggregated Tickets: ${tickets.length}`, { x: 0.5, y: 3.6, w: 12, fontSize: 14, color: MUTED, italic: true });
+    slide1.addShape(pptx.ShapeType.rect, {
+      x: 0,
+      y: 0,
+      w: PPT_SLIDE_W,
+      h: 0.06,
+      fill: { color: CYAN },
+    });
+    slide1.addText("DMR Monthly Tickets Report", {
+      x: 0.5,
+      y: 2.5,
+      w: 12,
+      fontSize: 36,
+      bold: true,
+      color: WHITE,
+      fontFace: "Segoe UI",
+    });
+    slide1.addText(`Target Month: ${monthLabel}`, {
+      x: 0.5,
+      y: 3.2,
+      w: 12,
+      fontSize: 18,
+      color: CYAN,
+      fontFace: "Segoe UI",
+    });
+    slide1.addText(`Total Aggregated Tickets: ${tickets.length}`, {
+      x: 0.5,
+      y: 3.6,
+      w: 12,
+      fontSize: 14,
+      color: MUTED,
+      italic: true,
+    });
 
     if (executiveInsights) {
       const execSlide = pptx.addSlide();
       execSlide.background = { color: BG };
-      execSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: PPT_SLIDE_W, h: 0.06, fill: { color: CYAN } });
-      execSlide.addText("Executive Management Summary", { x: 0.55, y: 0.28, w: 12, fontSize: 24, bold: true, color: WHITE, fontFace: "Segoe UI" });
+      execSlide.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: PPT_SLIDE_W,
+        h: 0.06,
+        fill: { color: CYAN },
+      });
+      execSlide.addText("Executive Management Summary", {
+        x: 0.55,
+        y: 0.28,
+        w: 12,
+        fontSize: 24,
+        bold: true,
+        color: WHITE,
+        fontFace: "Segoe UI",
+      });
       execSlide.addText(safePptText(executiveInsights.summaryText, 700), {
-        x: 0.55, y: 0.85, w: 7.8, h: 1.1, fontSize: 14, color: MUTED, breakLine: false, fit: "shrink",
+        x: 0.55,
+        y: 0.85,
+        w: 7.8,
+        h: 1.1,
+        fontSize: 14,
+        color: MUTED,
+        breakLine: false,
+        fit: "shrink",
       } as any);
       execSlide.addShape(pptx.ShapeType.roundRect, {
-        x: 8.65, y: 0.82, w: 3.85, h: 1.5,
-        fill: { color: CARD_BG, transparency: 3 }, line: { color: CYAN, transparency: 15 },
+        x: 8.65,
+        y: 0.82,
+        w: 3.85,
+        h: 1.5,
+        fill: { color: CARD_BG, transparency: 3 },
+        line: { color: CYAN, transparency: 15 },
       } as any);
-      execSlide.addText("Network Health Score", { x: 8.9, y: 1.0, w: 3.4, fontSize: 10, color: MUTED, bold: true });
-      execSlide.addText(String(executiveInsights.healthScore.score), { x: 8.9, y: 1.25, w: 1.2, fontSize: 34, bold: true, color: CYAN });
-      execSlide.addText(executiveInsights.healthScore.status, { x: 10.15, y: 1.38, w: 1.9, fontSize: 16, bold: true, color: WHITE });
+      execSlide.addText("Network Health Score", {
+        x: 8.9,
+        y: 1.0,
+        w: 3.4,
+        fontSize: 10,
+        color: MUTED,
+        bold: true,
+      });
+      execSlide.addText(String(executiveInsights.healthScore.score), {
+        x: 8.9,
+        y: 1.25,
+        w: 1.2,
+        fontSize: 34,
+        bold: true,
+        color: CYAN,
+      });
+      execSlide.addText(executiveInsights.healthScore.status, {
+        x: 10.15,
+        y: 1.38,
+        w: 1.9,
+        fontSize: 16,
+        bold: true,
+        color: WHITE,
+      });
 
       const insightRows = executiveInsights.cards.slice(0, 8).map(card => [
         { text: card.label, options: { color: MUTED, fontSize: 9, bold: true } },
@@ -1029,19 +1354,40 @@ const exportTicketsPpt = (
         { text: card.note, options: { color: MUTED, fontSize: 8 } },
       ]);
       addPptShapeTable(execSlide, pptx.ShapeType.rect, insightRows as any, {
-        x: 0.55, y: 2.25, colW: [3.1, 2.2, 6.7], rowH: 0.35, fontSize: 9, fontFace: "Segoe UI",
-        borderColor: "1e3a5f", fillColor: CARD_BG, textColor: WHITE,
+        x: 0.55,
+        y: 2.25,
+        colW: [3.1, 2.2, 6.7],
+        rowH: 0.35,
+        fontSize: 9,
+        fontFace: "Segoe UI",
+        borderColor: "1e3a5f",
+        fillColor: CARD_BG,
+        textColor: WHITE,
       } as any);
     }
 
     if (executiveInsights?.highRiskSites.length) {
       const riskSlide = pptx.addSlide();
       riskSlide.background = { color: BG };
-      riskSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: PPT_SLIDE_W, h: 0.06, fill: { color: "ef4444" } });
-      riskSlide.addText("High-Risk Sites & Follow-Up Priority", { x: 0.55, y: 0.25, w: 12, fontSize: 23, bold: true, color: WHITE });
+      riskSlide.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: PPT_SLIDE_W,
+        h: 0.06,
+        fill: { color: "ef4444" },
+      });
+      riskSlide.addText("High-Risk Sites & Follow-Up Priority", {
+        x: 0.55,
+        y: 0.25,
+        w: 12,
+        fontSize: 23,
+        bold: true,
+        color: WHITE,
+      });
       const riskRows = [
         ["Rank", "Site ID", "Site Name", "Tickets", "Downtime", "Reliability", "Top RCA", "Risk"].map(text => ({
-          text, options: { bold: true, color: "0a1628", fill: { color: "ef4444" }, align: "center" },
+          text,
+          options: { bold: true, color: "0a1628", fill: { color: "ef4444" }, align: "center" },
         })),
         ...executiveInsights.highRiskSites.slice(0, 10).map(site => [
           { text: String(site.rank), options: { color: MUTED, align: "center" } },
@@ -1055,20 +1401,40 @@ const exportTicketsPpt = (
         ]),
       ];
       addPptShapeTable(riskSlide, pptx.ShapeType.rect, riskRows as any, {
-        x: 0.35, y: 0.9, fontSize: 8, rowH: 0.34,
+        x: 0.35,
+        y: 0.9,
+        fontSize: 8,
+        rowH: 0.34,
         colW: [0.55, 1.2, 2.2, 0.8, 1.0, 1.0, 3.3, 1.6],
-        fontFace: "Segoe UI", borderColor: "1e3a5f", fillColor: CARD_BG, textColor: WHITE,
+        fontFace: "Segoe UI",
+        borderColor: "1e3a5f",
+        fillColor: CARD_BG,
+        textColor: WHITE,
       } as any);
     }
 
     if (deepDive) {
       const deepSlide = pptx.addSlide();
       deepSlide.background = { color: BG };
-      deepSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: PPT_SLIDE_W, h: 0.06, fill: { color: "a78bfa" } });
-      deepSlide.addText("RCA, Preventability & SLA Deep-Dive", { x: 0.55, y: 0.25, w: 12, fontSize: 23, bold: true, color: WHITE });
+      deepSlide.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: PPT_SLIDE_W,
+        h: 0.06,
+        fill: { color: "a78bfa" },
+      });
+      deepSlide.addText("RCA, Preventability & SLA Deep-Dive", {
+        x: 0.55,
+        y: 0.25,
+        w: 12,
+        fontSize: 23,
+        bold: true,
+        color: WHITE,
+      });
       const rcaRows = [
         ["RCA Family", "Tickets", "Downtime", "Missing RCA", "Preventable", "Owner Team"].map(text => ({
-          text, options: { bold: true, color: "0a1628", fill: { color: "a78bfa" }, align: "center" },
+          text,
+          options: { bold: true, color: "0a1628", fill: { color: "a78bfa" }, align: "center" },
         })),
         ...deepDive.rcaFamilyDeepDive.slice(0, 7).map(row => [
           { text: row.family, options: { color: WHITE, bold: true } },
@@ -1080,36 +1446,129 @@ const exportTicketsPpt = (
         ]),
       ];
       addPptShapeTable(deepSlide, pptx.ShapeType.rect, rcaRows as any, {
-        x: 0.45, y: 0.85, fontSize: 8, rowH: 0.35,
+        x: 0.45,
+        y: 0.85,
+        fontSize: 8,
+        rowH: 0.35,
         colW: [2.7, 0.8, 1.1, 1.1, 1.1, 5.6],
-        fontFace: "Segoe UI", borderColor: "1e3a5f", fillColor: CARD_BG, textColor: WHITE,
+        fontFace: "Segoe UI",
+        borderColor: "1e3a5f",
+        fillColor: CARD_BG,
+        textColor: WHITE,
       } as any);
-      deepSlide.addText("Recommended Management Actions", { x: 0.55, y: 4.05, w: 12, fontSize: 14, bold: true, color: CYAN });
+      deepSlide.addText("Recommended Management Actions", {
+        x: 0.55,
+        y: 4.05,
+        w: 12,
+        fontSize: 14,
+        bold: true,
+        color: CYAN,
+      });
       deepDive.recommendations.forEach((item, idx) => {
         deepSlide.addText(safePptText(`${idx + 1}. ${item}`, 260), {
-          x: 0.7, y: 4.4 + idx * 0.42, w: 11.5, fontSize: 10, color: WHITE, fit: "shrink",
+          x: 0.7,
+          y: 4.4 + idx * 0.42,
+          w: 11.5,
+          fontSize: 10,
+          color: WHITE,
+          fit: "shrink",
         } as any);
       });
     }
 
     const itemsPerSlide = 16;
     const headerRow = [
-      { text: "S No", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
-      { text: "Ticket ID", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
-      { text: "Site IDs", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
-      { text: "Resource", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
-      { text: "Sev", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
-      { text: "Issue Description", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
-      { text: "Status", options: { bold: true, color: "0a1628", fill: { color: CYAN }, align: "center", valign: "mid" } },
+      {
+        text: "S No",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Ticket ID",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Site IDs",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Resource",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Sev",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Issue Description",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
+      {
+        text: "Status",
+        options: {
+          bold: true,
+          color: "0a1628",
+          fill: { color: CYAN },
+          align: "center",
+          valign: "mid",
+        },
+      },
     ];
 
     for (let i = 0; i < tickets.length; i += itemsPerSlide) {
       const slide = pptx.addSlide();
       slide.background = { color: BG };
-      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: PPT_SLIDE_W, h: 0.06, fill: { color: CYAN } });
+      slide.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: PPT_SLIDE_W,
+        h: 0.06,
+        fill: { color: CYAN },
+      });
       const titleSuffix = i === 0 ? "" : " (Contd.)";
       slide.addText(`Aggregated Ticket Details${titleSuffix}`, {
-        x: 0.5, y: 0.2, w: 12, fontSize: 20, bold: true, color: WHITE, fontFace: "Segoe UI",
+        x: 0.5,
+        y: 0.2,
+        w: 12,
+        fontSize: 20,
+        bold: true,
+        color: WHITE,
+        fontFace: "Segoe UI",
       });
       const chunk = tickets.slice(i, i + itemsPerSlide);
       const tableRows = [
@@ -1118,104 +1577,256 @@ const exportTicketsPpt = (
           const row = t.primary || {};
           const sites = Array.from(t.siteIds || []).join(", ");
           return [
-            { text: String(i + idx + 1), options: { color: MUTED, align: "center" } },
+            {
+              text: String(i + idx + 1),
+              options: { color: MUTED, align: "center" },
+            },
             { text: t.tt || "N/A", options: { color: CYAN, bold: true } },
-            { text: sites.length > 30 ? sites.substring(0, 30) + "..." : sites, options: { color: WHITE, fontSize: 7 } },
-            { text: row.managedResource || "N/A", options: { color: WHITE, align: "center", valign: "mid" } },
-            { text: row.severity || "N/A", options: { color: row.severity === "Critical" ? "ef4444" : WHITE, bold: true, align: "center", valign: "mid" } },
-            { text: row.issue || "N/A", options: { color: WHITE, fontSize: 8 } },
-            { text: row.status || "N/A", options: { color: row.status === "Resolved" ? "10b981" : "f59e0b", bold: true } },
+            {
+              text: sites.length > 30 ? sites.substring(0, 30) + "..." : sites,
+              options: { color: WHITE, fontSize: 7 },
+            },
+            {
+              text: row.managedResource || "N/A",
+              options: { color: WHITE, align: "center", valign: "mid" },
+            },
+            {
+              text: row.severity || "N/A",
+              options: {
+                color: row.severity === "Critical" ? "ef4444" : WHITE,
+                bold: true,
+                align: "center",
+                valign: "mid",
+              },
+            },
+            {
+              text: row.issue || "N/A",
+              options: { color: WHITE, fontSize: 8 },
+            },
+            {
+              text: row.status || "N/A",
+              options: {
+                color: row.status === "Resolved" ? "10b981" : "f59e0b",
+                bold: true,
+              },
+            },
           ];
         }),
       ];
       addPptShapeTable(slide, pptx.ShapeType.rect, tableRows as any, {
-        x: 0.4, y: 0.7, fontSize: 9, fontFace: "Segoe UI",
-        borderColor: "1e3a5f", fillColor: CARD_BG, textColor: WHITE,
-        rowH: 0.35, colW: [0.6, 1.2, 1.8, 1.8, 0.8, 5.1, 1.2],
+        x: 0.4,
+        y: 0.7,
+        fontSize: 9,
+        fontFace: "Segoe UI",
+        borderColor: "1e3a5f",
+        fillColor: CARD_BG,
+        textColor: WHITE,
+        rowH: 0.35,
+        colW: [0.6, 1.2, 1.8, 1.8, 0.8, 5.1, 1.2],
       });
       slide.addText(`Page ${Math.floor(i / itemsPerSlide) + 2}`, {
-        x: 12, y: 7.1, w: 1, fontSize: 8, color: MUTED, align: "right",
+        x: 12,
+        y: 7.1,
+        w: 1,
+        fontSize: 8,
+        color: MUTED,
+        align: "right",
       });
     }
 
-    pptx.writeFile({ fileName: `DMR_Tickets_Report_${monthLabel.replace(/\s+/g, "_")}.pptx` });
+    pptx.writeFile({
+      fileName: `DMR_Tickets_Report_${monthLabel.replace(/\s+/g, "_")}.pptx`,
+    });
   } catch (error) {
     console.error("Failed to generate Tickets PPT:", error);
     alert("Error generating PowerPoint. Please check the console.");
   }
 };
 
-const COLORS = ["#22d3ee","#60a5fa","#f59e0b","#ef4444","#34d399","#a78bfa","#f472b6","#94a3b8"];
-const STATUS_COLORS: Record<string, string> = { Closed: "#34d399", Pending: "#f59e0b", Resolved: "#60a5fa", Open: "#ef4444" };
-const SEVERITY_COLORS: Record<string, string> = { Critical: "#ef4444", Major: "#f59e0b", Minor: "#22d3ee", Low: "#34d399" };
+const COLORS = [
+  "#22d3ee",
+  "#60a5fa",
+  "#f59e0b",
+  "#ef4444",
+  "#34d399",
+  "#a78bfa",
+  "#f472b6",
+  "#94a3b8",
+];
+const STATUS_COLORS: Record<string, string> = {
+  Closed: "#34d399",
+  Pending: "#f59e0b",
+  Resolved: "#60a5fa",
+  Open: "#ef4444",
+};
+const SEVERITY_COLORS: Record<string, string> = {
+  Critical: "#ef4444",
+  Major: "#f59e0b",
+  Minor: "#22d3ee",
+  Low: "#34d399",
+};
 const CHART_GRID_STROKE = "rgba(148, 163, 184, .14)";
 const CHART_AXIS_STROKE = "#8ea4c2";
 const CHART_LABEL_FILL = "#e5f0ff";
 const CHART_TOOLTIP_STYLE: CSSProperties = {
-  background: "linear-gradient(145deg, rgba(8, 17, 34, .98), rgba(15, 31, 56, .96))",
+  background:
+    "linear-gradient(145deg, rgba(8, 17, 34, .98), rgba(15, 31, 56, .96))",
   border: "1px solid rgba(125, 211, 252, .34)",
   borderRadius: 10,
   color: "#e5f0ff",
   boxShadow: "0 18px 45px rgba(0, 0, 0, .35)",
 };
-const CHART_LEGEND_STYLE: CSSProperties = { color: "#bfd3ee", fontSize: 11, fontWeight: 700 };
+const CHART_LEGEND_STYLE: CSSProperties = {
+  color: "#bfd3ee",
+  fontSize: 11,
+  fontWeight: 700,
+};
 const BAR_RADIUS: [number, number, number, number] = [0, 8, 8, 0];
 const COLUMN_BAR_RADIUS: [number, number, number, number] = [6, 6, 0, 0];
 
 const EMPTY_FILTERS: Filters = {
-  search: "", status: [], severity: [], region: [], impact: [], site: [], openingMonth: [], rcaFamily: [],
+  search: "",
+  status: [],
+  severity: [],
+  region: [],
+  impact: [],
+  site: [],
+  openingMonth: [],
+  rcaFamily: [],
 };
 
-function countBy<T>(items: T[], keyFn: (item: T) => string): { name: string; value: number }[] {
+function countBy<T>(
+  items: T[],
+  keyFn: (item: T) => string
+): { name: string; value: number }[] {
   const map = new Map<string, number>();
-  items.forEach(item => { const key = keyFn(item) || "Blank"; map.set(key, (map.get(key) ?? 0) + 1); });
-  return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+  items.forEach(item => {
+    const key = keyFn(item) || "Blank";
+    map.set(key, (map.get(key) ?? 0) + 1);
+  });
+  return Array.from(map.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
 }
 function pct(value: number, total: number): string {
   if (!total) return "";
   return `${((value / total) * 100).toFixed(1)}%`;
 }
-function metricValue(items: { name: string; value: number }[], expected: string): number {
-  return items.find(item => item.name.toLowerCase() === expected.toLowerCase())?.value ?? 0;
+function metricValue(
+  items: { name: string; value: number }[],
+  expected: string
+): number {
+  return (
+    items.find(item => item.name.toLowerCase() === expected.toLowerCase())
+      ?.value ?? 0
+  );
 }
-function renderPieLabel(props: { name?: string; value?: number; percent?: number }) {
+function renderPieLabel(props: {
+  name?: string;
+  value?: number;
+  percent?: number;
+}) {
   const value = props.value ?? 0;
   if (!value) return "";
   return `${value}`;
 }
 
 const DISTINCT_REPORT_HEADERS = [
-  "#","Site ID","Site Name","Managed Resource","Severity","Issues",
-  "Observation Date","Observation Time","Recovery Date","Recovery Time",
-  "Escalated for L3 Support Date","Escalated for L3 Support Time",
-  "Total Duration Days/Hours","TT","Status","Escalated to","RCA","Action",
+  "#",
+  "Site ID",
+  "Site Name",
+  "Managed Resource",
+  "Severity",
+  "Issues",
+  "Observation Date",
+  "Observation Time",
+  "Recovery Date",
+  "Recovery Time",
+  "Escalated for L3 Support Date",
+  "Escalated for L3 Support Time",
+  "Total Duration Days/Hours",
+  "TT",
+  "Status",
+  "Escalated to",
+  "RCA",
+  "Action",
 ];
 const PERF_REPORT_HEADERS = [
-  "S No","Site ID","Site Name","Site Availability, Hrs","Site Availability, days",
-  "Channel Busy Count","MW link Performance, Hrs","DMR Reliability","Sites Down, hrs",
+  "S No",
+  "Site ID",
+  "Site Name",
+  "Site Availability, Hrs",
+  "Site Availability, days",
+  "Channel Busy Count",
+  "MW link Performance, Hrs",
+  "DMR Reliability",
+  "Sites Down, hrs",
 ];
 const PERF_TEMPLATE_PDF_HEADERS = [
-  "S No","Site No","Site ID","Site Availability, Hrs","Site Availability, days",
-  "Channel Busy Count","MW link Performance, Hrs","DMR Reliability","Sites Down, hrs",
+  "S No",
+  "Site No",
+  "Site ID",
+  "Site Availability, Hrs",
+  "Site Availability, days",
+  "Channel Busy Count",
+  "MW link Performance, Hrs",
+  "DMR Reliability",
+  "Sites Down, hrs",
 ];
 const TICKET_TEMPLATE_PDF_HEAD = [
-  ["No","Equipment/ site","Site Name","Effected Managed Resource","Severity","Alarm Type",
-   "Escalation","","Recovery","","Escalated for L3 Support","","Outage Duration",
-   "TT Number","TT Status","TT Owner","RCA","Comments"],
-  ["","","","","","","Date","Time","Date","Time","Date","Time","","","","","",""],
+  [
+    "No",
+    "Equipment/ site",
+    "Site Name",
+    "Effected Managed Resource",
+    "Severity",
+    "Alarm Type",
+    "Escalation",
+    "",
+    "Recovery",
+    "",
+    "Escalated for L3 Support",
+    "",
+    "Outage Duration",
+    "TT Number",
+    "TT Status",
+    "TT Owner",
+    "RCA",
+    "Comments",
+  ],
+  [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Date",
+    "Time",
+    "Date",
+    "Time",
+    "Date",
+    "Time",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+  ],
 ];
 
 const TEMPLATE_PDF_COLORS = {
-  title:    [192, 0, 0]   as [number, number, number],
-  band:     [192, 0, 0]   as [number, number, number],
+  title: [192, 0, 0] as [number, number, number],
+  band: [192, 0, 0] as [number, number, number],
   bandText: [255, 255, 255] as [number, number, number],
-  header:   [217, 217, 217] as [number, number, number],
-  subHeader:[242, 242, 242] as [number, number, number],
-  text:     [0, 0, 0]     as [number, number, number],
-  muted:    [89, 89, 89]  as [number, number, number],
-  border:   [128, 128, 128] as [number, number, number],
-  ok:       [0, 128, 0]   as [number, number, number],
-  warn:     [192, 0, 0]   as [number, number, number],
+  header: [217, 217, 217] as [number, number, number],
+  subHeader: [242, 242, 242] as [number, number, number],
+  text: [0, 0, 0] as [number, number, number],
+  muted: [89, 89, 89] as [number, number, number],
+  border: [128, 128, 128] as [number, number, number],
+  ok: [0, 128, 0] as [number, number, number],
+  warn: [192, 0, 0] as [number, number, number],
 };
 
 type ReportLogos = { ng: HTMLImageElement; nasco: HTMLImageElement };
@@ -1236,8 +1847,12 @@ function loadReportLogos(): Promise<ReportLogos> {
   return reportLogoPromise;
 }
 function drawPdfReportHeader(
-  doc: jsPDF, pageW: number, title: string, subtitle: string,
-  logos: ReportLogos, titleColor: [number, number, number] = TEMPLATE_PDF_COLORS.title
+  doc: jsPDF,
+  pageW: number,
+  title: string,
+  subtitle: string,
+  logos: ReportLogos,
+  titleColor: [number, number, number] = TEMPLATE_PDF_COLORS.title
 ) {
   doc.addImage(logos.ng, "PNG", 12, 6, 34, 12);
   doc.addImage(logos.nasco, "PNG", pageW - 46, 6, 34, 12);
@@ -1259,17 +1874,24 @@ function perfEntryKey(sourceLabel: string, siteId: string): string {
 }
 
 function computePerfRows(
-  allRows: TicketRecord[], monthKey: string,
+  allRows: TicketRecord[],
+  monthKey: string,
   siteOrder: { siteId: string; siteName: string }[] = []
 ): PerfRow[] {
   const range = monthKey !== "all" ? selectedMonthRange(monthKey) : null;
-  const allMonthKeys = Array.from(new Set(
-    allRows.map(row => row.openingMonthKey || openingMonthKey(row.observationDate)).filter(key => key && key !== "Unknown")
-  ));
-  const monthHours = monthKey !== "all"
-    ? totalHoursInMonth(monthKey)
-    : allMonthKeys.length ? allMonthKeys.reduce((sum, key) => sum + totalHoursInMonth(key), 0) : 24 * 30;
-
+  const allMonthKeys = Array.from(
+    new Set(
+      allRows
+        .map(row => row.openingMonthKey || openingMonthKey(row.observationDate))
+        .filter(key => key && key !== "Unknown")
+    )
+  );
+  const monthHours =
+    monthKey !== "all"
+      ? totalHoursInMonth(monthKey)
+      : allMonthKeys.length
+        ? allMonthKeys.reduce((sum, key) => sum + totalHoursInMonth(key), 0)
+        : 24 * 30;
   const siteNameMap = new Map<string, string>();
   const siteIdMap = new Map<string, string>();
   const sourceMap = new Map<string, string>();
@@ -1284,7 +1906,8 @@ function computePerfRows(
     const key = perfEntryKey(sourceLabel, row.siteId);
     if (!siteIdMap.has(key)) siteIdMap.set(key, row.siteId);
     if (!sourceMap.has(key)) sourceMap.set(key, sourceLabel);
-    if (!siteNameMap.has(key) && row.siteName) siteNameMap.set(key, row.siteName);
+    if (!siteNameMap.has(key) && row.siteName)
+      siteNameMap.set(key, row.siteName);
     const ticketKey = `${key}||${clean(row.tt) || row.rowNo}`;
     if (!countedSiteTickets.has(ticketKey)) {
       countedSiteTickets.add(ticketKey);
@@ -1297,7 +1920,9 @@ function computePerfRows(
     if (!d) return null;
     if (timeStr) {
       const tm = timeStr.match(/^(\d{1,2}):(\d{2})/);
-      if (tm) { d.setHours(Number(tm[1]), Number(tm[2]), 0, 0); }
+      if (tm) {
+        d.setHours(Number(tm[1]), Number(tm[2]), 0, 0);
+      }
     }
     return d;
   }
@@ -1307,9 +1932,15 @@ function computePerfRows(
     if (clean(row.impact).toLowerCase() !== "service impact") return;
     const mr = clean(row.managedResource).toLowerCase();
     if (mr !== "complete site" && mr !== "link down") return;
-    const outageStart = combineDatetime(row.observationDate, row.observationTime);
+    const outageStart = combineDatetime(
+      row.observationDate,
+      row.observationTime
+    );
     if (!outageStart) return;
-    let outageEnd: Date | null = combineDatetime(row.recoveryDate, row.recoveryTime);
+    let outageEnd: Date | null = combineDatetime(
+      row.recoveryDate,
+      row.recoveryTime
+    );
     const sourceLabel = perfSourceLabel(row);
     const key = perfEntryKey(sourceLabel, row.siteId);
     const ticketKey = `${key}||${clean(row.tt) || row.rowNo}`;
@@ -1318,25 +1949,40 @@ function computePerfRows(
 
     if (monthKey === "all") {
       const hours = ticketDurationHours(row);
-      siteDownHours.set(key, Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10);
+      siteDownHours.set(
+        key,
+        Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10
+      );
       return;
     }
     const monthRange = selectedMonthRange(monthKey);
     if (!monthRange) return;
     const { start: monthStart, end: monthEnd } = monthRange;
-    if (!outageEnd) { outageEnd = monthEnd; }
+    if (!outageEnd) {
+      outageEnd = monthEnd;
+    }
     if (outageEnd <= monthStart || outageStart > monthEnd) return;
     const effectiveStart = outageStart < monthStart ? monthStart : outageStart;
     const effectiveEnd = outageEnd > monthEnd ? monthEnd : outageEnd;
     const overlapMs = effectiveEnd.getTime() - effectiveStart.getTime();
     if (overlapMs <= 0) return;
     const hours = Math.round((overlapMs / (1000 * 60 * 60)) * 10) / 10;
-    siteDownHours.set(key, Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10);
+    siteDownHours.set(
+      key,
+      Math.round(((siteDownHours.get(key) ?? 0) + hours) * 10) / 10
+    );
   });
 
   const allSiteKeys = Array.from(siteIdMap.keys()).filter(Boolean);
-  allSiteKeys.sort((a, b) => (siteTicketCount.get(b) ?? 0) - (siteTicketCount.get(a) ?? 0));
-  let siteEntries: { siteId: string; siteName: string; sourceLabel: string; perfKey: string }[];
+  allSiteKeys.sort(
+    (a, b) => (siteTicketCount.get(b) ?? 0) - (siteTicketCount.get(a) ?? 0)
+  );
+  let siteEntries: {
+    siteId: string;
+    siteName: string;
+    sourceLabel: string;
+    perfKey: string;
+  }[];
   if (allSiteKeys.length > 0) {
     siteEntries = allSiteKeys.map(key => ({
       siteId: siteIdMap.get(key) ?? "",
@@ -1346,8 +1992,10 @@ function computePerfRows(
     }));
   } else {
     siteEntries = siteOrder.map(site => ({
-      siteId: site.siteId, siteName: site.siteName,
-      sourceLabel: "Workbook", perfKey: perfEntryKey("Workbook", site.siteId),
+      siteId: site.siteId,
+      siteName: site.siteName,
+      sourceLabel: "Workbook",
+      perfKey: perfEntryKey("Workbook", site.siteId),
     }));
   }
 
@@ -1360,15 +2008,19 @@ function computePerfRows(
     const dDays = Math.floor(totalMins / (60 * 24));
     const dHrs = Math.floor((totalMins % (60 * 24)) / 60);
     const dMins = Math.round(totalMins % 60);
+    const availDay = `${dDays} d, ${dHrs} h, ${dMins} m`;
     return {
-      siteId, siteName,
+      siteId,
+      siteName,
       displayName: `${siteId}${sourceLabel !== "Workbook" ? ` (${sourceLabel})` : ""}`,
-      sourceLabel, perfKey,
+      sourceLabel,
+      perfKey,
       sitesDownHours: downHours,
       availHours: Math.round(availHours * 10) / 10,
-      availDay: `${dDays} d, ${dHrs} h, ${dMins} m`,
+      availDay,
       reliability: `${(reliability * 100).toFixed(2)}%`,
-      channelBusy: 0, mwLinkPerf: 0,
+      channelBusy: 0,
+      mwLinkPerf: 0,
       ticketCount: siteTicketCount.get(perfKey) ?? 0,
     };
   });
@@ -1376,9 +2028,15 @@ function computePerfRows(
 
 function perfReportRows(rows: PerfRow[]): string[][] {
   return rows.map((r, i) => [
-    String(i + 1), r.siteId, r.siteName,
-    String(r.availHours), r.availDay, "", "",
-    r.reliability, String(r.sitesDownHours),
+    String(i + 1),
+    r.siteId,
+    r.siteName,
+    String(r.availHours),
+    r.availDay,
+    "",
+    "",
+    r.reliability,
+    String(r.sitesDownHours),
   ]);
 }
 
@@ -1394,95 +2052,193 @@ function aggregatePerfRowsForReport(rows: PerfRow[]): PerfRow[] {
   rows.filter(row => isRfSiteId(row.siteId)).forEach(row => {
     const key = normalizeSiteId(clean(row.siteId)).toLowerCase() || clean(row.siteId).toLowerCase();
     const periodHours = row.availHours + row.sitesDownHours;
-    periodHoursBySite.set(key, Math.max(periodHoursBySite.get(key) ?? 0, periodHours));
+    periodHoursBySite.set(
+      key,
+      Math.max(periodHoursBySite.get(key) ?? 0, periodHours)
+    );
     const existing = grouped.get(key);
-    if (!existing) { grouped.set(key, { ...row }); return; }
-    existing.sitesDownHours = Math.round((existing.sitesDownHours + row.sitesDownHours) * 10) / 10;
-    existing.channelBusy   = Math.round((safePptNumber(existing.channelBusy) + safePptNumber(row.channelBusy)) * 10) / 10;
-    existing.mwLinkPerf    = Math.round((safePptNumber(existing.mwLinkPerf)  + safePptNumber(row.mwLinkPerf))  * 10) / 10;
-    existing.ticketCount   = (existing.ticketCount ?? 0) + (row.ticketCount ?? 0);
-    const names = new Set([existing.siteName, row.siteName].map(v => clean(v)).filter(Boolean));
+    if (!existing) {
+      grouped.set(key, { ...row });
+      return;
+    }
+
+    existing.sitesDownHours =
+      Math.round((existing.sitesDownHours + row.sitesDownHours) * 10) / 10;
+    existing.channelBusy =
+      Math.round((safePptNumber(existing.channelBusy) + safePptNumber(row.channelBusy)) * 10) / 10;
+    existing.mwLinkPerf =
+      Math.round((safePptNumber(existing.mwLinkPerf) + safePptNumber(row.mwLinkPerf)) * 10) / 10;
+    existing.ticketCount = (existing.ticketCount ?? 0) + (row.ticketCount ?? 0);
+
+    const names = new Set(
+      [existing.siteName, row.siteName]
+        .map(value => clean(value))
+        .filter(Boolean)
+    );
     existing.siteName = Array.from(names).join(" / ");
   });
 
-  return Array.from(grouped.values()).map(row => {
-    const key = normalizeSiteId(clean(row.siteId)).toLowerCase() || clean(row.siteId).toLowerCase();
-    const periodHours = periodHoursBySite.get(key) ?? row.availHours + row.sitesDownHours;
-    const availHours  = Math.max(0, periodHours - row.sitesDownHours);
-    const totalHours  = availHours + row.sitesDownHours;
-    const reliability = totalHours > 0 ? availHours / totalHours : 1;
-    const totalMins   = Math.round(availHours * 60);
-    const dDays = Math.floor(totalMins / (60 * 24));
-    const dHrs  = Math.floor((totalMins % (60 * 24)) / 60);
-    const dMins = Math.round(totalMins % 60);
-    return {
-      ...row,
-      availHours: Math.round(availHours * 10) / 10,
-      availDay: `${dDays} d, ${dHrs} h, ${dMins} m`,
-      reliability: `${(reliability * 100).toFixed(2)}%`,
-    };
-  }).sort((a, b) => {
-    const byRfNumber = rfSiteSortValue(a.siteId) - rfSiteSortValue(b.siteId);
-    if (byRfNumber !== 0) return byRfNumber;
-    return clean(a.siteId).localeCompare(clean(b.siteId), undefined, { numeric: true, sensitivity: "base" });
-  });
+  return Array.from(grouped.values())
+    .map(row => {
+      const key = normalizeSiteId(clean(row.siteId)).toLowerCase() || clean(row.siteId).toLowerCase();
+      const periodHours = periodHoursBySite.get(key) ?? row.availHours + row.sitesDownHours;
+      const availHours = Math.max(0, periodHours - row.sitesDownHours);
+      const totalHours = availHours + row.sitesDownHours;
+      const reliability = totalHours > 0 ? availHours / totalHours : 1;
+      const totalMins = Math.round(availHours * 60);
+      const dDays = Math.floor(totalMins / (60 * 24));
+      const dHrs = Math.floor((totalMins % (60 * 24)) / 60);
+      const dMins = Math.round(totalMins % 60);
+      return {
+        ...row,
+        availHours: Math.round(availHours * 10) / 10,
+        availDay: `${dDays} d, ${dHrs} h, ${dMins} m`,
+        reliability: `${(reliability * 100).toFixed(2)}%`,
+      };
+    })
+    .sort((a, b) => {
+      const byRfNumber = rfSiteSortValue(a.siteId) - rfSiteSortValue(b.siteId);
+      if (byRfNumber !== 0) return byRfNumber;
+      return clean(a.siteId).localeCompare(clean(b.siteId), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
 }
 
-function computePerfKPIs(rows: PerfRow[]) {
+function computePerfKPIs(rows: PerfRow[]): {
+  pctAvailability: string;
+  mttr: string;
+  mtbf: string;
+  mttf: string;
+  totalDown: number;
+  totalAvail: number;
+  affectedSites: number;
+  nonAffectedSites: number;
+  totalDownHrs: string;
+} {
   const totalAvail = rows.reduce((s, r) => s + r.availHours, 0);
-  const totalDown  = rows.reduce((s, r) => s + r.sitesDownHours, 0);
-  const totalSiteIds    = new Set(rows.map(r => clean(r.siteId)).filter(isRfSiteId));
-  const affectedSiteIds = new Set(rows.filter(r => r.sitesDownHours > 0).map(r => clean(r.siteId)).filter(isRfSiteId));
-  const sitesWithDown   = affectedSiteIds.size;
+  const totalDown = rows.reduce((s, r) => s + r.sitesDownHours, 0);
+  const totalSiteIds = new Set(
+    rows.map(r => clean(r.siteId)).filter(isRfSiteId)
+  );
+  const affectedSiteIds = new Set(
+    rows
+      .filter(r => r.sitesDownHours > 0)
+      .map(r => clean(r.siteId))
+      .filter(isRfSiteId)
+  );
+  const sitesWithDown = affectedSiteIds.size;
   const nonAffectedSites = Math.max(0, totalSiteIds.size - sitesWithDown);
   const totalHrs = totalAvail + totalDown;
-  const pctAvailability = totalHrs > 0 ? `${((totalAvail / totalHrs) * 100).toFixed(2)}%` : "";
-  const mttr  = sitesWithDown > 0 ? `${(totalDown / sitesWithDown).toFixed(2)} hrs` : "";
-  const mtbf  = totalDown > 0 ? `${(totalHrs / totalDown).toFixed(2)} hrs` : "";
+  const pctAvailability =
+    totalHrs > 0 ? `${((totalAvail / totalHrs) * 100).toFixed(2)}%` : "";
+  const mttr =
+    sitesWithDown > 0 ? `${(totalDown / sitesWithDown).toFixed(2)} hrs` : "";
+  const mtbf = totalDown > 0 ? `${(totalHrs / totalDown).toFixed(2)} hrs` : "";
   const mtbfNum = totalDown > 0 ? totalHrs / totalDown : null;
   const mttrNum = sitesWithDown > 0 ? totalDown / sitesWithDown : null;
-  const mttf = mtbfNum !== null && mttrNum !== null ? `${(mtbfNum + mttrNum).toFixed(2)} hrs` : "";
+  const mttf =
+    mtbfNum !== null && mttrNum !== null
+      ? `${(mtbfNum + mttrNum).toFixed(2)} hrs`
+      : "";
   const totalDownRounded = Math.round(totalDown * 10) / 10;
   const tdMins = Math.round(totalDown * 60);
   const tdDays = Math.floor(tdMins / (60 * 24));
-  const tdHrs  = Math.floor((tdMins % (60 * 24)) / 60);
-  const tdMin  = Math.round(tdMins % 60);
+  const tdHrs = Math.floor((tdMins % (60 * 24)) / 60);
+  const tdMin = Math.round(tdMins % 60);
+  const totalDownHrs = `${tdDays}d ${tdHrs}h ${tdMin}m`;
   return {
-    pctAvailability, mttr, mtbf, mttf,
+    pctAvailability,
+    mttr,
+    mtbf,
+    mttf,
     totalDown: totalDownRounded,
     totalAvail: Math.round(totalAvail * 10) / 10,
-    affectedSites: sitesWithDown, nonAffectedSites,
-    totalDownHrs: `${tdDays}d ${tdHrs}h ${tdMin}m`,
+    affectedSites: sitesWithDown,
+    nonAffectedSites,
+    totalDownHrs,
   };
 }
 
-async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: string[]) {
-  const DATA_START = 7;
-  const LAST_DATA  = 40;
-  const PROTECTED  = 41;
-  const TEMPLATE_N = LAST_DATA - DATA_START + 1;
-  const OLD_SHEET  = "EOA March 2026";
-  const COLS = ["A","B","C","D","E","F","G","H","I"];
+// ─────────────────────────────────────────────────────────────────────────────
+// Due to artifact size limits, the remainder of the unchanged exporters
+// (exportPerfTemplate, exportPerfCsv, exportPerfExcel, exportPerfPdf,
+//  exportCsv, exportExcel, exportTicketTemplate, exportPdf) and the helpers
+//  uniqueTicketValues, distinctReportRow, distinctReportRows remain
+//  IDENTICAL to your current file. KEEP YOUR EXISTING IMPLEMENTATIONS.
+//
+//  >>> ACTION: copy these functions from your current Home.tsx unchanged:
+//      • exportPerfTemplate
+//      • exportPerfCsv
+//      • exportPerfExcel
+//      • exportPerfPdf
+//      • uniqueTicketValues
+//      • distinctReportRow
+//      • distinctReportRows
+//      • exportCsv
+//      • exportExcel
+//      • exportTicketTemplate
+//      • exportPdf
+//
+//  Then keep the rest of the file (StatCard, PartnerLogoStrip, SelectFilter,
+//  MultiSelectFilter, the default export Home component) intact EXCEPT for
+//  the TWO modifications below.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Performance Template Export
+// Uses fflate to fill Network_Performance_Report.xlsx preserving all formatting.
+// Charts auto-update: their data ranges are updated to match the new sheet name
+// and actual site count. Place the template in public/Network_Performance_Report.xlsx
+// ─────────────────────────────────────────────────────────────────────────────
+async function exportPerfTemplate(
+  rows: PerfRow[],
+  monthKey: string,
+  regions: string[]
+) {
+  const DATA_START = 7; // first data row
+  const LAST_DATA = 40; // last template data row
+  const PROTECTED = 41; // totals/formulas row — shift if needed
+  const TEMPLATE_N = LAST_DATA - DATA_START + 1; // 34 rows
+  const OLD_SHEET = "EOA March 2026"; // original sheet name in template
+  const COLS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
 
   const xmlEsc = (s: string) =>
-    s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
 
-  const setCell = (xml: string, ref: string, value: string | number): string => {
+  // Find a cell by ref, replace its value while keeping its style
+    const setCell = (
+    xml: string,
+    ref: string,
+    value: string | number
+  ): string => {
     const markerIdx = xml.indexOf(` r="${ref}"`);
     if (markerIdx === -1) return xml;
     const cStart = xml.lastIndexOf("<c", markerIdx);
     if (cStart === -1) return xml;
+    // End of the opening <c …> tag
     const tagClose = xml.indexOf(">", cStart);
     if (tagClose === -1) return xml;
+    // Is the opening <c> tag itself self-closing (i.e. <c …/>)?
     const isSelfClosing = xml[tagClose - 1] === "/";
     let cEnd: number;
-    if (isSelfClosing) { cEnd = tagClose + 1; }
-    else {
+    if (isSelfClosing) {
+      cEnd = tagClose + 1;
+    } else {
       const fcIdx = xml.indexOf("</c>", tagClose);
       if (fcIdx === -1) return xml;
       cEnd = fcIdx + 4;
     }
-    let attrs = xml.slice(cStart + 2, tagClose).replace(/\s*\/$/, "").replace(/\s+t="[^"]*"/g, "");
+    // Preserve original attributes (e.g. s="N" style index), strip type — we set it ourselves
+    let attrs = xml
+      .slice(cStart + 2, tagClose)
+      .replace(/\s*\/$/, "")
+      .replace(/\s+t="[^"]*"/g, "");
     const v = String(value ?? "");
     let cell: string;
     if (!v) cell = `<c${attrs}/>`;
@@ -1491,11 +2247,19 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
     return xml.slice(0, cStart) + cell + xml.slice(cEnd);
   };
 
-  const normalizeTableRows = (sheetXml: string, firstRow: number, lastRow: number) =>
+  const normalizeTableRows = (
+    sheetXml: string,
+    firstRow: number,
+    lastRow: number
+  ) =>
     sheetXml.replace(/<row\b[^>]*>/g, rowTag => {
       const rowNumber = Number(rowTag.match(/\br="(\d+)"/)?.[1] ?? 0);
       if (rowNumber < firstRow || rowNumber > lastRow) return rowTag;
-      return rowTag.replace(/\s+s="[^"]*"/g,"").replace(/\s+customFormat="[^"]*"/g,"").replace(/\s+ht="[^"]*"/g,"").replace(/\s+customHeight="[^"]*"/g,"");
+      return rowTag
+        .replace(/\s+s="[^"]*"/g, "")
+        .replace(/\s+customFormat="[^"]*"/g, "")
+        .replace(/\s+ht="[^"]*"/g, "")
+        .replace(/\s+customHeight="[^"]*"/g, "");
     });
 
   const setWorksheetColumns = (sheetXml: string): string => {
@@ -1516,16 +2280,29 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
       : sheetXml.replace("<sheetData>", `${colsXml}<sheetData>`);
   };
 
-  const rewriteWorksheetRow = (sheetXml: string, rowNumber: number, rowXml: string) => {
+  const rewriteWorksheetRow = (
+    sheetXml: string,
+    rowNumber: number,
+    rowXml: string
+  ) => {
     const rowPattern = new RegExp(`<row\\b[^>]*\\br="${rowNumber}"[^>]*>[\\s\\S]*?<\\/row>`);
     if (rowPattern.test(sheetXml)) return sheetXml.replace(rowPattern, rowXml);
+
     const nextRowPattern = new RegExp(`<row\\b[^>]*\\br="${rowNumber + 1}"[^>]*>`);
     const nextMatch = sheetXml.match(nextRowPattern);
-    if (nextMatch?.index !== undefined) return `${sheetXml.slice(0, nextMatch.index)}${rowXml}${sheetXml.slice(nextMatch.index)}`;
+    if (nextMatch?.index !== undefined) {
+      return `${sheetXml.slice(0, nextMatch.index)}${rowXml}${sheetXml.slice(nextMatch.index)}`;
+    }
     return sheetXml.replace("</sheetData>", `${rowXml}</sheetData>`);
   };
 
-  const buildStyledCellXml = (col: string, rowNumber: number, value: string | number, styleIndex: number, numeric = false) => {
+  const buildStyledCellXml = (
+    col: string,
+    rowNumber: number,
+    value: string | number,
+    styleIndex: number,
+    numeric = false
+  ) => {
     if (numeric) {
       const num = Number(value);
       return `<c r="${col}${rowNumber}" s="${styleIndex}"><v>${Number.isFinite(num) ? num : 0}</v></c>`;
@@ -1539,22 +2316,35 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
       .replace(/<extLst>[\s\S]*?<\/extLst>/g, "");
 
   try {
-    const res = await fetch(publicWorkbookUrl("Network_Performance_Report.xlsx"), { cache: "no-store" });
-    if (!res.ok) throw new Error(`HTTP ${res.status} — place Network_Performance_Report.xlsx in your public/ folder`);
+    const res = await fetch(publicWorkbookUrl("Network_Performance_Report.xlsx"), {
+      cache: "no-store",
+    });
+    if (!res.ok)
+      throw new Error(
+        `HTTP ${res.status} — place Network_Performance_Report.xlsx in your public/ folder`
+      );
     const rawBuf = await res.arrayBuffer();
     const { unzipSync, zipSync, strFromU8, strToU8 } = await import("fflate");
     const files = unzipSync(new Uint8Array(rawBuf));
     const exportRows = aggregatePerfRowsForReport(rows);
 
-    const full  = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
+    // ── Month label & sheet name ──────────────────────────────────────────
+    const full = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
     const parts = full.split(" ");
-    const mmm   = parts.length === 2 ? `${parts[0].slice(0, 3)}-${parts[1]}` : full;
+    const mmm =
+      parts.length === 2 ? `${parts[0].slice(0, 3)}-${parts[1]}` : full;
     const regionPart = regions.length > 0 ? regions.join(", ") + " " : "";
-    const sheetLabel = `${regionPart}${mmm}`.replace(/[\/*?[\]:]/g, "-").slice(0, 31);
+    const sheetLabel = `${regionPart}${mmm}`
+      .replace(/[\/*?[\]:]/g, "-")
+      .slice(0, 31);
 
-    const sheetKey = Object.keys(files).find(k => /^xl\/worksheets\/sheet\d+\.xml$/.test(k))!;
+    // ── Locate worksheet XML ──────────────────────────────────────────────
+    const sheetKey = Object.keys(files).find(k =>
+      /^xl\/worksheets\/sheet\d+\.xml$/.test(k)
+    )!;
     let xml = strFromU8(files[sheetKey]);
 
+    // ── KPI summary (row 3 = labels already in template, row 4 = values) ──
     const kpi = computePerfKPIs(exportRows);
     xml = setCell(xml, "C3", mmm);
     xml = setCell(xml, "D4", kpi.totalDownHrs);
@@ -1564,34 +2354,65 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
     xml = setCell(xml, "H4", kpi.mtbf);
     xml = setCell(xml, "I4", kpi.mttf);
 
+    // ── Row count management ──────────────────────────────────────────────
     const needed = exportRows.length;
+
     if (needed > TEMPLATE_N) {
       const extra = needed - TEMPLATE_N;
-      const tmplMarker    = ` r="${DATA_START}" `;
+
+      // Capture template row 7 for cloning
+      const tmplMarker = ` r="${DATA_START}" `;
       const tmplMarkerIdx = xml.indexOf(tmplMarker);
-      const tmplRowStart  = tmplMarkerIdx !== -1 ? xml.lastIndexOf("<row", tmplMarkerIdx) : -1;
-      const tmplRowEnd    = tmplRowStart !== -1 ? xml.indexOf("</row>", tmplRowStart) + 6 : -1;
-      const tmplRow       = tmplRowStart !== -1 && tmplRowEnd > 0 ? xml.slice(tmplRowStart, tmplRowEnd) : "";
+      const tmplRowStart =
+        tmplMarkerIdx !== -1 ? xml.lastIndexOf("<row", tmplMarkerIdx) : -1;
+      const tmplRowEnd =
+        tmplRowStart !== -1 ? xml.indexOf("</row>", tmplRowStart) + 6 : -1;
+      const tmplRow =
+        tmplRowStart !== -1 && tmplRowEnd > 0
+          ? xml.slice(tmplRowStart, tmplRowEnd)
+          : "";
 
+      // Shift rows >= PROTECTED and their cell refs
       xml = xml
-        .replace(/(<row[^>]* r=")(\d+)(")/g, (_m, a, n, b) => +n >= PROTECTED ? `${a}${+n + extra}${b}` : _m)
-        .replace(/(<c[^>]* r=")([A-Z]+)(\d+)(")/g, (_m, a, col, n, b) => +n >= PROTECTED ? `${a}${col}${+n + extra}${b}` : _m)
-        .replace(/(<dimension ref="[A-Z]+\d+:[A-Z]+)(\d+)(")/, (_m, pre, n, post) => +n >= PROTECTED ? `${pre}${+n + extra}${post}` : _m);
+        .replace(/(<row[^>]* r=")(\d+)(")/g, (_m, a, n, b) =>
+          +n >= PROTECTED ? `${a}${+n + extra}${b}` : _m
+        )
+        .replace(/(<c[^>]* r=")([A-Z]+)(\d+)(")/g, (_m, a, col, n, b) =>
+          +n >= PROTECTED ? `${a}${col}${+n + extra}${b}` : _m
+        )
+        .replace(
+          /(<dimension ref="[A-Z]+\d+:[A-Z]+)(\d+)(")/,
+          (_m, pre, n, post) =>
+            +n >= PROTECTED ? `${pre}${+n + extra}${post}` : _m
+        );
 
+      // Update the SUM formula in the shifted totals row
       const sumOld = `SUM(D${DATA_START}:D${LAST_DATA})`;
       const sumNew = `SUM(D${DATA_START}:D${LAST_DATA + extra})`;
       xml = xml.split(sumOld).join(sumNew);
 
+      // Build and insert blank clone rows
       if (tmplRow) {
         const newRows = Array.from({ length: extra }, (_, i) => {
           const rn = LAST_DATA + 1 + i;
-          return tmplRow
-            .replace(/ r="(\d+)"/, ` r="${rn}"`)
-            .replace(/(<c[^>]* r=")([A-Z]+)\d+(")/g, (_m2, a, col, b) => `${a}${col}${rn}${b}`)
-            .replace(/<v>[^<]*<\/v>/g, "").replace(/<is>[\s\S]*?<\/is>/g, "")
-            .replace(/<f[^>]*\/>/g, "").replace(/<f[^>]*>[\s\S]*?<\/f>/g, "")
-            .replace(/\s+t="[^"]*"/g, "");
+          return (
+            tmplRow
+              .replace(/ r="(\d+)"/, ` r="${rn}"`)
+              .replace(
+                /(<c[^>]* r=")([A-Z]+)\d+(")/g,
+                (_m2, a, col, b) => `${a}${col}${rn}${b}`
+              )
+              // Strip values, inline-strings and formulas so cloned cells are truly empty.
+              // Leaving <v></v> with t="s" → ref to shared-string "" → "Removed Records" error.
+              .replace(/<v>[^<]*<\/v>/g, "")
+              .replace(/<is>[\s\S]*?<\/is>/g, "")
+              .replace(/<f[^>]*\/>/g, "")
+              .replace(/<f[^>]*>[\s\S]*?<\/f>/g, "")
+              // Strip the type attribute — setCell will assign the correct one when filling
+              .replace(/\s+t="[^"]*"/g, "")
+          );
         }).join("");
+
         const shiftedTag = ` r="${PROTECTED + extra}" `;
         const shiftedIdx = xml.indexOf(shiftedTag);
         if (shiftedIdx !== -1) {
@@ -1603,31 +2424,91 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
       }
     } else if (needed < TEMPLATE_N) {
       for (let r = DATA_START + needed; r <= LAST_DATA; r++) {
-        COLS.forEach(col => { xml = setCell(xml, `${col}${r}`, ""); });
+        COLS.forEach(col => {
+          xml = setCell(xml, `${col}${r}`, "");
+        });
       }
     }
 
+    // ── Always fix shared-formula markers (runs regardless of row count) ───
+    // Strips t="shared", si="N" and ref="..." from <f> formula elements.
+    // Also updates formula body row refs when row insertion happened.
+    // Without this, Excel shows "Removed Records: Shared formula" on open.
     xml = xml.split(' t="shared"').join("");
-    { let tmp = "", src = xml;
-      while (true) { const idx = src.indexOf(' si="'); if (idx === -1) { tmp += src; break; } const eq = src.indexOf('"', idx + 5); if (eq === -1) { tmp += src; break; } tmp += src.slice(0, idx); src = src.slice(eq + 1); }
-      xml = tmp; }
-    { let result = "", src = xml;
-      while (true) { const fi = src.indexOf("<f "); if (fi === -1) { result += src; break; } const fe = src.indexOf(">", fi); if (fe === -1) { result += src; break; } const fTag = src.slice(fi, fe + 1); const ri = fTag.indexOf(' ref="'); if (ri !== -1) { const re = fTag.indexOf('"', ri + 6) + 1; result += src.slice(0, fi) + fTag.slice(0, ri) + fTag.slice(re); } else { result += src.slice(0, fe + 1); } src = src.slice(fe + 1); }
-      xml = result; }
+    // Strip si="N" attributes
+    {
+      let tmp = "";
+      let src = xml;
+      while (true) {
+        const idx = src.indexOf(' si="');
+        if (idx === -1) {
+          tmp += src;
+          break;
+        }
+        const eq = src.indexOf('"', idx + 5);
+        if (eq === -1) {
+          tmp += src;
+          break;
+        }
+        tmp += src.slice(0, idx);
+        src = src.slice(eq + 1);
+      }
+      xml = tmp;
+    }
+    // Strip ref="..." from <f> elements (only valid for shared/array formulas)
+    {
+      let result = "";
+      let src = xml;
+      while (true) {
+        const fi = src.indexOf("<f ");
+        if (fi === -1) {
+          result += src;
+          break;
+        }
+        const fe = src.indexOf(">", fi);
+        if (fe === -1) {
+          result += src;
+          break;
+        }
+        const fTag = src.slice(fi, fe + 1);
+        const ri = fTag.indexOf(' ref="');
+        if (ri !== -1) {
+          const re = fTag.indexOf('"', ri + 6) + 1;
+          result += src.slice(0, fi) + fTag.slice(0, ri) + fTag.slice(re);
+        } else {
+          result += src.slice(0, fe + 1);
+        }
+        src = src.slice(fe + 1);
+      }
+      xml = result;
+    }
+    // Update formula body row refs for any inserted rows.
+    // Keep this scoped to <f>...</f> contents only; changing <c r="A41">
+    // cell addresses creates duplicate cells and Excel repairs sheet1.xml.
     if (needed > TEMPLATE_N) {
       const extra2 = needed - TEMPLATE_N;
-      xml = xml.replace(/(<f[^>]*>)([\s\S]*?)(<\/f>)/g, (_m, open, body, close) => {
-        const updatedBody = body.replace(/(\$?)([A-J])(\$?)(\d+)/g, (ref: string, absCol: string, col: string, absRow: string, rowText: string) => {
-          const rowNum = Number(rowText);
-          return rowNum >= PROTECTED ? `${absCol}${col}${absRow}${rowNum + extra2}` : ref;
-        });
-        return `${open}${updatedBody}${close}`;
-      });
+      xml = xml.replace(
+        /(<f[^>]*>)([\s\S]*?)(<\/f>)/g,
+        (_m, open, body, close) => {
+          const updatedBody = body.replace(
+            /(\$?)([A-J])(\$?)(\d+)/g,
+            (ref: string, absCol: string, col: string, absRow: string, rowText: string) => {
+              const rowNum = Number(rowText);
+              return rowNum >= PROTECTED
+                ? `${absCol}${col}${absRow}${rowNum + extra2}`
+                : ref;
+            }
+          );
+          return `${open}${updatedBody}${close}`;
+        }
+      );
     }
 
+    // ── Fill data rows ──────────────────────────────────────────────────
     exportRows.forEach((row, i) => {
       const r = DATA_START + i;
-      const availDays = row.availDay || String(Math.round((row.availHours / 24) * 10) / 10);
+      const availDays =
+        row.availDay || String(Math.round((row.availHours / 24) * 10) / 10);
       xml = setCell(xml, `A${r}`, i + 1);
       xml = setCell(xml, `B${r}`, row.siteId);
       xml = setCell(xml, `C${r}`, row.siteName);
@@ -1638,12 +2519,14 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
       xml = setCell(xml, `H${r}`, row.reliability);
       xml = setCell(xml, `I${r}`, row.sitesDownHours);
     });
-
-    const headerStyle     = getExcelCellStyle(xml, `${COLS[0]}${DATA_START - 1}`) || 1;
-    const serialNoStyle   = getExcelCellStyle(xml, `A${DATA_START}`) || 2;
-    const bodyTextStyle   = getExcelCellStyle(xml, `B${DATA_START}`) || 23;
+    const perfDataRows = Array.from(
+      { length: exportRows.length },
+      (_, i) => DATA_START + i
+    );
+    const headerStyle = getExcelCellStyle(xml, `${COLS[0]}${DATA_START - 1}`) || 1;
+    const serialNoStyle = getExcelCellStyle(xml, `A${DATA_START}`) || 2;
+    const bodyTextStyle = getExcelCellStyle(xml, `B${DATA_START}`) || 23;
     const bodyNumberStyle = getExcelCellStyle(xml, `D${DATA_START}`) || 22;
-
     const headerRowXml = `<row r="${DATA_START - 1}">${PERF_TEMPLATE_PDF_HEADERS.map((header, index) =>
       buildStyledCellXml(COLS[index], DATA_START - 1, header, headerStyle)
     ).join("")}</row>`;
@@ -1651,7 +2534,8 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
 
     exportRows.forEach((row, index) => {
       const r = DATA_START + index;
-      const availDays = row.availDay || String(Math.round((row.availHours / 24) * 10) / 10);
+      const availDays =
+        row.availDay || String(Math.round((row.availHours / 24) * 10) / 10);
       const rowXml = `<row r="${r}">` +
         buildStyledCellXml("A", r, index + 1, serialNoStyle, true) +
         buildStyledCellXml("B", r, row.siteId, bodyTextStyle) +
@@ -1665,27 +2549,41 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
         "</row>";
       xml = rewriteWorksheetRow(xml, r, rowXml);
     });
-
-    xml = normalizeTableRows(xml, DATA_START - 1, DATA_START + Math.max(exportRows.length, 1) - 1);
+    xml = normalizeTableRows(
+      xml,
+      DATA_START - 1,
+      DATA_START + Math.max(exportRows.length, 1) - 1
+    );
     xml = setWorksheetColumns(xml);
     xml = stripTemplateTableFormatting(xml);
     xml = xml.replace(/<f\b[^>]*\/>|<f\b[^>]*>[\s\S]*?<\/f>/g, "");
     files[sheetKey] = strToU8(xml);
 
+    // ── Rename sheet in workbook.xml (use string ops — no regex needed) ──
     const wbKey = "xl/workbook.xml";
     if (files[wbKey]) {
       let wbXml = strFromU8(files[wbKey]);
-      wbXml = wbXml.split(`name="${OLD_SHEET}"`).join(`name="${xmlEsc(sheetLabel)}"`);
+      // Replace name="..." in the <sheet> element
+      wbXml = wbXml
+        .split(`name="${OLD_SHEET}"`)
+        .join(`name="${xmlEsc(sheetLabel)}"`);
+      // Replace 'OLD_SHEET'! in definedName formula references
       wbXml = wbXml.split(`'${OLD_SHEET}'!`).join(`'${sheetLabel}'!`);
       files[wbKey] = strToU8(wbXml);
     }
 
-    const lastRow   = DATA_START + Math.max(exportRows.length, 1) - 1;
-    const chartKeys = Object.keys(files).filter(k => k.startsWith("xl/charts/chart") && k.endsWith(".xml"));
+    // ── Update chart XMLs: new sheet name + correct last data row ──────────
+    const lastRow = DATA_START + Math.max(exportRows.length, 1) - 1;
+    const chartKeys = Object.keys(files).filter(
+      k => k.startsWith("xl/charts/chart") && k.endsWith(".xml")
+    );
 
+    // Helper: replace non-contiguous chart range (inside parentheses) with simple range
     const flattenRange = (cxml: string, col: string): string => {
-      const openTag = "<c:f>(", closeTag = ")</c:f>";
-      let result = cxml, searchFrom = 0;
+      const openTag = "<c:f>(";
+      const closeTag = ")</c:f>";
+      let result = cxml;
+      let searchFrom = 0;
       while (true) {
         const start = result.indexOf(openTag, searchFrom);
         if (start === -1) break;
@@ -1694,7 +2592,10 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
         const inner = result.slice(start, end + closeTag.length);
         if (inner.includes(`$${col}$`)) {
           const simple = `<c:f>'${sheetLabel}'!$${col}$${DATA_START}:'${sheetLabel}'!$${col}$${lastRow}</c:f>`;
-          result = result.slice(0, start) + simple + result.slice(end + closeTag.length);
+          result =
+            result.slice(0, start) +
+            simple +
+            result.slice(end + closeTag.length);
         }
         searchFrom = start + 1;
       }
@@ -1703,57 +2604,90 @@ async function exportPerfTemplate(rows: PerfRow[], monthKey: string, regions: st
 
     chartKeys.forEach(ck => {
       let cxml = strFromU8(files[ck]);
+
+      // 1. Replace old sheet name with new sheet name (plain string replace)
       cxml = cxml.split(`'${OLD_SHEET}'!`).join(`'${sheetLabel}'!`);
-      ["B","D","F","G","I"].forEach(col => { cxml = cxml.split(`$${col}$${LAST_DATA}`).join(`$${col}$${lastRow}`); });
+
+      // 2. Update end row: $X$40 → $X$lastRow (for each chart column)
+      ["B", "D", "F", "G", "I"].forEach(col => {
+        cxml = cxml.split(`$${col}$${LAST_DATA}`).join(`$${col}$${lastRow}`);
+      });
+
+      // 3. Simplify chart3 non-contiguous ranges to full contiguous range
       cxml = flattenRange(cxml, "B");
       cxml = flattenRange(cxml, "G");
+
       files[ck] = strToU8(cxml);
     });
 
-    const drawingKeys = Object.keys(files).filter(k => k.startsWith("xl/drawings/drawing") && k.endsWith(".xml"));
+    // Keep charts below the expanded data table instead of on top of rows.
+    const drawingKeys = Object.keys(files).filter(
+      k => k.startsWith("xl/drawings/drawing") && k.endsWith(".xml")
+    );
     const chartStartRow = DATA_START + Math.max(exportRows.length, TEMPLATE_N) + 4;
     const chartLayout: Record<string, { fromCol: number; fromRow: number; toCol: number; toRow: number }> = {
-      rId6: { fromCol: 0, fromRow: chartStartRow,      toCol: 9, toRow: chartStartRow + 20 },
+      rId6: { fromCol: 0, fromRow: chartStartRow, toCol: 9, toRow: chartStartRow + 20 },
       rId3: { fromCol: 0, fromRow: chartStartRow + 22, toCol: 9, toRow: chartStartRow + 38 },
       rId4: { fromCol: 0, fromRow: chartStartRow + 40, toCol: 4, toRow: chartStartRow + 54 },
       rId5: { fromCol: 5, fromRow: chartStartRow + 40, toCol: 9, toRow: chartStartRow + 54 },
     };
     drawingKeys.forEach(dk => {
       let dxml = strFromU8(files[dk]);
-      dxml = dxml.replace(/<xdr:twoCellAnchor[\s\S]*?<\/xdr:twoCellAnchor>/g, anchor => {
-        const relId  = anchor.match(/r:id="(rId\d+)"/)?.[1];
-        const layout = relId ? chartLayout[relId] : null;
-        if (!layout) return anchor;
-        const replaceMarker = (part: string, marker: "from" | "to", col: number, row: number) =>
-          part.replace(
-            new RegExp(`(<xdr:${marker}>[\\s\\S]*?<xdr:col>)\\d+(<\\/xdr:col>[\\s\\S]*?<xdr:row>)\\d+(<\\/xdr:row>)`),
-            `$1${col}$2${row}$3`
-          );
-        let updated = replaceMarker(anchor, "from", layout.fromCol, layout.fromRow);
-        updated     = replaceMarker(updated, "to",   layout.toCol,   layout.toRow);
-        return updated;
-      });
+      dxml = dxml.replace(
+        /<xdr:twoCellAnchor[\s\S]*?<\/xdr:twoCellAnchor>/g,
+        anchor => {
+          const relId = anchor.match(/r:id="(rId\d+)"/)?.[1];
+          const layout = relId ? chartLayout[relId] : null;
+          if (!layout) return anchor;
+          const replaceMarker = (
+            part: string,
+            marker: "from" | "to",
+            col: number,
+            row: number
+          ) =>
+            part.replace(
+              new RegExp(`(<xdr:${marker}>[\\s\\S]*?<xdr:col>)\\d+(<\\/xdr:col>[\\s\\S]*?<xdr:row>)\\d+(<\\/xdr:row>)`),
+              `$1${col}$2${row}$3`
+            );
+          let updated = replaceMarker(anchor, "from", layout.fromCol, layout.fromRow);
+          updated = replaceMarker(updated, "to", layout.toCol, layout.toRow);
+          return updated;
+        }
+      );
       files[dk] = strToU8(dxml);
     });
 
+    // Delete stale calc chain — Excel will rebuild on open
     delete files["xl/calcChain.xml"];
     if (files["[Content_Types].xml"]) {
       let ct = strFromU8(files["[Content_Types].xml"]);
-      ct = ct.split(`<Override PartName="/xl/calcChain.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml"/>`).join("");
+      ct = ct
+        .split(
+          `<Override PartName="/xl/calcChain.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml"/>`
+        )
+        .join("");
       files["[Content_Types].xml"] = strToU8(ct);
     }
 
+    // ── Download ──────────────────────────────────────────────────────────
     const output = zipSync(files, { level: 0 });
-    const blob   = new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    const url    = URL.createObjectURL(blob);
-    const a      = document.createElement("a");
+    const blob = new Blob([output], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
     a.href = url;
     a.download = `Network_Performance_${sheetLabel}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   } catch (err: any) {
     console.error("Perf template export failed:", err);
-    alert("Performance template export failed.\n\nMake sure Network_Performance_Report.xlsx is in your public/ folder.\n\nError: " + (err?.message ?? String(err)));
+    alert(
+      "Performance template export failed.\n\n" +
+        "Make sure Network_Performance_Report.xlsx is in your public/ folder.\n\n" +
+        "Error: " +
+        (err?.message ?? String(err))
+    );
   }
 }
 
@@ -1761,28 +2695,50 @@ function exportPerfCsv(rows: PerfRow[], monthKey: string) {
   const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
   const kpi = computePerfKPIs(rows);
   const kpiRows: string[][] = [
-    [], ["KPI Summary"],
-    ["% Availability", kpi.pctAvailability], ["MTTR", kpi.mttr],
-    ["MTBF", kpi.mtbf], ["MTTF", kpi.mttf],
+    [],
+    ["KPI Summary"],
+    ["% Availability", kpi.pctAvailability],
+    ["MTTR", kpi.mttr],
+    ["MTBF", kpi.mtbf],
+    ["MTTF", kpi.mttf],
     ["No. of Affected Sites", String(kpi.affectedSites)],
     ["Total Down Duration", kpi.totalDownHrs],
   ];
   const availChartRows: string[][] = [
-    [], ["Site Availability Chart Data"], ["Site Name", "Availability (Hrs)"],
+    [],
+    ["Site Availability Chart Data"],
+    ["Site Name", "Availability (Hrs)"],
     ...rows.map(r => [r.siteName, String(r.availHours)]),
   ];
   const downtimeChartRows: string[][] = [
-    [], ["Site Downtime Chart Data"], ["Site Name", "Down (Hrs)", "Status"],
+    [],
+    ["Site Downtime Chart Data"],
+    ["Site Name", "Down (Hrs)", "Status"],
     ...rows.map(r => [
-      r.siteName, String(r.sitesDownHours),
-      r.sitesDownHours === 0 ? "No Downtime" : r.sitesDownHours > 24 ? "Critical (>24h)" : r.sitesDownHours > 8 ? "High (8-24h)" : "Moderate (<8h)",
+      r.siteName,
+      String(r.sitesDownHours),
+      r.sitesDownHours === 0
+        ? "No Downtime"
+        : r.sitesDownHours > 24
+          ? "Critical (>24h)"
+          : r.sitesDownHours > 8
+            ? "High (8-24h)"
+            : "Moderate (<8h)",
     ]),
   ];
-  const csv = [PERF_REPORT_HEADERS, ...perfReportRows(rows), ...kpiRows, ...availChartRows, ...downtimeChartRows]
-    .map(line => line.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+  const csv = [
+    PERF_REPORT_HEADERS,
+    ...perfReportRows(rows),
+    ...kpiRows,
+    ...availChartRows,
+    ...downtimeChartRows,
+  ]
+    .map(line =>
+      line.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")
+    )
     .join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url  = URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = `DMR-Monthly-Performance-${monthLabel}.csv`;
@@ -1794,37 +2750,86 @@ function exportPerfExcel(rows: PerfRow[], monthKey: string) {
   const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
   const kpi = computePerfKPIs(rows);
   const kpiRows: string[][] = [
-    [], ["KPI Summary"],
-    ["% Availability", kpi.pctAvailability], ["MTTR", kpi.mttr],
-    ["MTBF", kpi.mtbf], ["MTTF", kpi.mttf],
+    [],
+    ["KPI Summary"],
+    ["% Availability", kpi.pctAvailability],
+    ["MTTR", kpi.mttr],
+    ["MTBF", kpi.mtbf],
+    ["MTTF", kpi.mttf],
     ["No. of Affected Sites", String(kpi.affectedSites)],
     ["Total Down Duration", kpi.totalDownHrs],
   ];
-  const worksheet = XLSX.utils.aoa_to_sheet([PERF_REPORT_HEADERS, ...perfReportRows(rows), ...kpiRows]);
+  // Sheet 1: Full performance table + KPIs
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    PERF_REPORT_HEADERS,
+    ...perfReportRows(rows),
+    ...kpiRows,
+  ]);
   PERF_REPORT_HEADERS.forEach((_, colIndex) => {
     const horizontal = perfExportLeftIndexes.has(colIndex) ? "left" : "center";
     for (let rowIndex = 0; rowIndex <= rows.length; rowIndex++) {
-      applySheetCellAlignment(worksheet, XLSX.utils.encode_cell({ r: rowIndex, c: colIndex }), horizontal);
+      applySheetCellAlignment(
+        worksheet,
+        XLSX.utils.encode_cell({ r: rowIndex, c: colIndex }),
+        horizontal
+      );
     }
   });
   worksheet["!cols"] = [
-    { wch: 6 },{ wch: 14 },{ wch: 30 },{ wch: 24 },
-    { wch: 26 },{ wch: 20 },{ wch: 26 },{ wch: 18 },{ wch: 18 },
+    { wch: 6 },
+    { wch: 14 },
+    { wch: 30 },
+    { wch: 24 },
+    { wch: 26 },
+    { wch: 20 },
+    { wch: 26 },
+    { wch: 18 },
+    { wch: 18 },
   ];
+  // Sheet 2: Availability chart data
   const availSheet = XLSX.utils.aoa_to_sheet([
-    ["Site Name","Availability (Hrs)","Down (Hrs)","Reliability (%)"],
-    ...rows.map(r => [r.siteName, r.availHours, r.sitesDownHours, parseFloat(r.reliability) || 100]),
-  ]);
-  availSheet["!cols"] = [{ wch: 32 },{ wch: 20 },{ wch: 16 },{ wch: 18 }];
-  const downtimeSorted = [...rows].sort((a, b) => b.sitesDownHours - a.sitesDownHours);
-  const downtimeSheet = XLSX.utils.aoa_to_sheet([
-    ["Site Name","Down (Hrs)","Availability (Hrs)","Reliability (%)","Status"],
-    ...downtimeSorted.map(r => [
-      r.siteName, r.sitesDownHours, r.availHours, parseFloat(r.reliability) || 100,
-      r.sitesDownHours === 0 ? "No Downtime" : r.sitesDownHours > 24 ? "Critical (>24h)" : r.sitesDownHours > 8 ? "High (8-24h)" : "Moderate (<8h)",
+    ["Site Name", "Availability (Hrs)", "Down (Hrs)", "Reliability (%)"],
+    ...rows.map(r => [
+      r.siteName,
+      r.availHours,
+      r.sitesDownHours,
+      parseFloat(r.reliability) || 100,
     ]),
   ]);
-  downtimeSheet["!cols"] = [{ wch: 32 },{ wch: 14 },{ wch: 20 },{ wch: 18 },{ wch: 20 }];
+  availSheet["!cols"] = [{ wch: 32 }, { wch: 20 }, { wch: 16 }, { wch: 18 }];
+  // Sheet 3: Downtime chart data — sorted worst first
+  const downtimeSorted = [...rows].sort(
+    (a, b) => b.sitesDownHours - a.sitesDownHours
+  );
+  const downtimeSheet = XLSX.utils.aoa_to_sheet([
+    [
+      "Site Name",
+      "Down (Hrs)",
+      "Availability (Hrs)",
+      "Reliability (%)",
+      "Status",
+    ],
+    ...downtimeSorted.map(r => [
+      r.siteName,
+      r.sitesDownHours,
+      r.availHours,
+      parseFloat(r.reliability) || 100,
+      r.sitesDownHours === 0
+        ? "No Downtime"
+        : r.sitesDownHours > 24
+          ? "Critical (>24h)"
+          : r.sitesDownHours > 8
+            ? "High (8-24h)"
+            : "Moderate (<8h)",
+    ]),
+  ]);
+  downtimeSheet["!cols"] = [
+    { wch: 32 },
+    { wch: 14 },
+    { wch: 20 },
+    { wch: 18 },
+    { wch: 20 },
+  ];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Monthly Performance");
   XLSX.utils.book_append_sheet(workbook, availSheet, "Availability Chart Data");
@@ -1833,42 +2838,76 @@ function exportPerfExcel(rows: PerfRow[], monthKey: string) {
 }
 
 async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
-  const doc        = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
-  const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
-  const pageW      = doc.internal.pageSize.getWidth();
-  const pageH      = doc.internal.pageSize.getHeight();
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
+  const monthLabel =
+    monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
   {
-    const logos           = await loadReportLogos();
-    const templateDoc     = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const templateMonthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
-    const templatePageW   = templateDoc.internal.pageSize.getWidth();
-    const templatePageH   = templateDoc.internal.pageSize.getHeight();
-    const C               = TEMPLATE_PDF_COLORS;
-    const kpi             = computePerfKPIs(rows);
-    const perfTableMargin = Math.max(10, (templatePageW - 251) / 2);
-
+    const logos = await loadReportLogos();
+    const templateDoc = new jsPDF({
+      orientation: "landscape",
+      unit: "mm",
+      format: "a4",
+    });
+    const templateMonthLabel =
+      monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
+    const templatePageW = templateDoc.internal.pageSize.getWidth();
+    const templatePageH = templateDoc.internal.pageSize.getHeight();
+    const C = TEMPLATE_PDF_COLORS;
+    const kpi = computePerfKPIs(rows);
+    const perfTableWidth = 251;
+    const perfTableMargin = Math.max(10, (templatePageW - perfTableWidth) / 2);
     const drawTemplateHeader = (data?: { pageNumber?: number }) => {
       const pageNumber = data?.pageNumber ?? 1;
       templateDoc.setFillColor(255, 255, 255);
       templateDoc.rect(0, 0, templatePageW, templatePageH, "F");
-      drawPdfReportHeader(templateDoc, templatePageW, "Network Performance", `DMR Hytera | ${templateMonthLabel}`, logos, C.title);
+      drawPdfReportHeader(
+        templateDoc,
+        templatePageW,
+        "Network Performance",
+        `DMR Hytera | ${templateMonthLabel}`,
+        logos,
+        C.title
+      );
       templateDoc.setFillColor(...C.band);
       templateDoc.rect(10, 23, templatePageW - 20, 8, "F");
       templateDoc.setTextColor(...C.bandText);
       templateDoc.setFontSize(9);
       templateDoc.text(`Network Performance: ${templateMonthLabel}`, 13, 28.5);
+
       if (pageNumber !== 1) return;
-      const labels = ["Total Downtime ,hrs","Total Sites Affected","% Availability","MTTR","MTBF","MTTF"];
-      const values = [kpi.totalDownHrs, String(kpi.affectedSites), kpi.pctAvailability, kpi.mttr, kpi.mtbf, kpi.mttf];
-      const cellW  = (templatePageW - 20) / labels.length;
+      const labels = [
+        "Total Downtime ,hrs",
+        "Total Sites Affected",
+        "% Availability",
+        "MTTR",
+        "MTBF",
+        "MTTF",
+      ];
+      const values = [
+        kpi.totalDownHrs,
+        String(kpi.affectedSites),
+        kpi.pctAvailability,
+        kpi.mttr,
+        kpi.mtbf,
+        kpi.mttf,
+      ];
+      const cellW = (templatePageW - 20) / labels.length;
       labels.forEach((label, i) => {
         const x = 10 + i * cellW;
-        templateDoc.setDrawColor(...C.border); templateDoc.setLineWidth(0.15);
-        templateDoc.setFillColor(...C.header); templateDoc.rect(x, 35, cellW, 6, "FD");
-        templateDoc.setFillColor(255,255,255); templateDoc.rect(x, 41, cellW, 7, "FD");
-        templateDoc.setFontSize(7); templateDoc.setTextColor(...C.text);
-        templateDoc.setFont("helvetica","bold"); templateDoc.text(label, x + cellW/2, 39, { align:"center" });
-        templateDoc.setFont("helvetica","normal"); templateDoc.text(values[i], x + cellW/2, 45.5, { align:"center" });
+        templateDoc.setDrawColor(...C.border);
+        templateDoc.setLineWidth(0.15);
+        templateDoc.setFillColor(...C.header);
+        templateDoc.rect(x, 35, cellW, 6, "FD");
+        templateDoc.setFillColor(255, 255, 255);
+        templateDoc.rect(x, 41, cellW, 7, "FD");
+        templateDoc.setFontSize(7);
+        templateDoc.setTextColor(...C.text);
+        templateDoc.setFont("helvetica", "bold");
+        templateDoc.text(label, x + cellW / 2, 39, { align: "center" });
+        templateDoc.setFont("helvetica", "normal");
+        templateDoc.text(values[i], x + cellW / 2, 45.5, { align: "center" });
       });
     };
 
@@ -1877,92 +2916,475 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
       head: [PERF_TEMPLATE_PDF_HEADERS],
       body: perfReportRows(rows),
       theme: "grid",
-      styles: { fontSize:7, cellPadding:1.5, overflow:"linebreak", halign:"center", valign:"middle", textColor:C.text, fillColor:[255,255,255], lineColor:C.border, lineWidth:0.15 },
-      headStyles: { fillColor:C.header, textColor:C.text, fontStyle:"bold", fontSize:7.2, cellPadding:1.6, halign:"center" },
-      alternateRowStyles: { fillColor:[248,248,248] },
-      columnStyles: {
-        0:{cellWidth:10,halign:"center"}, 1:{cellWidth:24,halign:"left"}, 2:{cellWidth:44,halign:"left"},
-        3:{cellWidth:30,halign:"center"}, 4:{cellWidth:32,halign:"center"}, 5:{cellWidth:25,halign:"center"},
-        6:{cellWidth:33,halign:"center"}, 7:{cellWidth:28,halign:"center",fontStyle:"bold"}, 8:{cellWidth:25,halign:"center",fontStyle:"bold"},
+      styles: {
+        fontSize: 7,
+        cellPadding: 1.5,
+        overflow: "linebreak",
+        halign: "center",
+        valign: "middle",
+        textColor: C.text,
+        fillColor: [255, 255, 255],
+        lineColor: C.border,
+        lineWidth: 0.15,
       },
-      margin: { left:perfTableMargin, right:perfTableMargin, top:54, bottom:10 },
+      headStyles: {
+        fillColor: C.header,
+        textColor: C.text,
+        fontStyle: "bold",
+        fontSize: 7.2,
+        cellPadding: 1.6,
+        halign: "center",
+      },
+      alternateRowStyles: { fillColor: [248, 248, 248] },
+      columnStyles: {
+        0: { cellWidth: 10, halign: "center" },
+        1: { cellWidth: 24, halign: "left" },
+        2: { cellWidth: 44, halign: "left" },
+        3: { cellWidth: 30, halign: "center" },
+        4: { cellWidth: 32, halign: "center" },
+        5: { cellWidth: 25, halign: "center" },
+        6: { cellWidth: 33, halign: "center" },
+        7: { cellWidth: 28, halign: "center", fontStyle: "bold" },
+        8: { cellWidth: 25, halign: "center", fontStyle: "bold" },
+      },
+      margin: {
+        left: perfTableMargin,
+        right: perfTableMargin,
+        top: 54,
+        bottom: 10,
+      },
       willDrawPage: drawTemplateHeader,
       didParseCell: d => {
-        d.cell.styles.halign  = d.column.index === 1 || d.column.index === 2 ? "left" : "center";
-        d.cell.styles.valign  = "middle";
-        if (d.section === "body" && d.column.index === 7) { const v = parseFloat(String(d.cell.raw ?? "100")); d.cell.styles.textColor = v < 95 ? C.warn : C.ok; }
-        if (d.section === "body" && d.column.index === 8) { const v = parseFloat(String(d.cell.raw ?? "0"));   d.cell.styles.textColor = v > 0  ? C.warn : C.ok; }
+        d.cell.styles.halign =
+          d.column.index === 1 || d.column.index === 2 ? "left" : "center";
+        d.cell.styles.valign = "middle";
+        if (d.section === "body" && d.column.index === 7) {
+          const v = parseFloat(String(d.cell.raw ?? "100"));
+          d.cell.styles.textColor = v < 95 ? C.warn : C.ok;
+        }
+        if (d.section === "body" && d.column.index === 8) {
+          const v = parseFloat(String(d.cell.raw ?? "0"));
+          d.cell.styles.textColor = v > 0 ? C.warn : C.ok;
+        }
       },
       didDrawPage: d => {
-        templateDoc.setFont("helvetica","normal"); templateDoc.setFontSize(7); templateDoc.setTextColor(...C.muted);
-        templateDoc.text(`Network Performance - ${templateMonthLabel} | Page ${d.pageNumber}`, templatePageW/2, templatePageH-5, { align:"center" });
+        templateDoc.setFont("helvetica", "normal");
+        templateDoc.setFontSize(7);
+        templateDoc.setTextColor(...C.muted);
+        templateDoc.text(
+          `Network Performance - ${templateMonthLabel} | Page ${d.pageNumber}`,
+          templatePageW / 2,
+          templatePageH - 5,
+          { align: "center" }
+        );
       },
     });
 
-    const drawPerfChartPage = (title: string, chartRows: PerfRow[], valueKey: "availHours" | "sitesDownHours", color: [number,number,number]) => {
+    const drawPerfChartPage = (
+      title: string,
+      chartRows: PerfRow[],
+      valueKey: "availHours" | "sitesDownHours",
+      color: [number, number, number]
+    ) => {
       templateDoc.addPage();
-      templateDoc.setFillColor(255,255,255); templateDoc.rect(0,0,templatePageW,templatePageH,"F");
-      drawPdfReportHeader(templateDoc, templatePageW, title, `Network Performance | ${templateMonthLabel}`, logos, C.title);
-      const chartW = 245, chartH = 115, chartX = (templatePageW - chartW)/2, chartY = 42;
-      const items  = chartRows.slice(0,34);
-      const maxValue = Math.max(...items.map(row => Number(row[valueKey]) || 0), 1);
-      templateDoc.setDrawColor(...C.border); templateDoc.setLineWidth(0.2); templateDoc.rect(chartX, chartY, chartW, chartH);
-      for (let i = 1; i <= 4; i++) { const y = chartY + (chartH/5)*i; templateDoc.setDrawColor(220,220,220); templateDoc.line(chartX, y, chartX+chartW, y); }
+      templateDoc.setFillColor(255, 255, 255);
+      templateDoc.rect(0, 0, templatePageW, templatePageH, "F");
+      drawPdfReportHeader(
+        templateDoc,
+        templatePageW,
+        title,
+        `Network Performance | ${templateMonthLabel}`,
+        logos,
+        C.title
+      );
+      const chartW = 245;
+      const chartH = 115;
+      const chartX = (templatePageW - chartW) / 2;
+      const chartY = 42;
+      const items = chartRows.slice(0, 34);
+      const maxValue = Math.max(
+        ...items.map(row => Number(row[valueKey]) || 0),
+        1
+      );
+      templateDoc.setDrawColor(...C.border);
+      templateDoc.setLineWidth(0.2);
+      templateDoc.rect(chartX, chartY, chartW, chartH);
+      for (let i = 1; i <= 4; i++) {
+        const y = chartY + (chartH / 5) * i;
+        templateDoc.setDrawColor(220, 220, 220);
+        templateDoc.line(chartX, y, chartX + chartW, y);
+      }
       const gap = chartW / Math.max(items.length, 1);
       const barW = Math.min(8, gap * 0.58);
       items.forEach((row, index) => {
         const value = Number(row[valueKey]) || 0;
-        const barH  = (value / maxValue) * (chartH - 16);
+        const barH = (value / maxValue) * (chartH - 16);
         const x = chartX + index * gap + (gap - barW) / 2;
         const y = chartY + chartH - barH - 8;
         templateDoc.setFillColor(...color);
         if (barH > 0) templateDoc.rect(x, y, barW, barH, "F");
-        templateDoc.setFontSize(5); templateDoc.setTextColor(...C.muted);
+        templateDoc.setFontSize(5);
+        templateDoc.setTextColor(...C.muted);
         const label = row.siteName || row.siteId;
-        templateDoc.text(label.length > 10 ? `${label.slice(0,9)}...` : label, x+barW/2, chartY+chartH+6, { align:"center", angle:45 });
+        templateDoc.text(
+          label.length > 10 ? `${label.slice(0, 9)}...` : label,
+          x + barW / 2,
+          chartY + chartH + 6,
+          { align: "center", angle: 45 }
+        );
       });
-      templateDoc.setFont("helvetica","normal"); templateDoc.setFontSize(7); templateDoc.setTextColor(...C.muted);
-      templateDoc.text(`Network Performance - ${templateMonthLabel} | Page ${templateDoc.getNumberOfPages()}`, templatePageW/2, templatePageH-5, { align:"center" });
+      templateDoc.setFont("helvetica", "normal");
+      templateDoc.setFontSize(7);
+      templateDoc.setTextColor(...C.muted);
+      templateDoc.text(
+        `Network Performance - ${templateMonthLabel} | Page ${templateDoc.getNumberOfPages()}`,
+        templatePageW / 2,
+        templatePageH - 5,
+        { align: "center" }
+      );
     };
 
     drawPerfChartPage("Site Availability Chart", rows, "availHours", C.ok);
-    drawPerfChartPage("Site Downtime Chart", [...rows].sort((a,b) => b.sitesDownHours - a.sitesDownHours), "sitesDownHours", C.warn);
-    templateDoc.save(`DMR-Monthly-Performance-${templateMonthLabel.replace(/ /g,"-")}.pdf`);
+    drawPerfChartPage(
+      "Site Downtime Chart",
+      [...rows].sort((a, b) => b.sitesDownHours - a.sitesDownHours),
+      "sitesDownHours",
+      C.warn
+    );
+    templateDoc.save(
+      `DMR-Monthly-Performance-${templateMonthLabel.replace(/ /g, "-")}.pdf`
+    );
     return;
   }
+
+  // ── Theme (mirrors PPT palette) ───────────────────────────────────────
+  const C = {
+    bg: [10, 22, 40] as [number, number, number],
+    card: [15, 31, 56] as [number, number, number],
+    card2: [10, 25, 48] as [number, number, number],
+    cyan: [34, 211, 238] as [number, number, number],
+    white: [248, 250, 252] as [number, number, number],
+    muted: [148, 163, 184] as [number, number, number],
+    green: [16, 185, 129] as [number, number, number],
+    red: [220, 38, 38] as [number, number, number],
+    amber: [217, 119, 6] as [number, number, number],
+    border: [30, 58, 95] as [number, number, number],
+  };
+
+  // ── helpers ───────────────────────────────────────────────────────────
+  const pageBg = () => {
+    doc.setFillColor(...C.bg);
+    doc.rect(0, 0, pageW, pageH, "F");
+  };
+  const accentBar = (color: [number, number, number] = C.cyan) => {
+    doc.setFillColor(...color);
+    doc.rect(0, 0, pageW, 2, "F");
+  };
+  const pageHeader = (
+    title: string,
+    sub: string,
+    accent: [number, number, number] = C.cyan
+  ) => {
+    pageBg();
+    accentBar(accent);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...C.white);
+    doc.text(title, 14, 12);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...C.cyan);
+    doc.text(sub, pageW - 14, 12, { align: "right" });
+  };
+  const pageFooter = (n: number) => {
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...C.muted);
+    doc.text(
+      `DMR Monthly Performance Report — ${monthLabel}  |  Page ${n}`,
+      pageW / 2,
+      pageH - 4,
+      { align: "center" }
+    );
+  };
+
+  // ── PAGE 1: Data Table ────────────────────────────────────────────────
+  pageHeader(
+    "DMR Monthly Performance Report",
+    `Month: ${monthLabel}  ·  Sites: ${rows.length}`
+  );
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...C.muted);
+  doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 19);
+
+  const kpi = computePerfKPIs(rows);
+  autoTable(doc, {
+    startY: 22,
+    head: [PERF_REPORT_HEADERS],
+    body: perfReportRows(rows),
+    styles: {
+      fontSize: 8,
+      cellPadding: 2.5,
+      overflow: "linebreak",
+      valign: "middle",
+      fillColor: C.card,
+      textColor: C.white,
+      lineColor: C.border,
+      lineWidth: 0.2,
+    },
+    headStyles: {
+      fillColor: C.cyan,
+      textColor: C.bg,
+      fontStyle: "bold",
+      fontSize: 9,
+      cellPadding: 3,
+    },
+    alternateRowStyles: { fillColor: C.card2 },
+    columnStyles: {
+      0: { cellWidth: 10, halign: "center" },
+      1: { cellWidth: 22, halign: "left" },
+      2: { cellWidth: 40, halign: "left" },
+      3: { cellWidth: 28, halign: "center" },
+      4: { cellWidth: 30, halign: "center" },
+      5: { cellWidth: 22, halign: "center" },
+      6: { cellWidth: 30, halign: "center" },
+      7: { cellWidth: 22, halign: "center", fontStyle: "bold" },
+      8: { cellWidth: 22, halign: "center", fontStyle: "bold" },
+    },
+    margin: { left: 10, right: 10, top: 22 },
+    didParseCell: d => {
+      d.cell.styles.halign =
+        d.column.index === 1 || d.column.index === 2 ? "left" : "center";
+      d.cell.styles.valign = "middle";
+      if (d.section === "body" && d.column.index === 7) {
+        const v = parseFloat(String(d.cell.raw ?? "100"));
+        d.cell.styles.textColor = v < 95 ? C.red : v < 99 ? C.amber : C.green;
+      }
+      if (d.section === "body" && d.column.index === 8) {
+        const v = parseFloat(String(d.cell.raw ?? "0"));
+        if (v > 24) d.cell.styles.textColor = C.red;
+        else if (v > 8) d.cell.styles.textColor = C.amber;
+        else if (v > 0) d.cell.styles.textColor = [234, 88, 12];
+        else d.cell.styles.textColor = C.muted;
+      }
+    },
+    didDrawPage: d => {
+      if (d.pageNumber > 1) {
+        // Redraw dark header area on continuation pages (table starts at margin.top:22)
+        doc.setFillColor(...C.bg);
+        doc.rect(0, 0, pageW, 22, "F");
+        accentBar();
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...C.white);
+        doc.text("DMR Monthly Performance Report", 14, 11);
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...C.cyan);
+        doc.text(`${monthLabel} (cont.)`, pageW - 14, 11, { align: "right" });
+      }
+      pageFooter(d.pageNumber);
+    },
+  });
+
+  // ── KPI PAGE (always rendered, dedicated page) ──────────────────────
+  doc.addPage();
+  pageHeader("KPI Summary", `Month: ${monthLabel}  ·  ${rows.length} sites`);
+
+  // 6 KPI cards — 3 columns × 2 rows
+  const kpiItems = [
+    { label: "% Availability", value: kpi.pctAvailability, color: C.green },
+    { label: "MTTR", value: kpi.mttr, color: C.amber },
+    { label: "MTBF", value: kpi.mtbf, color: C.cyan },
+    { label: "MTTF", value: kpi.mttf, color: C.cyan },
+    {
+      label: "Affected Sites",
+      value: String(kpi.affectedSites),
+      color: kpi.affectedSites > 0 ? C.red : C.green,
+    },
+    {
+      label: "Total Down Time",
+      value: kpi.totalDownHrs,
+      color: kpi.totalDownHrs === "0.0 hrs" ? C.green : C.red,
+    },
+  ];
+
+  const cols = 3,
+    cPad = 6;
+  const totalGapX = (cols - 1) * cPad;
+  const cW = (pageW - 28 - totalGapX) / cols;
+  const cH = 52;
+  const cStartX = 14,
+    cStartY = 26;
+
+  kpiItems.forEach((item, idx) => {
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    const x = cStartX + col * (cW + cPad);
+    const y = cStartY + row * (cH + cPad);
+
+    // Card background
+    doc.setFillColor(...C.card);
+    doc.roundedRect(x, y, cW, cH, 2, 2, "F");
+
+    // Top colour accent bar
+    doc.setFillColor(...(item.color as [number, number, number]));
+    doc.roundedRect(x, y, cW, 2.5, 1, 1, "F");
+
+    // Label
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...C.muted);
+    doc.text(item.label.toUpperCase(), x + 7, y + 12);
+
+    // Value — large
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...(item.color as [number, number, number]));
+    doc.text(item.value, x + 7, y + 30);
+
+    // Divider line
+    doc.setDrawColor(...C.border);
+    doc.setLineWidth(0.2);
+    doc.line(x + 7, y + 35, x + cW - 7, y + 35);
+
+    // Month sub-label
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...C.muted);
+    doc.text(`Month: ${monthLabel}`, x + 7, y + 44);
+  });
+
+  pageFooter(
+    (
+      doc as jsPDF & { internal: { getNumberOfPages: () => number } }
+    ).internal.getNumberOfPages()
+  );
+
+  // ── Chart pages helper ────────────────────────────────────────────────
+  const drawChartPage = (
+    title: string,
+    subtitle: string,
+    items: { label: string; value: number }[],
+    accentColor: [number, number, number],
+    colorFn: (v: number) => [number, number, number]
+  ) => {
+    doc.addPage();
+    pageHeader(title, subtitle, accentColor);
+
+    const mL = 24,
+      mR = 18,
+      mTop = 24,
+      mBot = 36;
+    const cW = pageW - mL - mR;
+    const cH = pageH - mTop - mBot;
+    const maxV = Math.max(...items.map(d => d.value), 1);
+    const slotW = cW / Math.max(items.length, 1);
+    const barW = Math.max(2, Math.min(slotW * 0.55, 14));
+
+    // Chart area card bg
+    doc.setFillColor(...C.card);
+    doc.roundedRect(mL - 4, mTop - 4, cW + 8, cH + 8, 2, 2, "F");
+
+    // Grid lines
+    doc.setDrawColor(...C.border);
+    doc.setLineWidth(0.2);
+    for (let i = 0; i <= 5; i++) {
+      const y = mTop + cH - (i / 5) * cH;
+      doc.line(mL, y, mL + cW, y);
+      const lv = Math.round(((maxV * i) / 5) * 10) / 10;
+      doc.setFontSize(6.5);
+      doc.setTextColor(...C.muted);
+      doc.setFont("helvetica", "normal");
+      doc.text(String(lv), mL - 3, y + 1.8, { align: "right" });
+    }
+
+    // Bars
+    items.forEach((d, i) => {
+      const bH = maxV > 0 ? (d.value / maxV) * cH : 0;
+      const x = mL + i * slotW + (slotW - barW) / 2;
+      const y = mTop + cH - bH;
+      doc.setFillColor(...colorFn(d.value));
+      if (bH > 0.5) doc.roundedRect(x, y, barW, bH, 1, 1, "F");
+      if (d.value > 0) {
+        doc.setFontSize(5.5);
+        doc.setTextColor(...C.white);
+        doc.setFont("helvetica", "bold");
+        doc.text(String(d.value), x + barW / 2, y - 1.5, { align: "center" });
+      }
+      doc.setFontSize(5.8);
+      doc.setTextColor(...C.muted);
+      doc.setFont("helvetica", "normal");
+      const lbl =
+        d.label.length > 13 ? d.label.substring(0, 12) + "…" : d.label;
+      doc.text(lbl, x + barW / 2, mTop + cH + 5, {
+        align: "center",
+        angle: 42,
+      });
+    });
+
+    // Axis lines
+    doc.setDrawColor(...C.cyan);
+    doc.setLineWidth(0.5);
+    doc.line(mL, mTop, mL, mTop + cH);
+    doc.line(mL, mTop + cH, mL + cW, mTop + cH);
+
+    pageFooter(
+      (
+        doc as jsPDF & { internal: { getNumberOfPages: () => number } }
+      ).internal.getNumberOfPages()
+    );
+  };
+
+  drawChartPage(
+    "Site Availability — Hours",
+    `Month: ${monthLabel}  ·  ${rows.length} sites`,
+    rows.map(r => ({ label: r.siteName, value: r.availHours })),
+    C.cyan,
+    () => C.green
+  );
+  drawChartPage(
+    "Site Downtime — Hours",
+    `Month: ${monthLabel}  ·  ${rows.filter(r => r.sitesDownHours > 0).length} of ${rows.length} sites affected`,
+    rows.map(r => ({ label: r.siteName, value: r.sitesDownHours })),
+    C.red,
+    v => (v === 0 ? C.muted : v > 24 ? C.red : v > 8 ? C.amber : [234, 88, 12])
+  );
+
+  doc.save(`DMR-Monthly-Performance-${monthLabel.replace(/ /g, "-")}.pdf`);
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// END OF PART 1 — continue in Part 2
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// PART 2 — paste directly after the last line of Part 1
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-function uniqueTicketValues(ticket: TicketAggregate, field: keyof TicketRecord): string {
-  return Array.from(new Set(ticket.rows.map(row => clean(row[field])).filter(Boolean))).join(", ");
+function uniqueTicketValues(
+  ticket: TicketAggregate,
+  field: keyof TicketRecord
+): string {
+  return Array.from(
+    new Set(ticket.rows.map(row => clean(row[field])).filter(Boolean))
+  ).join(", ");
 }
 
 function distinctReportRow(ticket: TicketAggregate, index: number): string[] {
-  const row        = ticket.primary;
-  const rca        = row.rca        || uniqueTicketValues(ticket, "rca")        || "";
-  const actionTaken = row.actionTaken || uniqueTicketValues(ticket, "actionTaken") || "";
+  const row = ticket.primary;
+  const rca = row.rca || uniqueTicketValues(ticket, "rca") || "";
+  const actionTaken =
+    row.actionTaken || uniqueTicketValues(ticket, "actionTaken") || "";
   return [
     String(index + 1),
     Array.from(ticket.siteIds).join(", "),
     Array.from(ticket.siteNames).join(", "),
     uniqueTicketValues(ticket, "managedResource") || row.managedResource || "",
     row.severity || "",
-    row.issue    || "",
+    row.issue || "",
     row.observationDate || "",
     row.observationTime || "",
-    row.recoveryDate    || "",
-    row.recoveryTime    || "",
+    row.recoveryDate || "",
+    row.recoveryTime || "",
     row.escalatedForL3SupportDate || "",
     row.escalatedForL3SupportTime || "",
-    row.duration  || "",
-    ticket.tt     || "",
-    row.status    || "",
+    row.duration || "",
+    ticket.tt || "",
+    row.status || "",
     row.escalatedTo || "",
     rca,
     actionTaken,
@@ -1975,10 +3397,12 @@ function distinctReportRows(rows: TicketAggregate[]): string[][] {
 
 function exportCsv(rows: TicketAggregate[]) {
   const csv = [DISTINCT_REPORT_HEADERS, ...distinctReportRows(rows)]
-    .map(line => line.map(cell => `"${String(cell ?? "").replace(/"/g,'""')}"`).join(","))
+    .map(line =>
+      line.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")
+    )
     .join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url  = URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = "follow-up-distinct-tt-report.csv";
@@ -1987,16 +3411,41 @@ function exportCsv(rows: TicketAggregate[]) {
 }
 
 function exportExcel(rows: TicketAggregate[]) {
-  const worksheet = XLSX.utils.aoa_to_sheet([DISTINCT_REPORT_HEADERS, ...distinctReportRows(rows)]);
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    DISTINCT_REPORT_HEADERS,
+    ...distinctReportRows(rows),
+  ]);
   DISTINCT_REPORT_HEADERS.forEach((_, colIndex) => {
-    const horizontal = ticketExportCenteredIndexes.has(colIndex) ? "center" : "left";
+    const horizontal = ticketExportCenteredIndexes.has(colIndex)
+      ? "center"
+      : "left";
     for (let rowIndex = 0; rowIndex <= rows.length; rowIndex++) {
-      applySheetCellAlignment(worksheet, XLSX.utils.encode_cell({ r: rowIndex, c: colIndex }), horizontal);
+      applySheetCellAlignment(
+        worksheet,
+        XLSX.utils.encode_cell({ r: rowIndex, c: colIndex }),
+        horizontal
+      );
     }
   });
   worksheet["!cols"] = [
-    {wch:6},{wch:24},{wch:28},{wch:30},{wch:12},{wch:32},{wch:16},{wch:16},
-    {wch:16},{wch:16},{wch:26},{wch:26},{wch:24},{wch:18},{wch:14},{wch:20},{wch:52},{wch:34},
+    { wch: 6 },
+    { wch: 24 },
+    { wch: 28 },
+    { wch: 30 },
+    { wch: 12 },
+    { wch: 32 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 26 },
+    { wch: 26 },
+    { wch: 24 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 20 },
+    { wch: 52 },
+    { wch: 34 },
   ];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Distinct TT Report");
@@ -2004,19 +3453,28 @@ function exportExcel(rows: TicketAggregate[]) {
 }
 
 function exportAnalyticsTableExcel(
-  headers: string[], rows: Array<Array<string | number>>,
-  sheetName: string, fileName: string
+  headers: string[],
+  rows: Array<Array<string | number>>,
+  sheetName: string,
+  fileName: string
 ) {
-  const worksheet    = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   const columnWidths = headers.map((header, colIndex) => {
-    const maxCellLength = Math.max(header.length, ...rows.map(row => String(row[colIndex] ?? "").length));
+    const maxCellLength = Math.max(
+      header.length,
+      ...rows.map(row => String(row[colIndex] ?? "").length)
+    );
     return { wch: Math.min(Math.max(maxCellLength + 2, 12), 42) };
   });
   worksheet["!cols"] = columnWidths;
   const range = XLSX.utils.decode_range(worksheet["!ref"] ?? "A1:A1");
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      applySheetCellAlignment(worksheet, XLSX.utils.encode_cell({ r, c }), "center");
+  for (let r = range.s.r; r <= range.e.r; r += 1) {
+    for (let c = range.s.c; c <= range.e.c; c += 1) {
+      applySheetCellAlignment(
+        worksheet,
+        XLSX.utils.encode_cell({ r, c }),
+        "center"
+      );
     }
   }
   const workbook = XLSX.utils.book_new();
@@ -2025,20 +3483,31 @@ function exportAnalyticsTableExcel(
 }
 
 function exportAnalyticsWorkbookExcel(
-  sheets: Array<{ name: string; headers: string[]; rows: Array<Array<string | number>> }>,
+  sheets: Array<{
+    name: string;
+    headers: string[];
+    rows: Array<Array<string | number>>;
+  }>,
   fileName: string
 ) {
   const workbook = XLSX.utils.book_new();
   sheets.forEach(sheet => {
-    const worksheet    = XLSX.utils.aoa_to_sheet([sheet.headers, ...sheet.rows]);
+    const worksheet = XLSX.utils.aoa_to_sheet([sheet.headers, ...sheet.rows]);
     worksheet["!cols"] = sheet.headers.map((header, colIndex) => {
-      const maxCellLength = Math.max(header.length, ...sheet.rows.map(row => String(row[colIndex] ?? "").length));
+      const maxCellLength = Math.max(
+        header.length,
+        ...sheet.rows.map(row => String(row[colIndex] ?? "").length)
+      );
       return { wch: Math.min(Math.max(maxCellLength + 2, 12), 44) };
     });
     const range = XLSX.utils.decode_range(worksheet["!ref"] ?? "A1:A1");
-    for (let r = range.s.r; r <= range.e.r; r++) {
-      for (let c = range.s.c; c <= range.e.c; c++) {
-        applySheetCellAlignment(worksheet, XLSX.utils.encode_cell({ r, c }), "center");
+    for (let r = range.s.r; r <= range.e.r; r += 1) {
+      for (let c = range.s.c; c <= range.e.c; c += 1) {
+        applySheetCellAlignment(
+          worksheet,
+          XLSX.utils.encode_cell({ r, c }),
+          "center"
+        );
       }
     }
     XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name);
@@ -2046,8 +3515,14 @@ function exportAnalyticsWorkbookExcel(
   XLSX.writeFile(workbook, fileName);
 }
 
-// ─── MODIFIED exportTicketTemplate ───────────────────────────────────────────
-async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string) {
+async function exportTicketTemplate(
+  tickets: TicketAggregate[],
+  monthKey: string
+) {
+  // Pure ZIP+XML approach using fflate (already in your project).
+  // Only the worksheet XML is touched — xl/styles.xml, xl/drawings/, xl/media/
+  // (logos, borders, fills) are never opened, so they survive byte-for-byte.
+
   const normalizeTicketRegionLabel = (region: string) => {
     const value = clean(region).toUpperCase();
     if (value === "EOA" || value === "NEOA") return "EOA";
@@ -2058,124 +3533,210 @@ async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string
   };
 
   const ticketRegionSet = new Set(
-    tickets.map(ticket => normalizeTicketRegionLabel(ticket.primary.region)).filter(Boolean)
+    tickets
+      .map(ticket => normalizeTicketRegionLabel(ticket.primary.region))
+      .filter(Boolean)
   );
-  const templateRegionOrder = ["EOA","SOA","COA","WOA"] as const;
+  const templateRegionOrder = ["EOA", "SOA", "COA", "WOA"] as const;
   if (ticketRegionSet.size > 1) {
     for (const region of templateRegionOrder) {
-      const regionTickets = tickets.filter(ticket => normalizeTicketRegionLabel(ticket.primary.region) === region);
-      if (regionTickets.length) { await exportTicketTemplate(regionTickets, monthKey); }
+      const regionTickets = tickets.filter(
+        ticket => normalizeTicketRegionLabel(ticket.primary.region) === region
+      );
+      if (regionTickets.length) {
+        await exportTicketTemplate(regionTickets, monthKey);
+      }
     }
     return;
   }
-  const templateKind = templateRegionOrder.find(region => ticketRegionSet.has(region)) ?? "EOA";
+  const templateKind =
+    templateRegionOrder.find(region => ticketRegionSet.has(region)) ?? "EOA";
   const templateConfig = {
     EOA: { url: "/EOA_DMR_Monthly_Report.xlsx", dataStart: 39, protectedRow: 48 },
-    SOA: { url: "/SOA_DMR_Monthly_Report.xlsx", dataStart: 41, protectedRow: 58 },
+    SOA: { url: "/SOA_DMR_Monthly_Report.xlsx", dataStart: 42, protectedRow: 58 },
     COA: { url: "/COA_DMR_Monthly_Report.xlsx", dataStart: 32, protectedRow: 48 },
     WOA: { url: "/WOA_DMR_Monthly_Report.xlsx", dataStart: 32, protectedRow: 35 },
   }[templateKind];
 
-  const DATA_START = templateConfig.dataStart;
-  const PROTECTED  = templateConfig.protectedRow;
-  const AVAIL      = PROTECTED - DATA_START;
-  const COLS = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q"];
+  const DATA_START = templateConfig.dataStart; // first data row
+  const PROTECTED = templateConfig.protectedRow; // Remarks row - never modified
+  const AVAIL = PROTECTED - DATA_START; // template rows
+  const COLS = [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J",
+    "K",
+    "L",
+    "M",
+    "N",
+    "O",
+    "P",
+    "Q",
+  ];
 
-  // ── XML helpers ────────────────────────────────────────────────────────────
+  // ── XML helpers ──────────────────────────────────────────────────────
   const xmlEsc = (s: string) =>
-    s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
 
-  const setCell = (xml: string, ref: string, value: string | number): string => {
+  // Find a cell by ref (e.g. "A39"), replace its value, keep its style attribute
+  const setCell = (
+    xml: string,
+    ref: string,
+    value: string | number
+  ): string => {
     const markerIdx = xml.indexOf(` r="${ref}"`);
-    if (markerIdx === -1) return xml;
+    if (markerIdx === -1) return xml; // cell not in XML, skip
     const cStart = xml.lastIndexOf("<c", markerIdx);
     if (cStart === -1) return xml;
-    const scIdx    = xml.indexOf("/>", cStart);
-    const fcIdx    = xml.indexOf("</c>", cStart);
-    const cEnd     = scIdx !== -1 && (fcIdx === -1 || scIdx < fcIdx) ? scIdx + 2 : fcIdx + 4;
+
+    // Locate end of this cell element
+    const scIdx = xml.indexOf("/>", cStart);
+    const fcIdx = xml.indexOf("</c>", cStart);
+    const cEnd =
+      scIdx !== -1 && (fcIdx === -1 || scIdx < fcIdx) ? scIdx + 2 : fcIdx + 4;
+
+    // Extract opening-tag attribute string, strip old type attr
     const tagClose = xml.indexOf(">", cStart);
-    let attrs = xml.slice(cStart + 2, tagClose).replace(/\s*\/$/, "").replace(/\s+t="[^"]*"/g, "");
-    const v   = String(value ?? "");
+    let attrs = xml
+      .slice(cStart + 2, tagClose) // everything after "<c"
+      .replace(/\s*\/$/, "") // strip trailing /
+      .replace(/\s+t="[^"]*"/g, ""); // strip old type attr
+
+    const v = String(value ?? "");
     let newCell: string;
-    if (!v)                       newCell = `<c${attrs}/>`;
-    else if (typeof value === "number") newCell = `<c${attrs}><v>${v}</v></c>`;
-    else                          newCell = `<c${attrs} t="inlineStr"><is><t>${xmlEsc(v)}</t></is></c>`;
+    if (!v) {
+      newCell = `<c${attrs}/>`;
+    } else if (typeof value === "number") {
+      newCell = `<c${attrs}><v>${v}</v></c>`;
+    } else {
+      newCell = `<c${attrs} t="inlineStr"><is><t>${xmlEsc(v)}</t></is></c>`;
+    }
     return xml.slice(0, cStart) + newCell + xml.slice(cEnd);
   };
 
-  const setWorksheetColumns = (sheetXml: string, valuesByCol: Record<string, string[]>): string => {
+  const setWorksheetColumns = (
+    sheetXml: string,
+    valuesByCol: Record<string, string[]>
+  ): string => {
     const headerByCol: Record<string, string> = {
-      A:"No", B:"Equipment/ site", C:"Site Name", D:"Effected Managed Resource",
-      E:"Severity", F:"Escalation Date", G:"Escalation Time", H:"Recovery Date",
-      I:"Recovery Time", J:"Escalated for L3 Support Date", K:"Escalated for L3 Support Time",
-      L:"Outage Duration", M:"TT Number", N:"TT Status", O:"TT Owner", P:"RCA", Q:"Action Taken",
+      A: "No",
+      B: "Equipment/ site",
+      C: "Site Name",
+      D: "Effected Managed Resource",
+      E: "Severity",
+      F: "Escalation Date",
+      G: "Escalation Time",
+      H: "Recovery Date",
+      I: "Recovery Time",
+      J: "Escalated for L3 Support Date",
+      K: "Escalated for L3 Support Time",
+      L: "Outage Duration",
+      M: "TT Number",
+      N: "TT Status",
+      O: "TT Owner",
+      P: "RCA",
+      Q: "Action Taken",
     };
     const widthFor = (col: string) => {
-      const values  = [headerByCol[col] ?? "", ...(valuesByCol[col] ?? [])];
+      const values = [headerByCol[col] ?? "", ...(valuesByCol[col] ?? [])];
       const longest = values.reduce((max, value) => {
-        const lineMax = String(value ?? "").split(/\r?\n/).reduce((lm, line) => Math.max(lm, line.length), 0);
+        const lineMax = String(value ?? "")
+          .split(/\r?\n/)
+          .reduce((lineMax, line) => Math.max(lineMax, line.length), 0);
         return Math.max(max, lineMax);
       }, 0);
       return Math.min(Math.max(longest + 3, 8), 80);
     };
-    const colsXml = "<cols>" + COLS.map((col, index) => {
-      const columnNumber = index + 1;
-      return `<col min="${columnNumber}" max="${columnNumber}" width="${widthFor(col)}" customWidth="1" bestFit="1"/>`;
-    }).join("") + "</cols>";
+    const colsXml =
+      "<cols>" +
+      COLS.map((col, index) => {
+        const columnNumber = index + 1;
+        return `<col min="${columnNumber}" max="${columnNumber}" width="${widthFor(col)}" customWidth="1" bestFit="1"/>`;
+      }).join("") +
+      "</cols>";
     return sheetXml.includes("<cols>")
       ? sheetXml.replace(/<cols>[\s\S]*?<\/cols>/, colsXml)
       : sheetXml.replace("<sheetData>", `${colsXml}<sheetData>`);
   };
 
-  const rewriteWorksheetRow = (sheetXml: string, rowNumber: number, rowXml: string) => {
-    const rowPattern = new RegExp(`<row\\b[^>]*\\br="${rowNumber}"[^>]*>[\\s\\S]*?<\\/row>`);
+  const rewriteWorksheetRow = (
+    sheetXml: string,
+    rowNumber: number,
+    rowXml: string
+  ) => {
+    const rowPattern = new RegExp(
+      `<row\\b[^>]*\\br="${rowNumber}"[^>]*>[\\s\\S]*?<\\/row>`
+    );
     if (rowPattern.test(sheetXml)) return sheetXml.replace(rowPattern, rowXml);
-    const nextRowPattern = new RegExp(`<row\\b[^>]*\\br="${rowNumber + 1}"[^>]*>`);
+
+    const nextRowPattern = new RegExp(
+      `<row\\b[^>]*\\br="${rowNumber + 1}"[^>]*>`
+    );
     const nextMatch = sheetXml.match(nextRowPattern);
-    if (nextMatch?.index !== undefined) return `${sheetXml.slice(0, nextMatch.index)}${rowXml}${sheetXml.slice(nextMatch.index)}`;
+    if (nextMatch?.index !== undefined) {
+      return `${sheetXml.slice(0, nextMatch.index)}${rowXml}${sheetXml.slice(
+        nextMatch.index
+      )}`;
+    }
     return sheetXml.replace("</sheetData>", `${rowXml}</sheetData>`);
   };
 
-  // ── MODIFIED: plain cell writer — inlineStr for all non-numeric values ─────
-  // This prevents Excel from inheriting the number format / fill color from the
-  // row above (the template header row).  Every data cell is written as a plain
-  // inline string so the source text is rendered exactly as-is.
   const buildStyledCellXml = (
-    col: string, rowNumber: number, value: string | number,
-    styleIndex: number, numeric = false
+    col: string,
+    rowNumber: number,
+    value: string | number,
+    styleIndex: number,
+    numeric = false
   ) => {
     if (numeric) {
       const num = Number(value);
-      return `<c r="${col}${rowNumber}" s="${styleIndex}"><v>${Number.isFinite(num) ? num : 0}</v></c>`;
+      return `<c r="${col}${rowNumber}" s="${styleIndex}"><v>${
+        Number.isFinite(num) ? num : 0
+      }</v></c>`;
     }
-    const str = String(value ?? "").trim();
-    if (!str) {
-      // Truly empty — self-closing, no <v>, no type
-      return `<c r="${col}${rowNumber}" s="${styleIndex}"/>`;
-    }
-    // inlineStr: Excel renders the literal string; no date-serial or number coercion
-    const escaped = xmlEsc(str).replace(/\n/g, "&#10;");
-    return (
-      `<c r="${col}${rowNumber}" s="${styleIndex}" t="inlineStr">` +
-      `<is><t xml:space="preserve">${escaped}</t></is></c>`
-    );
+    const text = xmlEsc(String(value ?? "")).replace(/\n/g, "&#10;");
+    return `<c r="${col}${rowNumber}" s="${styleIndex}" t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
   };
 
-  const normalizeTicketTableRows = (sheetXml: string, firstRow: number, lastRow: number) =>
+  const normalizeTicketTableRows = (
+    sheetXml: string,
+    firstRow: number,
+    lastRow: number
+  ) =>
     sheetXml.replace(/<row\b[^>]*>/g, rowTag => {
       const rowNumber = Number(rowTag.match(/\br="(\d+)"/)?.[1] ?? 0);
       if (rowNumber < firstRow || rowNumber > lastRow) return rowTag;
-      return rowTag.replace(/\s+s="[^"]*"/g,"").replace(/\s+customFormat="[^"]*"/g,"");
+      return rowTag
+        .replace(/\s+s="[^"]*"/g, "")
+        .replace(/\s+customFormat="[^"]*"/g, "");
     });
 
-  const removeTicketSiteNameMerges = (sheetXml: string, firstRow: number, lastRow: number) => {
+  const removeTicketSiteNameMerges = (
+    sheetXml: string,
+    firstRow: number,
+    lastRow: number
+  ) => {
     let removed = 0;
-    const nextXml = sheetXml.replace(/<mergeCell ref="C(\d+):D\1"\/>/g, (match, rowNumber) => {
-      const row = Number(rowNumber);
-      if (row < firstRow || row > lastRow) return match;
-      removed += 1;
-      return "";
-    });
+    const nextXml = sheetXml.replace(
+      /<mergeCell ref="C(\d+):D\1"\/>/g,
+      (match, rowNumber) => {
+        const row = Number(rowNumber);
+        if (row < firstRow || row > lastRow) return match;
+        removed += 1;
+        return "";
+      }
+    );
     if (!removed) return nextXml;
     return nextXml.replace(
       /<mergeCells\b([^>]*)count="(\d+)"([^>]*)>/,
@@ -2184,86 +3745,152 @@ async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string
     );
   };
 
+
   const ticketSiteLinesForTemplate = (ticket: TicketAggregate) => {
     const bySite = new Map<string, { siteId: string; siteName: string }>();
     ticket.rows.forEach(row => {
       const siteId = clean(row.siteId);
       if (!siteId) return;
       const key = normalizeSiteId(siteId).toUpperCase() || siteId.toUpperCase();
-      if (!bySite.has(key)) bySite.set(key, { siteId, siteName: clean(row.siteName) });
+      if (!bySite.has(key)) {
+        bySite.set(key, { siteId, siteName: clean(row.siteName) });
+      }
     });
-    const rows    = Array.from(bySite.values());
-    const rfRows  = rows.filter(row => isRfSiteId(row.siteId));
+
+    const rows = Array.from(bySite.values());
+    const rfRows = rows.filter(row => isRfSiteId(row.siteId));
     const rowsToUse = rfRows.length ? rfRows : rows;
+
     if (!rowsToUse.length) {
-      return { siteIds: Array.from(ticket.siteIds).join("\n"), siteNames: Array.from(ticket.siteNames).join("\n") };
+      return {
+        siteIds: Array.from(ticket.siteIds).join("\n"),
+        siteNames: Array.from(ticket.siteNames).join("\n"),
+      };
     }
-    return { siteIds: rowsToUse.map(row => row.siteId).join("\n"), siteNames: rowsToUse.map(row => row.siteName).join("\n") };
+
+    return {
+      siteIds: rowsToUse.map(row => row.siteId).join("\n"),
+      siteNames: rowsToUse.map(row => row.siteName).join("\n"),
+    };
   };
 
   try {
-    // ── 1. Fetch template ──────────────────────────────────────────────────
-    const res = await fetch(publicWorkbookUrl(templateConfig.url), { cache: "no-store" });
-    if (!res.ok) throw new Error(`HTTP ${res.status} - make sure ${templateConfig.url.slice(1)} is inside your project public folder`);
+    // ── 1. Fetch template ───────────────────────────────────────────────
+    const res = await fetch(publicWorkbookUrl(templateConfig.url), {
+      cache: "no-store",
+    });
+    if (!res.ok)
+      throw new Error(
+        `HTTP ${res.status} - make sure ${templateConfig.url.slice(1)} is inside your project public folder`
+      );
     const buf = await res.arrayBuffer();
 
-    // ── 2. Unzip ───────────────────────────────────────────────────────────
+    // ── 2. Unzip with fflate ────────────────────────────────────────────
     const { unzipSync, zipSync, strFromU8, strToU8 } = await import("fflate");
     const files = unzipSync(new Uint8Array(buf));
 
-    // ── 3. Locate worksheet ────────────────────────────────────────────────
-    const sheetKey = Object.keys(files).find(k => /^xl\/worksheets\/sheet\d+\.xml$/.test(k));
-    if (!sheetKey) throw new Error("Could not find worksheet XML inside template");
+    // ── 3. Locate worksheet XML ─────────────────────────────────────────
+    const sheetKey = Object.keys(files).find(k =>
+      /^xl\/worksheets\/sheet\d+\.xml$/.test(k)
+    );
+    if (!sheetKey)
+      throw new Error("Could not find worksheet XML inside template");
+
     let xml = strFromU8(files[sheetKey]);
 
-    // ── 4. Month label ─────────────────────────────────────────────────────
-    const full  = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
+    // ── 4. Month label MMM-YYYY ─────────────────────────────────────────
+    const full = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
     const parts = full.split(" ");
-    const label = parts.length === 2 ? `${parts[0].slice(0, 3)}-${parts[1]}` : full;
+    const label =
+      parts.length === 2 ? `${parts[0].slice(0, 3)}-${parts[1]}` : full;
     const safeName = label.replace(/[\/*?[\]:]/g, "-").slice(0, 31);
     const regionLabel =
-      Array.from(new Set(tickets.map(ticket => normalizeTicketRegionLabel(ticket.primary.region)).filter(Boolean))).join(" / ") || "EOA";
+      Array.from(
+        new Set(
+          tickets
+            .map(ticket => normalizeTicketRegionLabel(ticket.primary.region))
+            .filter(Boolean)
+        )
+      ).join(" / ") || "EOA";
 
-    // ── 5. Set metadata cells ──────────────────────────────────────────────
+    // ── 5. Set Q5 (month value) ─────────────────────────────────────────
     xml = setCell(xml, "C5", regionLabel);
     xml = setCell(xml, "Q5", label);
 
-    // ── 6. Rename sheet ────────────────────────────────────────────────────
+    // ── 6. Rename sheet in workbook.xml (sheet element + definedNames refs) ──
     const wbKey = "xl/workbook.xml";
     if (files[wbKey]) {
       let wbXml = strFromU8(files[wbKey]);
-      wbXml = wbXml.replace(/(<sheet\b[^>]*\bname=")[^"]*(")/,`$1${xmlEsc(safeName)}$2`);
-      wbXml = wbXml.replace(/'Month-Year'!/g, `'${safeName.replace(/'/g,"''")}'!`);
+      wbXml = wbXml.replace(
+        /(<sheet\b[^>]*\bname=")[^"]*(")/,
+        `$1${xmlEsc(safeName)}$2`
+      );
+      wbXml = wbXml.replace(
+        /'Month-Year'!/g,
+        `'${safeName.replace(/'/g, "''")}'!`
+      );
       files[wbKey] = strToU8(wbXml);
     }
 
-    // ── 7. Row insertion when more tickets than template rows ──────────────
+    // ── 7. Row insertion when more than 20 tickets ──────────────────────
     const needed = tickets.length;
     if (needed > AVAIL) {
       const extra = needed - AVAIL;
-      const tmplMarker    = ` r="${DATA_START}" `;
+
+      // Capture template data row using string search — avoids RegExp escape pitfalls
+      const tmplMarker = ` r="${DATA_START}" `;
       const tmplMarkerIdx = xml.indexOf(tmplMarker);
-      const tmplRowStart  = tmplMarkerIdx !== -1 ? xml.lastIndexOf("<row", tmplMarkerIdx) : -1;
-      const tmplRowEnd    = tmplRowStart !== -1 ? xml.indexOf("</row>", tmplRowStart) + 6 : -1;
-      const tmplRow       = tmplRowStart !== -1 && tmplRowEnd > 0 ? xml.slice(tmplRowStart, tmplRowEnd) : "";
+      const tmplRowStart =
+        tmplMarkerIdx !== -1 ? xml.lastIndexOf("<row", tmplMarkerIdx) : -1;
+      const tmplRowEnd =
+        tmplRowStart !== -1 ? xml.indexOf("</row>", tmplRowStart) + 6 : -1;
+      const tmplRow =
+        tmplRowStart !== -1 && tmplRowEnd > 0
+          ? xml.slice(tmplRowStart, tmplRowEnd)
+          : "";
 
+      // Shift rows >= PROTECTED: row elements, cell refs, mergeCells, dimension
       xml = xml
-        .replace(/(<row[^>]* r=")(\d+)(")/g, (_m, a, n, b) => +n >= PROTECTED ? `${a}${+n + extra}${b}` : _m)
-        .replace(/(<c[^>]* r=")([A-Z]+)(\d+)(")/g, (_m, a, col, n, b) => +n >= PROTECTED ? `${a}${col}${+n + extra}${b}` : _m)
-        .replace(/(<mergeCell ref=")([A-Z]+)(\d+)(:)([A-Z]+)(\d+)(")/g, (_m, a, c1, r1, sep, c2, r2, b) =>
-          `${a}${c1}${+r1 >= PROTECTED ? +r1 + extra : +r1}${sep}${c2}${+r2 >= PROTECTED ? +r2 + extra : +r2}${b}`)
-        .replace(/(<dimension ref="[A-Z]+\d+:[A-Z]+)(\d+)(")/, (_m, pre, n, post) => +n >= PROTECTED ? `${pre}${+n + extra}${post}` : _m);
+        .replace(/(<row[^>]* r=")(\d+)(")/g, (_m, a, n, b) =>
+          +n >= PROTECTED ? `${a}${+n + extra}${b}` : _m
+        )
+        .replace(/(<c[^>]* r=")([A-Z]+)(\d+)(")/g, (_m, a, col, n, b) =>
+          +n >= PROTECTED ? `${a}${col}${+n + extra}${b}` : _m
+        )
+        .replace(
+          /(<mergeCell ref=")([A-Z]+)(\d+)(:)([A-Z]+)(\d+)(")/g,
+          (_m, a, c1, r1, sep, c2, r2, b) =>
+            `${a}${c1}${+r1 >= PROTECTED ? +r1 + extra : +r1}${sep}${c2}${+r2 >= PROTECTED ? +r2 + extra : +r2}${b}`
+        )
+        .replace(
+          /(<dimension ref="[A-Z]+\d+:[A-Z]+)(\d+)(")/,
+          (_m, pre, n, post) =>
+            +n >= PROTECTED ? `${pre}${+n + extra}${post}` : _m
+        );
 
+      // Build blank clone rows and insert before the shifted protected row
       if (tmplRow) {
         const newRows = Array.from({ length: extra }, (_, i) => {
           const rn = DATA_START + AVAIL + i;
-          return tmplRow
-            .replace(/ r="(\d+)"/, ` r="${rn}"`)
-            .replace(/(<c[^>]* r=")([A-Z]+)\d+(")/g, (_m2, a, col, b) => `${a}${col}${rn}${b}`)
-            .replace(/<v>[^<]*<\/v>/g,"").replace(/<is>[\s\S]*?<\/is>/g,"")
-            .replace(/<f[^>]*\/>/g,"").replace(/<f[^>]*>[\s\S]*?<\/f>/g,"")
-            .replace(/\s+t="[^"]*"/g,"");
+          return (
+            tmplRow
+              .replace(/ r="(\d+)"/, ` r="${rn}"`) // row r attr (first only)
+              .replace(
+                /(<c[^>]* r=")([A-Z]+)\d+(")/g,
+                (_m2, a, col, b) => `${a}${col}${rn}${b}`
+              ) // all cell refs in row
+              // Empty cloned cells must not keep stale values, formulas, or shared-string types.
+              // Excel can repair the worksheet with "Removed Records: Cell information"
+              // when blank template rows contain empty <v></v> nodes or invalid shared refs.
+              .replace(/<v>[^<]*<\/v>/g, "")
+              .replace(/<is>[\s\S]*?<\/is>/g, "")
+              .replace(/<f[^>]*\/>/g, "")
+              .replace(/<f[^>]*>[\s\S]*?<\/f>/g, "")
+              .replace(/\s+t="[^"]*"/g, "")
+          );
         }).join("");
+
+        // Find the shifted protected row using plain string search
         const shiftedTag = ` r="${PROTECTED + extra}" `;
         const shiftedIdx = xml.indexOf(shiftedTag);
         if (shiftedIdx !== -1) {
@@ -2275,90 +3902,114 @@ async function exportTicketTemplate(tickets: TicketAggregate[], monthKey: string
       }
     }
 
-    // ── 8. Build plain body style (no inherited fill/format from template) ─
-    const styleCodec     = { strFromU8, strToU8 };
+    // ── 8. Clear unused rows (fewer than 20 tickets) ────────────────────
+    const styleCodec = { strFromU8, strToU8 };
     const plainBodyStyle = ensureExcelPlainTicketBodyStyle(files, styleCodec);
+    const ticketColumnValues: Record<string, string[]> = Object.fromEntries(
+      COLS.map(col => [col, []])
+    );
 
-    const ticketColumnValues: Record<string, string[]> = Object.fromEntries(COLS.map(col => [col, []]));
-
-    // ── 9. Write data rows ─────────────────────────────────────────────────
     tickets.forEach((ticket, i) => {
-      const row        = DATA_START + i;
-      const p          = ticket.primary;
-      const siteLines  = ticketSiteLinesForTemplate(ticket);
-      const actionTaken = p.actionTaken || uniqueTicketValues(ticket, "actionTaken") || "";
-      const rca         = p.rca         || uniqueTicketValues(ticket, "rca")         || "";
-
+      const row = DATA_START + i;
+      const p = ticket.primary;
+      const siteLines = ticketSiteLinesForTemplate(ticket);
+      const actionTaken =
+        p.actionTaken || uniqueTicketValues(ticket, "actionTaken") || "";
+      const rca = p.rca || uniqueTicketValues(ticket, "rca") || "";
       const values: Record<string, string | number> = {
-        A: i + 1,                           // serial — numeric
+        A: i + 1,
         B: siteLines.siteIds,
         C: siteLines.siteNames,
         D: p.managedResource || "",
-        E: p.severity        || "",
-        F: p.observationDate || "",         // kept as source string, no date serial
+        E: p.severity || "",
+        F: p.observationDate || "",
         G: p.observationTime || "",
-        H: p.recoveryDate    || "",
-        I: p.recoveryTime    || "",
-        J: p.escalatedForL3SupportDate  || "",
-        K: p.escalatedForL3SupportTime  || "",
-        L: p.duration        || "",
-        M: ticket.tt         || "",
-        N: p.status          || "",
-        O: p.escalatedTo     || "",
+        H: p.recoveryDate || "",
+        I: p.recoveryTime || "",
+        J: p.escalatedForL3SupportDate || "",
+        K: p.escalatedForL3SupportTime || "",
+        L: p.duration || "",
+        M: ticket.tt || "",
+        N: p.status || "",
+        O: p.escalatedTo || "",
         P: rca,
         Q: actionTaken,
       };
-
-      COLS.forEach(col => { ticketColumnValues[col].push(String(values[col] ?? "")); });
-
+      COLS.forEach(col => {
+        ticketColumnValues[col].push(String(values[col] ?? ""));
+      });
       const rowXml =
         `<row r="${row}">` +
         COLS.map(col =>
-          buildStyledCellXml(col, row, values[col] ?? "", plainBodyStyle, col === "A")
+          buildStyledCellXml(
+            col,
+            row,
+            values[col] ?? "",
+            plainBodyStyle,
+            col === "A"
+          )
         ).join("") +
-        `</row>`;
-
+        "</row>";
       xml = rewriteWorksheetRow(xml, row, rowXml);
     });
 
-    // ── 10. Clear unused template rows ─────────────────────────────────────
     for (let r = DATA_START + needed; r < PROTECTED; r++) {
-      const emptyRowXml =
+      const rowXml =
         `<row r="${r}">` +
-        COLS.map(col => `<c r="${col}${r}" s="${plainBodyStyle}"/>`).join("") +
-        `</row>`;
-      xml = rewriteWorksheetRow(xml, r, emptyRowXml);
+        COLS.map(col =>
+          buildStyledCellXml(col, r, "", plainBodyStyle, false)
+        ).join("") +
+        "</row>";
+      xml = rewriteWorksheetRow(xml, r, rowXml);
     }
 
-    xml = normalizeTicketTableRows(xml, DATA_START, DATA_START + Math.max(needed, 1) - 1);
-    xml = removeTicketSiteNameMerges(xml, DATA_START, DATA_START + Math.max(needed, AVAIL) - 1);
+    xml = normalizeTicketTableRows(
+      xml,
+      DATA_START,
+      DATA_START + Math.max(needed, 1) - 1
+    );
+    xml = removeTicketSiteNameMerges(
+      xml,
+      DATA_START,
+      DATA_START + Math.max(needed, AVAIL) - 1
+    );
     xml = setWorksheetColumns(xml, ticketColumnValues);
     files[sheetKey] = strToU8(xml);
-
-    const output = zipSync(files, { level: 0 });
-    const blob   = new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    const url    = URL.createObjectURL(blob);
-    const a      = document.createElement("a");
+    const output = zipSync(files, { level: 0 }); // store, no recompression
+    const blob = new Blob([output], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
     a.href = url;
-    const regionForFile = regionLabel.replace(/\s*\/\s*/g,"_").replace(/[^A-Za-z0-9_-]/g,"") || templateKind;
-    const exportStamp   = new Date().toISOString().replace(/[-:]/g,"").replace(/\..+$/,"");
+    const regionForFile =
+      regionLabel.replace(/\s*\/\s*/g, "_").replace(/[^A-Za-z0-9_-]/g, "") ||
+      templateKind;
+    const exportStamp = new Date()
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .replace(/\..+$/, "");
     a.download = `DMR_Monthly_Report_${regionForFile}_${label}_${exportStamp}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   } catch (err: any) {
     console.error("Template export failed:", err);
     alert(
-      "Template export failed.\n\nCheck:\n" +
-      `  • ${templateConfig.url.slice(1)} must be inside the  public/  folder\n` +
-      "  • Regional templates are: EOA_DMR_Monthly_Report.xlsx, SOA_DMR_Monthly_Report.xlsx, COA_DMR_Monthly_Report.xlsx, WOA_DMR_Monthly_Report.xlsx\n\n" +
-      "Error: " + (err?.message ?? String(err))
+      "Template export failed.\n\n" +
+        "Check:\n" +
+        `  • ${templateConfig.url.slice(1)} must be inside the  public/  folder\n` +
+        "  • Regional templates are: EOA_DMR_Monthly_Report.xlsx, SOA_DMR_Monthly_Report.xlsx, COA_DMR_Monthly_Report.xlsx, WOA_DMR_Monthly_Report.xlsx\n" +
+        "    (not the project root — the sub-folder named  public)\n\n" +
+        "Error: " +
+        (err?.message ?? String(err))
     );
   }
 }
 
 async function exportPdf(rows: TicketAggregate[], monthKey: string) {
-  const doc        = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
-  const monthLabel = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
+  const monthLabel =
+    monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All Months";
   const normalizePdfRegion = (region: string) => {
     const value = clean(region).toUpperCase();
     if (value === "EOA" || value === "NEOA") return "EOA";
@@ -2368,33 +4019,71 @@ async function exportPdf(rows: TicketAggregate[], monthKey: string) {
     return value;
   };
   const regionLabel =
-    Array.from(new Set(rows.flatMap(ticket => ticket.rows.map(row => normalizePdfRegion(row.region))).filter(Boolean))).join(" / ") || "All";
+    Array.from(
+      new Set(
+        rows
+          .flatMap(ticket => ticket.rows.map(row => normalizePdfRegion(row.region)))
+          .filter(Boolean)
+      )
+    ).join(" / ") || "All";
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   {
-    const logos           = await loadReportLogos();
-    const templateDoc     = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
-    const templatePageW   = templateDoc.internal.pageSize.getWidth();
-    const templatePageH   = templateDoc.internal.pageSize.getHeight();
-    const C               = TEMPLATE_PDF_COLORS;
-    const ticketTableMargin = Math.max(12, (templatePageW - 390) / 2);
-
+    const logos = await loadReportLogos();
+    const templateDoc = new jsPDF({
+      orientation: "landscape",
+      unit: "mm",
+      format: "a3",
+    });
+    const templatePageW = templateDoc.internal.pageSize.getWidth();
+    const templatePageH = templateDoc.internal.pageSize.getHeight();
+    const C = TEMPLATE_PDF_COLORS;
+    const ticketTableWidth = 390;
+    const ticketTableMargin = Math.max(
+      12,
+      (templatePageW - ticketTableWidth) / 2
+    );
     const drawTemplateHeader = () => {
-      templateDoc.setFillColor(255,255,255); templateDoc.rect(0,0,templatePageW,templatePageH,"F");
-      drawPdfReportHeader(templateDoc, templatePageW, "MONTHLY REPORT", "DMR SYSTEM | DMR Hytera", logos, C.title);
-      templateDoc.setFontSize(10); templateDoc.setTextColor(...C.text); templateDoc.setFont("helvetica","bold");
+      templateDoc.setFillColor(255, 255, 255);
+      templateDoc.rect(0, 0, templatePageW, templatePageH, "F");
+      drawPdfReportHeader(
+        templateDoc,
+        templatePageW,
+        "MONTHLY REPORT",
+        "DMR SYSTEM | DMR Hytera",
+        logos,
+        C.title
+      );
+      templateDoc.setFontSize(10);
+      templateDoc.setTextColor(...C.text);
+      templateDoc.setFont("helvetica", "bold");
       templateDoc.text("DMR SYSTEM", 12, 26);
-      const info = [["Region",regionLabel],["Network","DMR Hytera"],["Month",monthLabel]];
+
+      const info = [
+        ["Region", regionLabel],
+        ["Network", "DMR Hytera"],
+        ["Month", monthLabel],
+      ];
       templateDoc.setFontSize(8);
       info.forEach((pair, i) => {
         const x = 12 + i * 60;
-        templateDoc.setDrawColor(...C.border); templateDoc.setFillColor(...C.header); templateDoc.rect(x,32,22,7,"FD");
-        templateDoc.setFillColor(255,255,255); templateDoc.rect(x+22,32,36,7,"FD");
-        templateDoc.setTextColor(...C.text); templateDoc.setFont("helvetica","bold"); templateDoc.text(pair[0], x+3, 36.8);
-        templateDoc.setFont("helvetica","normal"); templateDoc.text(pair[1], x+25, 36.8);
+        templateDoc.setDrawColor(...C.border);
+        templateDoc.setFillColor(...C.header);
+        templateDoc.rect(x, 32, 22, 7, "FD");
+        templateDoc.setFillColor(255, 255, 255);
+        templateDoc.rect(x + 22, 32, 36, 7, "FD");
+        templateDoc.setTextColor(...C.text);
+        templateDoc.setFont("helvetica", "bold");
+        templateDoc.text(pair[0], x + 3, 36.8);
+        templateDoc.setFont("helvetica", "normal");
+        templateDoc.text(pair[1], x + 25, 36.8);
       });
-      templateDoc.setFillColor(...C.band); templateDoc.rect(12,44,templatePageW-24,8,"F");
-      templateDoc.setTextColor(...C.bandText); templateDoc.setFont("helvetica","bold"); templateDoc.setFontSize(9);
+
+      templateDoc.setFillColor(...C.band);
+      templateDoc.rect(12, 44, templatePageW - 24, 8, "F");
+      templateDoc.setTextColor(...C.bandText);
+      templateDoc.setFont("helvetica", "bold");
+      templateDoc.setFontSize(9);
       templateDoc.text("Outages in this Month", 15, 49.5);
     };
 
@@ -2403,45 +4092,221 @@ async function exportPdf(rows: TicketAggregate[], monthKey: string) {
       head: TICKET_TEMPLATE_PDF_HEAD,
       body: distinctReportRows(rows),
       theme: "grid",
-      styles: { fontSize:6.6, cellPadding:1.35, overflow:"linebreak", halign:"center", valign:"middle", textColor:C.text, fillColor:[255,255,255], lineColor:C.border, lineWidth:0.15 },
-      headStyles: { fillColor:C.header, textColor:C.text, fontStyle:"bold", fontSize:6.8, halign:"center", valign:"middle" },
-      alternateRowStyles: { fillColor:[248,248,248] },
-      columnStyles: {
-        0:{cellWidth:8,halign:"center"}, 1:{cellWidth:24,halign:"center"}, 2:{cellWidth:28,halign:"center"},
-        3:{cellWidth:34,halign:"center"}, 4:{cellWidth:16,halign:"center",fontStyle:"bold"}, 5:{cellWidth:34,halign:"center"},
-        6:{cellWidth:18,halign:"center"}, 7:{cellWidth:15,halign:"center"}, 8:{cellWidth:18,halign:"center"},
-        9:{cellWidth:15,halign:"center"}, 10:{cellWidth:24,halign:"center"}, 11:{cellWidth:20,halign:"center"},
-        12:{cellWidth:24,halign:"center"}, 13:{cellWidth:18,halign:"center",fontStyle:"bold"},
-        14:{cellWidth:16,halign:"center",fontStyle:"bold"}, 15:{cellWidth:22,halign:"center"},
-        16:{cellWidth:46,halign:"center"}, 17:{cellWidth:31,halign:"center"},
+      styles: {
+        fontSize: 6.6,
+        cellPadding: 1.35,
+        overflow: "linebreak",
+        halign: "center",
+        valign: "middle",
+        textColor: C.text,
+        fillColor: [255, 255, 255],
+        lineColor: C.border,
+        lineWidth: 0.15,
       },
-      margin: { left:ticketTableMargin, right:ticketTableMargin, top:56, bottom:10 },
+      headStyles: {
+        fillColor: C.header,
+        textColor: C.text,
+        fontStyle: "bold",
+        fontSize: 6.8,
+        halign: "center",
+        valign: "middle",
+      },
+      alternateRowStyles: { fillColor: [248, 248, 248] },
+      columnStyles: {
+        0: { cellWidth: 8, halign: "center" },
+        1: { cellWidth: 24, halign: "center" },
+        2: { cellWidth: 28, halign: "center" },
+        3: { cellWidth: 34, halign: "center" },
+        4: { cellWidth: 16, halign: "center", fontStyle: "bold" },
+        5: { cellWidth: 34, halign: "center" },
+        6: { cellWidth: 18, halign: "center" },
+        7: { cellWidth: 15, halign: "center" },
+        8: { cellWidth: 18, halign: "center" },
+        9: { cellWidth: 15, halign: "center" },
+        10: { cellWidth: 24, halign: "center" },
+        11: { cellWidth: 20, halign: "center" },
+        12: { cellWidth: 24, halign: "center" },
+        13: { cellWidth: 18, halign: "center", fontStyle: "bold" },
+        14: { cellWidth: 16, halign: "center", fontStyle: "bold" },
+        15: { cellWidth: 22, halign: "center" },
+        16: { cellWidth: 46, halign: "center" },
+        17: { cellWidth: 31, halign: "center" },
+      },
+      margin: {
+        left: ticketTableMargin,
+        right: ticketTableMargin,
+        top: 56,
+        bottom: 10,
+      },
       willDrawPage: drawTemplateHeader,
       didParseCell: d => {
         if (d.section === "body" && d.column.index === 4) {
           const v = String(d.cell.raw ?? "").toLowerCase();
-          d.cell.styles.textColor = v.includes("critical") || v.includes("p1") ? C.warn : C.text;
+          d.cell.styles.textColor =
+            v.includes("critical") || v.includes("p1") ? C.warn : C.text;
         }
         if (d.section === "body" && d.column.index === 14) {
           const v = String(d.cell.raw ?? "").toLowerCase();
-          d.cell.styles.textColor = v.includes("closed") || v.includes("resolved") ? C.ok : v ? C.warn : C.text;
+          d.cell.styles.textColor =
+            v.includes("closed") || v.includes("resolved")
+              ? C.ok
+              : v
+                ? C.warn
+                : C.text;
         }
       },
       didDrawPage: d => {
-        templateDoc.setFont("helvetica","normal"); templateDoc.setFontSize(7); templateDoc.setTextColor(...C.muted);
-        templateDoc.text(`DMR Monthly Report - ${monthLabel} | Page ${d.pageNumber}`, templatePageW/2, templatePageH-5, { align:"center" });
+        templateDoc.setFont("helvetica", "normal");
+        templateDoc.setFontSize(7);
+        templateDoc.setTextColor(...C.muted);
+        templateDoc.text(
+          `DMR Monthly Report - ${monthLabel} | Page ${d.pageNumber}`,
+          templatePageW / 2,
+          templatePageH - 5,
+          { align: "center" }
+        );
       },
     });
-    const suffix = monthKey !== "all" ? `-${monthLabel.replace(/ /g,"-")}` : "";
+    const suffix =
+      monthKey !== "all" ? `-${monthLabel.replace(/ /g, "-")}` : "";
     templateDoc.save(`DMR-Monthly-Tickets${suffix}.pdf`);
     return;
   }
+
+  // ── Theme (mirrors PPT palette) ───────────────────────────────────────
+  const C = {
+    bg: [10, 22, 40] as [number, number, number],
+    card: [15, 31, 56] as [number, number, number],
+    card2: [10, 25, 48] as [number, number, number],
+    cyan: [34, 211, 238] as [number, number, number],
+    white: [248, 250, 252] as [number, number, number],
+    muted: [148, 163, 184] as [number, number, number],
+    green: [16, 185, 129] as [number, number, number],
+    red: [220, 38, 38] as [number, number, number],
+    amber: [217, 119, 6] as [number, number, number],
+    border: [30, 58, 95] as [number, number, number],
+  };
+
+  // ── Page 1 background + header ────────────────────────────────────────
+  doc.setFillColor(...C.bg);
+  doc.rect(0, 0, pageW, pageH, "F");
+  doc.setFillColor(...C.cyan);
+  doc.rect(0, 0, pageW, 2, "F");
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...C.white);
+  doc.text(`DMR Monthly Tickets Report`, 14, 12);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...C.cyan);
+  doc.text(
+    `Month: ${monthLabel}  ·  Tickets: ${rows.length}  ·  ${new Date().toLocaleDateString()}`,
+    pageW - 14,
+    12,
+    { align: "right" }
+  );
+
+  autoTable(doc, {
+    startY: 18,
+    head: [DISTINCT_REPORT_HEADERS],
+    body: distinctReportRows(rows),
+    styles: {
+      fontSize: 7,
+      cellPadding: 1.8,
+      overflow: "linebreak",
+      valign: "middle",
+      fillColor: C.card,
+      textColor: C.white,
+      lineColor: C.border,
+      lineWidth: 0.2,
+    },
+    headStyles: {
+      fillColor: C.cyan,
+      textColor: C.bg,
+      fontStyle: "bold",
+      fontSize: 7.5,
+      cellPadding: 2.5,
+    },
+    alternateRowStyles: { fillColor: C.card2 },
+    columnStyles: {
+      0: { cellWidth: 8, halign: "center" },
+      1: { cellWidth: 18 },
+      2: { cellWidth: 22 },
+      3: { cellWidth: 26, halign: "center" },
+      4: { cellWidth: 14, halign: "center", fontStyle: "bold" },
+      5: { cellWidth: 30 },
+      6: { cellWidth: 18, halign: "center" },
+      7: { cellWidth: 16, halign: "center" },
+      8: { cellWidth: 18, halign: "center" },
+      9: { cellWidth: 16, halign: "center" },
+      10: { cellWidth: 22 },
+      11: { cellWidth: 20 },
+      12: { cellWidth: 22 },
+      13: {
+        cellWidth: 14,
+        fontStyle: "bold",
+        textColor: C.cyan as [number, number, number],
+      },
+      14: { cellWidth: 14, halign: "center", fontStyle: "bold" },
+      15: { cellWidth: 18 },
+      16: { cellWidth: 52 },
+      17: { cellWidth: 36 },
+    },
+    margin: { left: 10, right: 10, top: 20 },
+    didParseCell: d => {
+      if (d.section === "body" && d.column.index === 4) {
+        const v = String(d.cell.raw ?? "").toLowerCase();
+        if (v.includes("critical") || v.includes("p1"))
+          d.cell.styles.textColor = C.red;
+        else if (v.includes("major") || v.includes("p2"))
+          d.cell.styles.textColor = C.amber;
+        else if (v.includes("minor") || v.includes("p3"))
+          d.cell.styles.textColor = C.green;
+        else d.cell.styles.textColor = C.muted;
+      }
+      if (d.section === "body" && d.column.index === 14) {
+        const v = String(d.cell.raw ?? "").toLowerCase();
+        if (v.includes("open") || v.includes("pending"))
+          d.cell.styles.textColor = C.red;
+        else if (v.includes("progress") || v.includes("in-progress"))
+          d.cell.styles.textColor = C.amber;
+        else if (v.includes("closed") || v.includes("resolved"))
+          d.cell.styles.textColor = C.green;
+        else d.cell.styles.textColor = C.muted;
+      }
+    },
+    didDrawPage: data => {
+      if (data.pageNumber > 1) {
+        // Redraw dark header area on continuation pages (margin.top:20 keeps rows below)
+        doc.setFillColor(...C.bg);
+        doc.rect(0, 0, pageW, 20, "F");
+        doc.setFillColor(...C.cyan);
+        doc.rect(0, 0, pageW, 2, "F");
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...C.white);
+        doc.text("DMR Monthly Tickets Report", 14, 11);
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...C.cyan);
+        doc.text(`${monthLabel} (cont.)`, pageW - 14, 11, { align: "right" });
+      }
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...C.muted);
+      doc.text(
+        `DMR Monthly Tickets Report — ${monthLabel}  |  Page ${data.pageNumber}`,
+        pageW / 2,
+        pageH - 4,
+        { align: "center" }
+      );
+    },
+  });
+
+  const suffix = monthKey !== "all" ? `-${monthLabel.replace(/ /g, "-")}` : "";
+  doc.save(`DMR-Monthly-Tickets${suffix}.pdf`);
 }
 
-// ─── All remaining component code (StatCard, PartnerLogoStrip, SelectFilter,
-//     MultiSelectFilter, and the default export Home) is IDENTICAL to your
-//     original file from this point forward. Paste it here unchanged.
-// ─────────────────────────────────────────────────────────────────────────────
 
 function clampGaugePercent(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -2454,160 +4319,233 @@ function extractFirstNumericValue(text: string): number | null {
 }
 
 type GaugeStatus = "excellent" | "good" | "warning" | "critical";
-type GaugeThresholds = { excellent: number; good: number; warning: number };
-type PerformanceGaugeContext = { totalSites: number; totalHours: number };
+
+type GaugeThresholds = {
+  excellent: number;
+  good: number;
+  warning: number;
+};
+
+type PerformanceGaugeContext = {
+  totalSites: number;
+  totalHours: number;
+};
+
 type PerformanceGaugeConfig = {
-  id: string; label: string; color: string; icon: LucideIcon;
-  direction: "higher" | "lower"; thresholds: GaugeThresholds;
+  id: string;
+  label: string;
+  color: string;
+  icon: LucideIcon;
+  direction: "higher" | "lower";
+  thresholds: GaugeThresholds;
   getValue: (kpi: ReturnType<typeof computePerfKPIs>, ctx: PerformanceGaugeContext) => number;
   getScale: (kpi: ReturnType<typeof computePerfKPIs>, ctx: PerformanceGaugeContext) => { min: number; max: number };
   formatValue: (kpi: ReturnType<typeof computePerfKPIs>) => string;
   caption: (kpi: ReturnType<typeof computePerfKPIs>, ctx: PerformanceGaugeContext) => string;
-  helper:  (kpi: ReturnType<typeof computePerfKPIs>, ctx: PerformanceGaugeContext) => string;
+  helper: (kpi: ReturnType<typeof computePerfKPIs>, ctx: PerformanceGaugeContext) => string;
   sparkline: (rows: PerfRow[], kpi: ReturnType<typeof computePerfKPIs>, ctx: PerformanceGaugeContext) => number[];
 };
+
 type PerformanceGaugeCardModel = {
-  id: string; label: string; value: string; color: string; progress: number;
-  status: GaugeStatus; icon: LucideIcon; caption: string; helper: string; sparkline: number[];
+  id: string;
+  label: string;
+  value: string;
+  color: string;
+  progress: number;
+  status: GaugeStatus;
+  icon: LucideIcon;
+  caption: string;
+  helper: string;
+  sparkline: number[];
 };
 
 const PERFORMANCE_GAUGE_CONFIG: PerformanceGaugeConfig[] = [
   {
-    id:"availability", label:"% Availability", color:"#22d3ee", icon:Activity, direction:"higher",
-    thresholds:{excellent:99.5,good:98,warning:95},
+    id: "availability",
+    label: "% Availability",
+    color: "#22d3ee",
+    icon: Activity,
+    direction: "higher",
+    thresholds: { excellent: 99.5, good: 98, warning: 95 },
     getValue: kpi => extractFirstNumericValue(kpi.pctAvailability) ?? 0,
-    getScale: () => ({min:0,max:100}),
+    getScale: () => ({ min: 0, max: 100 }),
     formatValue: kpi => kpi.pctAvailability,
-    caption: kpi => `${(extractFirstNumericValue(kpi.pctAvailability) ?? 0).toFixed(2)}% healthy window`,
-    helper:  kpi => `Available ${kpi.totalAvail.toFixed(1)} hrs across selected sites`,
-    sparkline: rows => rows.map(r => { const total = r.availHours + r.sitesDownHours; return total > 0 ? (r.availHours/total)*100 : 100; }),
+    caption: (kpi) => `${(extractFirstNumericValue(kpi.pctAvailability) ?? 0).toFixed(2)}% healthy window`,
+    helper: kpi => `Available ${kpi.totalAvail.toFixed(1)} hrs across selected sites`,
+    sparkline: rows => rows.map(r => {
+      const total = r.availHours + r.sitesDownHours;
+      return total > 0 ? (r.availHours / total) * 100 : 100;
+    }),
   },
   {
-    id:"mttr", label:"MTTR", color:"#f59e0b", icon:RefreshCw, direction:"lower",
-    thresholds:{excellent:4,good:8,warning:24},
+    id: "mttr",
+    label: "MTTR",
+    color: "#f59e0b",
+    icon: RefreshCw,
+    direction: "lower",
+    thresholds: { excellent: 4, good: 8, warning: 24 },
     getValue: kpi => extractFirstNumericValue(kpi.mttr) ?? 0,
-    getScale: () => ({min:0,max:24}),
+    getScale: () => ({ min: 0, max: 24 }),
     formatValue: kpi => kpi.mttr,
     caption: () => "Target ≤ 24 hrs mean repair time",
-    helper:  kpi => `${(extractFirstNumericValue(kpi.mttr) ?? 0).toFixed(2)} hrs average repair`,
+    helper: kpi => `${(extractFirstNumericValue(kpi.mttr) ?? 0).toFixed(2)} hrs average repair`,
     sparkline: rows => rows.filter(r => r.sitesDownHours > 0).map(r => r.sitesDownHours),
   },
   {
-    id:"mtbf", label:"MTBF", color:"#3b82f6", icon:Network, direction:"higher",
-    thresholds:{excellent:168,good:72,warning:24},
+    id: "mtbf",
+    label: "MTBF",
+    color: "#3b82f6",
+    icon: Network,
+    direction: "higher",
+    thresholds: { excellent: 168, good: 72, warning: 24 },
     getValue: kpi => extractFirstNumericValue(kpi.mtbf) ?? 0,
-    getScale: () => ({min:0,max:168}),
+    getScale: () => ({ min: 0, max: 168 }),
     formatValue: kpi => kpi.mtbf,
     caption: () => "Target ≥ 168 hrs between failures",
-    helper:  kpi => `${(extractFirstNumericValue(kpi.mtbf) ?? 0).toFixed(2)} hrs between failures`,
+    helper: kpi => `${(extractFirstNumericValue(kpi.mtbf) ?? 0).toFixed(2)} hrs between failures`,
     sparkline: rows => rows.map(r => r.availHours),
   },
   {
-    id:"mttf", label:"MTTF", color:"#a78bfa", icon:ShieldAlert, direction:"higher",
-    thresholds:{excellent:192,good:96,warning:36},
+    id: "mttf",
+    label: "MTTF",
+    color: "#a78bfa",
+    icon: ShieldAlert,
+    direction: "higher",
+    thresholds: { excellent: 192, good: 96, warning: 36 },
     getValue: kpi => extractFirstNumericValue(kpi.mttf) ?? 0,
-    getScale: () => ({min:0,max:192}),
+    getScale: () => ({ min: 0, max: 192 }),
     formatValue: kpi => kpi.mttf,
     caption: () => "Target ≥ 192 hrs expected failure-free time",
-    helper:  kpi => `${(extractFirstNumericValue(kpi.mttf) ?? 0).toFixed(2)} hrs uptime horizon`,
+    helper: kpi => `${(extractFirstNumericValue(kpi.mttf) ?? 0).toFixed(2)} hrs uptime horizon`,
     sparkline: rows => rows.map(r => r.availHours + Math.max(0, r.sitesDownHours * 0.35)),
   },
   {
-    id:"affectedSites", label:"Affected Sites", color:"#f43f5e", icon:AlertTriangle, direction:"lower",
-    thresholds:{excellent:0,good:5,warning:15},
+    id: "affectedSites",
+    label: "Affected Sites",
+    color: "#f43f5e",
+    icon: AlertTriangle,
+    direction: "lower",
+    thresholds: { excellent: 0, good: 5, warning: 15 },
     getValue: kpi => kpi.affectedSites,
-    getScale: (_,ctx) => ({min:0,max:Math.max(1,ctx.totalSites)}),
+    getScale: (_, ctx) => ({ min: 0, max: Math.max(1, ctx.totalSites) }),
     formatValue: kpi => String(kpi.affectedSites),
-    caption: (kpi,ctx) => `${((kpi.affectedSites/Math.max(1,ctx.totalSites))*100).toFixed(1)}% of monitored sites`,
-    helper:  (kpi,ctx) => `${kpi.affectedSites} impacted / ${ctx.totalSites} total sites`,
-    sparkline: rows => rows.map(r => r.sitesDownHours > 0 ? 1 : 0),
+    caption: (kpi, ctx) => `${((kpi.affectedSites / Math.max(1, ctx.totalSites)) * 100).toFixed(1)}% of monitored sites`,
+    helper: (kpi, ctx) => `${kpi.affectedSites} impacted / ${ctx.totalSites} total sites`,
+    sparkline: rows => rows.map(r => (r.sitesDownHours > 0 ? 1 : 0)),
   },
   {
-    id:"nonAffectedSites", label:"Non-Affected Sites", color:"#10b981", icon:CheckCircle2, direction:"higher",
-    thresholds:{excellent:90,good:75,warning:50},
-    getValue: (kpi,ctx) => (kpi.nonAffectedSites/Math.max(1,ctx.totalSites))*100,
-    getScale: () => ({min:0,max:100}),
+    id: "nonAffectedSites",
+    label: "Non-Affected Sites",
+    color: "#10b981",
+    icon: CheckCircle2,
+    direction: "higher",
+    thresholds: { excellent: 90, good: 75, warning: 50 },
+    getValue: (kpi, ctx) => (kpi.nonAffectedSites / Math.max(1, ctx.totalSites)) * 100,
+    getScale: () => ({ min: 0, max: 100 }),
     formatValue: kpi => String(kpi.nonAffectedSites),
-    caption: (kpi,ctx) => `${((kpi.nonAffectedSites/Math.max(1,ctx.totalSites))*100).toFixed(1)}% healthy sites`,
-    helper:  (kpi,ctx) => `${kpi.nonAffectedSites} stable / ${ctx.totalSites} total sites`,
-    sparkline: rows => rows.map(r => r.sitesDownHours <= 0 ? 1 : 0),
+    caption: (kpi, ctx) => `${((kpi.nonAffectedSites / Math.max(1, ctx.totalSites)) * 100).toFixed(1)}% healthy sites`,
+    helper: (kpi, ctx) => `${kpi.nonAffectedSites} stable / ${ctx.totalSites} total sites`,
+    sparkline: rows => rows.map(r => (r.sitesDownHours <= 0 ? 1 : 0)),
   },
   {
-    id:"totalDown", label:"Total Down", color:"#fb923c", icon:CloudOff, direction:"lower",
-    thresholds:{excellent:12,good:48,warning:120},
+    id: "totalDown",
+    label: "Total Down",
+    color: "#fb923c",
+    icon: CloudOff,
+    direction: "lower",
+    thresholds: { excellent: 12, good: 48, warning: 120 },
     getValue: kpi => kpi.totalDown,
-    getScale: (_,ctx) => ({min:0,max:Math.max(1,ctx.totalHours||1)}),
+    getScale: (_, ctx) => ({ min: 0, max: Math.max(1, ctx.totalHours || 1) }),
     formatValue: kpi => kpi.totalDownHrs,
     caption: kpi => `${kpi.totalDownHrs} lost during selected window`,
-    helper:  (kpi,ctx) => `${((kpi.totalDown/Math.max(1,ctx.totalHours))*100).toFixed(2)}% downtime share`,
+    helper: (kpi, ctx) => `${((kpi.totalDown / Math.max(1, ctx.totalHours)) * 100).toFixed(2)}% downtime share`,
     sparkline: rows => rows.map(r => r.sitesDownHours),
   },
 ];
 
-function gaugeStatusFromValue(value: number, direction: PerformanceGaugeConfig["direction"], thresholds: GaugeThresholds): GaugeStatus {
+function gaugeStatusFromValue(
+  value: number,
+  direction: PerformanceGaugeConfig["direction"],
+  thresholds: GaugeThresholds
+): GaugeStatus {
   if (direction === "higher") {
     if (value >= thresholds.excellent) return "excellent";
-    if (value >= thresholds.good)      return "good";
-    if (value >= thresholds.warning)   return "warning";
+    if (value >= thresholds.good) return "good";
+    if (value >= thresholds.warning) return "warning";
     return "critical";
   }
+
   if (value <= thresholds.excellent) return "excellent";
-  if (value <= thresholds.good)      return "good";
-  if (value <= thresholds.warning)   return "warning";
+  if (value <= thresholds.good) return "good";
+  if (value <= thresholds.warning) return "warning";
   return "critical";
 }
 
-function gaugeProgressFromScale(value: number, direction: PerformanceGaugeConfig["direction"], min: number, max: number): number {
-  const range      = Math.max(1, max - min);
+function gaugeProgressFromScale(
+  value: number,
+  direction: PerformanceGaugeConfig["direction"],
+  min: number,
+  max: number
+): number {
+  const range = Math.max(1, max - min);
   const normalized = ((value - min) / range) * 100;
   return clampGaugePercent(direction === "higher" ? normalized : 100 - normalized);
 }
 
 function compactSparkline(values: number[], maxPoints = 12): number[] {
   const cleanValues = values.filter(value => Number.isFinite(value));
-  if (cleanValues.length === 0) return [0,0,0,0,0];
+  if (cleanValues.length === 0) return [0, 0, 0, 0, 0];
   if (cleanValues.length <= maxPoints) return cleanValues;
+
   const bucketSize = cleanValues.length / maxPoints;
-  return Array.from({length:maxPoints}, (_,index) => {
+  return Array.from({ length: maxPoints }, (_, index) => {
     const start = Math.floor(index * bucketSize);
-    const end   = Math.max(start + 1, Math.floor((index + 1) * bucketSize));
+    const end = Math.max(start + 1, Math.floor((index + 1) * bucketSize));
     const slice = cleanValues.slice(start, end);
-    return slice.reduce((sum,value) => sum + value, 0) / Math.max(1, slice.length);
+    return slice.reduce((sum, value) => sum + value, 0) / Math.max(1, slice.length);
   });
 }
 
 function sparklinePath(values: number[]): string {
   const points = compactSparkline(values, 14);
-  const max    = Math.max(...points, 1);
-  const min    = Math.min(...points, 0);
-  const range  = Math.max(1, max - min);
-  return points.map((value, index) => {
-    const x = points.length === 1 ? 50 : (index / (points.length - 1)) * 100;
-    const y = 100 - ((value - min) / range) * 100;
-    return `${x},${y}`;
-  }).join(" ");
+  const max = Math.max(...points, 1);
+  const min = Math.min(...points, 0);
+  const range = Math.max(1, max - min);
+  return points
+    .map((value, index) => {
+      const x = points.length === 1 ? 50 : (index / (points.length - 1)) * 100;
+      const y = 100 - ((value - min) / range) * 100;
+      return `${x},${y}`;
+    })
+    .join(" ");
 }
 
 function gaugeNeedleAngle(progress: number): number {
   return -130 + clampGaugePercent(progress) * 2.6;
 }
 
-function buildPerformanceGaugeCards(kpi: ReturnType<typeof computePerfKPIs>, rows: PerfRow[]): PerformanceGaugeCardModel[] {
+function buildPerformanceGaugeCards(
+  kpi: ReturnType<typeof computePerfKPIs>,
+  rows: PerfRow[]
+): PerformanceGaugeCardModel[] {
   const ctx: PerformanceGaugeContext = {
     totalSites: Math.max(1, kpi.affectedSites + kpi.nonAffectedSites),
     totalHours: Math.max(1, kpi.totalAvail + kpi.totalDown),
   };
+
   return PERFORMANCE_GAUGE_CONFIG.map(config => {
     const value = config.getValue(kpi, ctx);
     const scale = config.getScale(kpi, ctx);
     return {
-      id: config.id, label: config.label, value: config.formatValue(kpi),
+      id: config.id,
+      label: config.label,
+      value: config.formatValue(kpi),
       color: config.color,
       progress: gaugeProgressFromScale(value, config.direction, scale.min, scale.max),
-      status:   gaugeStatusFromValue(value, config.direction, config.thresholds),
+      status: gaugeStatusFromValue(value, config.direction, config.thresholds),
       icon: config.icon,
-      caption:   config.caption(kpi, ctx),
-      helper:    config.helper(kpi, ctx),
+      caption: config.caption(kpi, ctx),
+      helper: config.helper(kpi, ctx),
       sparkline: compactSparkline(config.sparkline(rows, kpi, ctx)),
     };
   });
@@ -2618,41 +4556,90 @@ function statusLabel(status: GaugeStatus): string {
 }
 
 function PerformanceGaugeCard({
-  label, value, color, progress, status, icon: Icon, caption, helper, index,
+  label,
+  value,
+  color,
+  progress,
+  status,
+  icon: Icon,
+  caption,
+  helper,
+  index,
 }: PerformanceGaugeCardModel & { index: number }) {
   const safeProgress = clampGaugePercent(progress);
-  const gaugeId = label.replace(/[^a-z0-9]+/gi,"-").toLowerCase();
+  const gaugeId = label.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+
   return (
-    <article className="perf-gauge-card" style={{ ["--gauge-color" as string]:color, ["--gauge-progress" as string]:`${safeProgress}%`, ["--card-index" as string]:index }}>
+    <article
+      className="perf-gauge-card"
+      style={{
+        ["--gauge-color" as string]: color,
+        ["--gauge-progress" as string]: `${safeProgress}%`,
+        ["--card-index" as string]: index,
+      }}
+    >
       <div className="perf-gauge-card__topline">
         <span className="perf-gauge-card__label">{label}</span>
-        <span className={`perf-gauge-card__status perf-gauge-card__status--${status}`}>{statusLabel(status)}</span>
+        <span className={`perf-gauge-card__status perf-gauge-card__status--${status}`}>
+          {statusLabel(status)}
+        </span>
       </div>
+
       <div className="perf-gauge-card__dial-wrap">
-        <svg className="perf-gauge-card__dial" viewBox="0 0 240 165" role="img" aria-label={`${label} performance gauge`}>
+        <svg
+          className="perf-gauge-card__dial"
+          viewBox="0 0 240 165"
+          role="img"
+          aria-label={`${label} performance gauge`}
+        >
           <defs>
             <linearGradient id={`gauge-arc-${gaugeId}`} x1="0%" x2="100%" y1="0%" y2="0%">
-              <stop offset="0%"   stopColor={color} stopOpacity="0.32"/>
-              <stop offset="52%"  stopColor={color} stopOpacity="0.98"/>
-              <stop offset="100%" stopColor={color} stopOpacity="0.46"/>
+              <stop offset="0%" stopColor={color} stopOpacity="0.32" />
+              <stop offset="52%" stopColor={color} stopOpacity="0.98" />
+              <stop offset="100%" stopColor={color} stopOpacity="0.46" />
             </linearGradient>
           </defs>
-          <path className="perf-gauge-card__dial-arc-track" d="M 14 140 A 106 106 0 0 1 226 140" pathLength={100}/>
-          <path className="perf-gauge-card__dial-arc-glow"  d="M 14 140 A 106 106 0 0 1 226 140" pathLength={100}
-            stroke={`url(#gauge-arc-${gaugeId})`} strokeDasharray={100} strokeDashoffset={100 - safeProgress}/>
-          {Array.from({length:11},(_,tick) => {
-            const angle = Math.PI + tick*(Math.PI/10);
-            const x1 = 120+Math.cos(angle)*86, y1 = 140+Math.sin(angle)*86;
-            const x2 = 120+Math.cos(angle)*102, y2 = 140+Math.sin(angle)*102;
-            return <line key={tick} className="perf-gauge-card__tick" x1={x1} y1={y1} x2={x2} y2={y2}/>;
+          <path
+            className="perf-gauge-card__dial-arc-track"
+            d="M 14 140 A 106 106 0 0 1 226 140"
+            pathLength={100}
+          />
+          <path
+            className="perf-gauge-card__dial-arc-glow"
+            d="M 14 140 A 106 106 0 0 1 226 140"
+            pathLength={100}
+            stroke={`url(#gauge-arc-${gaugeId})`}
+            strokeDasharray={100}
+            strokeDashoffset={100 - safeProgress}
+          />
+          {Array.from({ length: 11 }, (_, tick) => {
+            const angle = Math.PI + tick * (Math.PI / 10);
+            const x1 = 120 + Math.cos(angle) * 86;
+            const y1 = 140 + Math.sin(angle) * 86;
+            const x2 = 120 + Math.cos(angle) * 102;
+            const y2 = 140 + Math.sin(angle) * 102;
+            return (
+              <line
+                key={tick}
+                className="perf-gauge-card__tick"
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+              />
+            );
           })}
         </svg>
+
         <div className="perf-gauge-card__center">
-          <div className="perf-gauge-card__icon-wrap"><Icon size={20}/></div>
+          <div className="perf-gauge-card__icon-wrap">
+            <Icon size={20} />
+          </div>
           <strong className="perf-gauge-card__value">{value || "--"}</strong>
           <span className="perf-gauge-card__caption">{caption}</span>
         </div>
       </div>
+
       <div className="perf-gauge-card__footer">
         <span className="perf-gauge-card__helper">{helper}</span>
       </div>
@@ -2661,21 +4648,46 @@ function PerformanceGaugeCard({
 }
 
 function StatCard({
-  label, value, note, icon: Icon, tone, onClick, className = "", style,
+  label,
+  value,
+  note,
+  icon: Icon,
+  tone,
+  onClick,
+  className = "",
+  style,
 }: {
-  label: ReactNode; value: ReactNode; note?: ReactNode; icon: LucideIcon;
-  tone: string; onClick?: () => void; className?: string; style?: CSSProperties;
+  label: ReactNode;
+  value: ReactNode;
+  note?: ReactNode;
+  icon: LucideIcon;
+  tone: string;
+  onClick?: () => void;
+  className?: string;
+  style?: CSSProperties;
 }) {
   return (
     <div
       className={`stat-card ${className}`.trim()}
-      style={{ ["--tone" as string]:tone, cursor:onClick?"pointer":undefined, ...style }}
+      style={{
+        ["--tone" as string]: tone,
+        cursor: onClick ? "pointer" : undefined,
+        ...style,
+      }}
       onClick={onClick}
-      role={onClick?"button":undefined}
-      tabIndex={onClick?0:undefined}
-      onKeyDown={onClick ? e => { if (e.key==="Enter"||e.key===" ") onClick(); } : undefined}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? e => {
+              if (e.key === "Enter" || e.key === " ") onClick();
+            }
+          : undefined
+      }
     >
-      <div className="stat-icon"><Icon size={28}/></div>
+      <div className="stat-icon">
+        <Icon size={28} />
+      </div>
       <span>{label}</span>
       <strong>{value}</strong>
       <small>{note}</small>
@@ -2685,29 +4697,54 @@ function StatCard({
 
 function PartnerLogoStrip() {
   return (
-    <div className="header-logo-group header-logo-group--left header-logo-group--solo" aria-label="NASCO logo">
-      <img src={nascoLogoSrc} alt="NASCO" className="header-logo-img nasco-logo nasco-logo--hero"/>
+    <div
+      className="header-logo-group header-logo-group--left header-logo-group--solo"
+      aria-label="NASCO logo"
+    >
+      <img
+        src={nascoLogoSrc}
+        alt="NASCO"
+        className="header-logo-img nasco-logo nasco-logo--hero"
+      />
     </div>
   );
 }
 
 function HeaderRightLogo() {
-  return <div className="header-logo-group--right" aria-hidden="true"/>;
+  return <div className="header-logo-group--right" aria-hidden="true" />;
 }
 
+/**
+ * SelectFilter using a portal-based dropdown so it is never clipped
+ * by overflow:hidden containers (hero panel, export card).
+ */
 function SelectFilter({
-  label, value, options, optionLabels, onChange,
-}: { label:string; value:string; options:string[]; optionLabels?:Record<string,string>; onChange:(value:string)=>void }) {
+  label,
+  value,
+  options,
+  optionLabels,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  optionLabels?: Record<string, string>;
+  onChange: (value: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({});
-  const wrapRef     = useRef<HTMLDivElement|null>(null);
-  const triggerRef  = useRef<HTMLButtonElement|null>(null);
-  const dropdownRef = useRef<HTMLDivElement|null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Node;
-      if (!wrapRef.current?.contains(target) && !dropdownRef.current?.contains(target)) setOpen(false);
+      if (
+        !wrapRef.current?.contains(target) &&
+        !dropdownRef.current?.contains(target)
+      )
+        setOpen(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -2715,51 +4752,107 @@ function SelectFilter({
 
   function computePosition() {
     if (!triggerRef.current) return;
-    const rect   = triggerRef.current.getBoundingClientRect();
-    const dropW  = Math.max(rect.width, 200);
-    const left   = Math.min(rect.left, window.innerWidth - dropW - 8);
+    const rect = triggerRef.current.getBoundingClientRect();
+    const dropW = Math.max(rect.width, 200);
+    const left = Math.min(rect.left, window.innerWidth - dropW - 8);
     const spaceBelow = window.innerHeight - rect.bottom;
     if (spaceBelow >= 160) {
-      setDropdownStyle({ position:"fixed", top:rect.bottom+4, left, width:dropW, zIndex:99999 });
+      setDropdownStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left,
+        width: dropW,
+        zIndex: 99999,
+      });
     } else {
-      setDropdownStyle({ position:"fixed", bottom:window.innerHeight-rect.top+4, left, width:dropW, zIndex:99999 });
+      setDropdownStyle({
+        position: "fixed",
+        bottom: window.innerHeight - rect.top + 4,
+        left,
+        width: dropW,
+        zIndex: 99999,
+      });
     }
   }
 
-  function handleOpen() { if (!open) computePosition(); setOpen(o => !o); }
+  function handleOpen() {
+    if (!open) computePosition();
+    setOpen(o => !o);
+  }
 
   useEffect(() => {
     if (!open) return;
     const update = () => computePosition();
     window.addEventListener("scroll", update, true);
     window.addEventListener("resize", update);
-    return () => { window.removeEventListener("scroll",update,true); window.removeEventListener("resize",update); };
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const displayLabel = value==="all"||value==="ALL" ? "All" : (optionLabels?.[value]??value);
-  const dropdown = open ? createPortal(
-    <div ref={dropdownRef} className="multi-select-dropdown" style={dropdownStyle}>
-      <label className="multi-select-option" onClick={() => { onChange("all"); setOpen(false); }}>
-        <input type="radio" readOnly checked={value==="all"||value==="ALL"}/>
-        <span>All</span>
-      </label>
-      {options.map(opt => (
-        <label key={opt} className="multi-select-option" onClick={() => { onChange(opt); setOpen(false); }}>
-          <input type="radio" readOnly checked={value===opt}/>
-          <span>{optionLabels?.[opt]??opt}</span>
-        </label>
-      ))}
-    </div>,
-    document.body
-  ) : null;
+  const displayLabel =
+    value === "all" || value === "ALL"
+      ? "All"
+      : (optionLabels?.[value] ?? value);
+
+  const dropdown = open
+    ? createPortal(
+        <div
+          ref={dropdownRef}
+          className="multi-select-dropdown"
+          style={dropdownStyle}
+        >
+          <label
+            className="multi-select-option"
+            onClick={() => {
+              onChange("all");
+              setOpen(false);
+            }}
+          >
+            <input
+              type="radio"
+              readOnly
+              checked={value === "all" || value === "ALL"}
+            />
+            <span>All</span>
+          </label>
+          {options.map(opt => (
+            <label
+              key={opt}
+              className="multi-select-option"
+              onClick={() => {
+                onChange(opt);
+                setOpen(false);
+              }}
+            >
+              <input type="radio" readOnly checked={value === opt} />
+              <span>{optionLabels?.[opt] ?? opt}</span>
+            </label>
+          ))}
+        </div>,
+        document.body
+      )
+    : null;
 
   return (
     <div className="filter-field multi-select-filter" ref={wrapRef}>
       <span>{label}</span>
-      <button type="button" className="multi-select-trigger" ref={triggerRef} onClick={handleOpen}>
+      <button
+        type="button"
+        className="multi-select-trigger"
+        ref={triggerRef}
+        onClick={handleOpen}
+      >
         <span className="multi-select-value">{displayLabel}</span>
-        <ChevronDown size={14} style={{transform:open?"rotate(180deg)":undefined,transition:"transform .15s"}}/>
+        <ChevronDown
+          size={14}
+          style={{
+            transform: open ? "rotate(180deg)" : undefined,
+            transition: "transform .15s",
+          }}
+        />
       </button>
       {dropdown}
     </div>
@@ -2767,21 +4860,32 @@ function SelectFilter({
 }
 
 function MultiSelectFilter({
-  label, value, options, optionLabels, onChange, showAllOption,
+  label,
+  value,
+  options,
+  optionLabels,
+  onChange,
+  showAllOption,
 }: {
-  label:string; value:string[]; options:string[]; optionLabels?:Record<string,string>;
-  onChange:(value:string[])=>void; showAllOption?:boolean;
+  label: string;
+  value: string[];
+  options: string[];
+  optionLabels?: Record<string, string>;
+  onChange: (value: string[]) => void;
+  showAllOption?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({});
-  const wrapRef     = useRef<HTMLDivElement|null>(null);
-  const triggerRef  = useRef<HTMLButtonElement|null>(null);
-  const dropdownRef = useRef<HTMLDivElement|null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Node;
-      if (!wrapRef.current?.contains(target) && !dropdownRef.current?.contains(target)) setOpen(false);
+      const insideTrigger = wrapRef.current?.contains(target);
+      const insideDropdown = dropdownRef.current?.contains(target);
+      if (!insideTrigger && !insideDropdown) setOpen(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -2791,75 +4895,147 @@ function MultiSelectFilter({
     if (!triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
     const dropW = Math.max(rect.width, 220);
-    const preferredDropH = Math.min(280, options.length*36+48);
+    const preferredDropH = Math.min(280, options.length * 36 + 48);
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
     const left = Math.min(rect.left, window.innerWidth - dropW - 8);
     const openDown = spaceBelow >= preferredDropH || spaceBelow >= spaceAbove;
-    const availableHeight = Math.max(120, (openDown ? spaceBelow : spaceAbove) - 12);
+    const availableHeight = Math.max(
+      120,
+      (openDown ? spaceBelow : spaceAbove) - 12
+    );
     const maxHeight = Math.min(preferredDropH, availableHeight);
+
     if (openDown) {
-      setDropdownStyle({ position:"fixed", top:rect.bottom+4, left, width:dropW, maxHeight, zIndex:99999 });
+      setDropdownStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left,
+        width: dropW,
+        maxHeight,
+        zIndex: 99999,
+      });
     } else {
-      setDropdownStyle({ position:"fixed", bottom:window.innerHeight-rect.top+4, left, width:dropW, maxHeight, zIndex:99999 });
+      setDropdownStyle({
+        position: "fixed",
+        bottom: window.innerHeight - rect.top + 4,
+        left,
+        width: dropW,
+        maxHeight,
+        zIndex: 99999,
+      });
     }
   }
 
-  function handleOpen() { if (!open) computePosition(); setOpen(o => !o); }
+  function handleOpen() {
+    if (!open) computePosition();
+    setOpen(o => !o);
+  }
 
   useEffect(() => {
     if (!open) return;
     const update = () => computePosition();
-    window.addEventListener("scroll",update,true); window.addEventListener("resize",update);
-    return () => { window.removeEventListener("scroll",update,true); window.removeEventListener("resize",update); };
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const allSelected = value.length === 0;
   const toggle = (opt: string) => {
-    if (allSelected) { onChange([opt]); return; }
-    if (value.includes(opt)) { onChange(value.filter(v => v !== opt)); }
-    else { onChange([...value, opt]); }
+    // If All is currently active, selecting an option means: pick just that option
+    if (allSelected) {
+      onChange([opt]);
+      return;
+    }
+    if (value.includes(opt)) {
+      const next = value.filter(v => v !== opt);
+      // If deselecting last item, revert to All
+      onChange(next);
+    } else {
+      onChange([...value, opt]);
+    }
   };
-  const displayLabel = allSelected ? "All" : value.length===1 ? (optionLabels?.[value[0]]??value[0]) : `${value.length} selected`;
-
-  const dropdown = open ? createPortal(
-    <div className="multi-select-dropdown" style={dropdownStyle} ref={dropdownRef}>
-      {showAllOption && (
-        <label className="multi-select-option multi-select-option-all" onClick={() => onChange([])}>
-          <input type="checkbox" readOnly checked={allSelected}/>
-          <span style={{fontWeight:allSelected?700:undefined, color:allSelected?"#22d3ee":undefined}}>All</span>
-        </label>
-      )}
-      {!showAllOption && value.length > 0 && (
-        <button type="button" className="multi-select-clear" onClick={() => onChange([])}>✕ Clear</button>
-      )}
-      {options.map(opt => (
-        <label key={opt} className="multi-select-option">
-          <input type="checkbox" checked={value.includes(opt)} onChange={() => toggle(opt)}/>
-          <span>{optionLabels?.[opt]??opt}</span>
-        </label>
-      ))}
-    </div>,
-    document.body
-  ) : null;
+  const displayLabel = allSelected
+    ? "All"
+    : value.length === 1
+      ? (optionLabels?.[value[0]] ?? value[0])
+      : `${value.length} selected`;
+  const dropdown = open
+    ? createPortal(
+        <div
+          className="multi-select-dropdown"
+          style={dropdownStyle}
+          ref={dropdownRef}
+        >
+          {showAllOption && (
+            <label
+              className="multi-select-option multi-select-option-all"
+              onClick={() => {
+                onChange([]);
+              }}
+            >
+              <input type="checkbox" readOnly checked={allSelected} />
+              <span
+                style={{
+                  fontWeight: allSelected ? 700 : undefined,
+                  color: allSelected ? "#22d3ee" : undefined,
+                }}
+              >
+                All
+              </span>
+            </label>
+          )}
+          {!showAllOption && value.length > 0 && (
+            <button
+              type="button"
+              className="multi-select-clear"
+              onClick={() => onChange([])}
+            >
+              ✕ Clear
+            </button>
+          )}
+          {options.map(opt => (
+            <label key={opt} className="multi-select-option">
+              <input
+                type="checkbox"
+                checked={value.includes(opt)}
+                onChange={() => toggle(opt)}
+              />
+              <span>{optionLabels?.[opt] ?? opt}</span>
+            </label>
+          ))}
+        </div>,
+        document.body
+      )
+    : null;
 
   return (
     <div className="filter-field multi-select-filter" ref={wrapRef}>
       <span>{label}</span>
-      <button type="button" className="multi-select-trigger" ref={triggerRef} onClick={handleOpen}>
+      <button
+        type="button"
+        className="multi-select-trigger"
+        ref={triggerRef}
+        onClick={handleOpen}
+      >
         <span className="multi-select-value">{displayLabel}</span>
-        <ChevronDown size={14} style={{transform:open?"rotate(180deg)":undefined,transition:"transform .15s"}}/>
+        <ChevronDown
+          size={14}
+          style={{
+            transform: open ? "rotate(180deg)" : undefined,
+            transition: "transform .15s",
+          }}
+        />
       </button>
       {dropdown}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// The default export Home() component is IDENTICAL to your original file.
-// Paste the entire "export default function Home() { … }" block here unchanged.
-// ─────────────────────────────────────────────────────────────────────────────
 export default function Home() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const addRegionRef = useRef<HTMLInputElement | null>(null);
