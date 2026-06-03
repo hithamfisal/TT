@@ -70,6 +70,11 @@ const GOOGLE_REGION_LINKS = [
 type GoogleRegionKey = (typeof GOOGLE_REGION_LINKS)[number]["key"];
 type GoogleRegionLinks = Record<GoogleRegionKey, string>;
 type GoogleRegionSelection = Record<GoogleRegionKey, boolean>;
+type MicrosoftGraphConfig = {
+  clientId: string;
+  tenantId: string;
+  scopes: string;
+};
 
 const EMPTY_GOOGLE_REGION_LINKS: GoogleRegionLinks = {
   eoaNeoa: "",
@@ -81,6 +86,12 @@ const EMPTY_GOOGLE_REGION_SELECTION: GoogleRegionSelection = {
   eoaNeoa: true,
   soa: true,
   coaWoa: true,
+};
+
+const EMPTY_MICROSOFT_GRAPH_CONFIG: MicrosoftGraphConfig = {
+  clientId: "",
+  tenantId: "common",
+  scopes: "User.Read Files.Read.All Sites.Read.All",
 };
 
 import {
@@ -2887,6 +2898,8 @@ export default function Home() {
   );
   const [googleRegionSelection, setGoogleRegionSelection] =
     useState<GoogleRegionSelection>(EMPTY_GOOGLE_REGION_SELECTION);
+  const [microsoftGraphConfig, setMicrosoftGraphConfig] =
+    useState<MicrosoftGraphConfig>(EMPTY_MICROSOFT_GRAPH_CONFIG);
   const [googleSheetLoading, setGoogleSheetLoading] = useState(false);
   const [onlineSourceMode, setOnlineSourceMode] = useState<
     "add" | "replace" | null
@@ -3054,6 +3067,48 @@ export default function Home() {
       .replace(/=+$/, "")}`;
   }
 
+  function withMicrosoftDownloadParam(value: string): string {
+    const url = new URL(value.trim());
+    url.searchParams.set("download", "1");
+    return url.toString();
+  }
+
+  async function fetchWorkbookArrayBuffer(
+    urls: string[]
+  ): Promise<ArrayBuffer> {
+    const errors: string[] = [];
+    for (const url of urls) {
+      try {
+        const response = await fetch(url, { redirect: "follow" });
+        if (!response.ok) {
+          errors.push(`${response.status} ${response.statusText}`);
+          continue;
+        }
+
+        const contentType = response.headers.get("content-type") ?? "";
+        const buffer = await response.arrayBuffer();
+        const firstBytes = new Uint8Array(buffer.slice(0, 4));
+        const isZipWorkbook =
+          firstBytes[0] === 0x50 &&
+          firstBytes[1] === 0x4b &&
+          firstBytes[2] === 0x03 &&
+          firstBytes[3] === 0x04;
+        if (
+          isZipWorkbook &&
+          !contentType.includes("text/html") &&
+          !contentType.includes("application/json")
+        ) {
+          return buffer;
+        }
+        errors.push(`not workbook (${contentType || "unknown content"})`);
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    throw new Error(errors.filter(Boolean).slice(-2).join(" | "));
+  }
+
   function googleRegionLabelToKey(label: string): GoogleRegionKey | null {
     const normalized = normalizeHeader(label);
     if (normalized === "eoaneoa") return "eoaNeoa";
@@ -3074,6 +3129,170 @@ export default function Home() {
       next[key] = trimmed.slice(separator + 1).trim();
     });
     return next;
+  }
+
+  function parseMicrosoftGraphConfig(text: string): MicrosoftGraphConfig {
+    const next = { ...EMPTY_MICROSOFT_GRAPH_CONFIG };
+    text.split(/\r?\n/).forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return;
+      const separator = trimmed.indexOf("=");
+      if (separator === -1) return;
+      const key = normalizeHeader(trimmed.slice(0, separator));
+      const value = trimmed.slice(separator + 1).trim();
+      if (key === "clientid") next.clientId = value;
+      if (key === "tenantid") next.tenantId = value || "common";
+      if (key === "scopes") next.scopes = value || next.scopes;
+    });
+    return next;
+  }
+
+  function base64UrlEncode(input: ArrayBuffer | Uint8Array | string): string {
+    const bytes =
+      typeof input === "string"
+        ? new TextEncoder().encode(input)
+        : input instanceof Uint8Array
+          ? input
+          : new Uint8Array(input);
+    let binary = "";
+    bytes.forEach(byte => {
+      binary += String.fromCharCode(byte);
+    });
+    return btoa(binary)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  }
+
+  function randomPkceValue(byteLength = 32): string {
+    const bytes = new Uint8Array(byteLength);
+    crypto.getRandomValues(bytes);
+    return base64UrlEncode(bytes);
+  }
+
+  async function pkceChallenge(verifier: string): Promise<string> {
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(verifier)
+    );
+    return base64UrlEncode(digest);
+  }
+
+  async function microsoftGraphAccessToken(): Promise<string> {
+    const { clientId, tenantId, scopes } = microsoftGraphConfig;
+    if (!clientId.trim()) {
+      throw new Error(
+        "Microsoft Graph login is not configured. Add clientId and tenantId to public/microsoft-graph-config.txt."
+      );
+    }
+
+    const verifier = randomPkceValue(64);
+    const challenge = await pkceChallenge(verifier);
+    const state = randomPkceValue(16);
+    const redirectUri = `${window.location.origin}/`;
+    const tenant = tenantId.trim() || "common";
+    const authUrl = new URL(
+      `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/authorize`
+    );
+    authUrl.searchParams.set("client_id", clientId.trim());
+    authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("redirect_uri", redirectUri);
+    authUrl.searchParams.set("response_mode", "query");
+    authUrl.searchParams.set("scope", scopes.trim());
+    authUrl.searchParams.set("state", state);
+    authUrl.searchParams.set("code_challenge", challenge);
+    authUrl.searchParams.set("code_challenge_method", "S256");
+    authUrl.searchParams.set("prompt", "select_account");
+
+    const popup = window.open(
+      authUrl.toString(),
+      "microsoft-graph-login",
+      "popup,width=560,height=720"
+    );
+    if (!popup) {
+      throw new Error("Microsoft sign-in popup was blocked by the browser.");
+    }
+
+    const code = await new Promise<string>((resolve, reject) => {
+      const started = Date.now();
+      const timer = window.setInterval(() => {
+        try {
+          if (popup.closed) {
+            window.clearInterval(timer);
+            reject(new Error("Microsoft sign-in was closed before it finished."));
+            return;
+          }
+          if (Date.now() - started > 120000) {
+            window.clearInterval(timer);
+            popup.close();
+            reject(new Error("Microsoft sign-in timed out."));
+            return;
+          }
+          if (popup.location.origin !== window.location.origin) return;
+          const params = new URLSearchParams(popup.location.search);
+          const returnedState = params.get("state");
+          const authCode = params.get("code");
+          const authError = params.get("error_description") ?? params.get("error");
+          if (authError) {
+            window.clearInterval(timer);
+            popup.close();
+            reject(new Error(authError));
+            return;
+          }
+          if (authCode) {
+            window.clearInterval(timer);
+            popup.close();
+            if (returnedState !== state) {
+              reject(new Error("Microsoft sign-in state check failed."));
+              return;
+            }
+            resolve(authCode);
+          }
+        } catch {
+          // Cross-origin access throws until Microsoft redirects back here.
+        }
+      }, 500);
+    });
+
+    const tokenResponse = await fetch(
+      `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: clientId.trim(),
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: redirectUri,
+          code_verifier: verifier,
+          scope: scopes.trim(),
+        }),
+      }
+    );
+    const payload = await tokenResponse.json();
+    if (!tokenResponse.ok || !payload?.access_token) {
+      throw new Error(
+        payload?.error_description ||
+          payload?.error ||
+          "Microsoft Graph token request failed."
+      );
+    }
+    return payload.access_token;
+  }
+
+  async function fetchMicrosoftWorkbookWithGraph(url: string): Promise<ArrayBuffer> {
+    const accessToken = await microsoftGraphAccessToken();
+    const response = await fetch(
+      `https://graph.microsoft.com/v1.0/shares/${microsoftShareId(url)}/driveItem/content`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        redirect: "follow",
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`.trim());
+    }
+    return response.arrayBuffer();
   }
 
   function setGoogleRegionLink(key: GoogleRegionKey, value: string) {
@@ -3215,27 +3434,57 @@ export default function Home() {
       throw new Error("Paste a valid Microsoft 365 or OneDrive Excel link.");
     }
 
-    const response = await fetch(
-      `https://api.onedrive.com/v1.0/shares/${microsoftShareId(url)}/root/content`
-    );
-    if (!response.ok) {
-      throw new Error(
-        "Could not download the Microsoft 365 workbook. Share the file so anyone with the link can view/download it, then try again."
-      );
-    }
+    let proxyMessage = "";
+    try {
+      const proxyResponse = await fetch("/api/download-workbook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (proxyResponse.ok) {
+        const buffer = await proxyResponse.arrayBuffer();
+        return parseWorkbookBuffer(buffer, "Microsoft 365 Online Workbook");
+      }
 
-    const contentType = response.headers.get("content-type") ?? "";
-    const buffer = await response.arrayBuffer();
-    if (
-      contentType.includes("text/html") ||
-      contentType.includes("application/json")
-    ) {
-      throw new Error(
-        "The Microsoft 365 link opened a web page instead of the workbook file. Use a shared Excel workbook link with view/download permission."
-      );
-    }
+      proxyMessage = `${proxyResponse.status} ${proxyResponse.statusText}`;
+      try {
+        const payload = await proxyResponse.json();
+        proxyMessage = [payload?.error, payload?.details]
+          .filter(Boolean)
+          .join(" ");
+      } catch {
+        // Keep the HTTP status message when the proxy did not return JSON.
+      }
 
-    return parseWorkbookBuffer(buffer, "Microsoft 365 Online Workbook");
+      const buffer = await fetchWorkbookArrayBuffer([
+        `https://api.onedrive.com/v1.0/shares/${microsoftShareId(url)}/root/content`,
+        withMicrosoftDownloadParam(url),
+      ]);
+      return parseWorkbookBuffer(buffer, "Microsoft 365 Online Workbook");
+    } catch (error) {
+      const anonymousDetails = [
+        proxyMessage,
+        error instanceof Error ? error.message : String(error),
+      ]
+        .filter(Boolean)
+        .join(" | ");
+      try {
+        const graphBuffer = await fetchMicrosoftWorkbookWithGraph(url);
+        return parseWorkbookBuffer(graphBuffer, "Microsoft Graph Workbook");
+      } catch (graphError) {
+        throw new Error(
+          "Could not download the Microsoft 365 workbook anonymously or with Microsoft Graph login. Check that public/microsoft-graph-config.txt has a valid clientId/tenantId, the app registration redirect URI is this dashboard URL, and Graph permissions allow file access. Details: " +
+            [
+              anonymousDetails,
+              graphError instanceof Error
+                ? graphError.message
+                : String(graphError),
+            ]
+              .filter(Boolean)
+              .join(" | ")
+        );
+      }
+    }
   }
 
   async function parseOnlineSheetLink(value: string): Promise<DashboardData> {
@@ -4482,6 +4731,18 @@ export default function Home() {
       })
       .catch(() => {
         // The config file is optional; users can still paste links in the UI.
+      });
+  }, []);
+
+  useEffect(() => {
+    fetch("/microsoft-graph-config.txt")
+      .then(response => (response.ok ? response.text() : ""))
+      .then(text => {
+        if (!text) return;
+        setMicrosoftGraphConfig(parseMicrosoftGraphConfig(text));
+      })
+      .catch(() => {
+        // The Graph config is optional; anonymous/proxy loading can still work.
       });
   }, []);
 

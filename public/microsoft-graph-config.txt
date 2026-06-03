@@ -1,0 +1,14 @@
+# Microsoft Graph login config for Microsoft 365 / SharePoint Excel links.
+#
+# Create an app registration in Microsoft Entra ID:
+# - Platform type: Single-page application (SPA)
+# - Redirect URI for dev: http://localhost:3000/
+# - Redirect URI for production: add your deployed dashboard URL ending with /
+# - API permissions: delegated User.Read plus Files.Read.All and Sites.Read.All
+#   (admin consent may be required by your organization)
+#
+# Then paste the Application (client) ID and Directory (tenant) ID below.
+
+clientId= hfuad@nasco.com.sa
+tenantId=common
+scopes=User.Read Files.Read.All Sites.Read.All
