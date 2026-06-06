@@ -49,6 +49,7 @@ export type DashboardData = {
   rows: TicketRecord[];
   uniqueTickets: TicketAggregate[];
   siteOrder: { siteId: string; siteName: string }[];
+  rcaLookup: { action: string; rca: string }[];
 };
 
 export type Filters = {
@@ -171,6 +172,9 @@ export type DeepDiveAnalytics = {
     siteName: string;
     tickets: number;
     downtimeHours: number;
+    performanceAvailabilityHours: number | null;
+    performanceDowntimeHours: number | null;
+    reliability: number | null;
     topRca: string;
   }>;
   recommendations: string[];

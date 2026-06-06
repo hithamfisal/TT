@@ -1,6 +1,10 @@
 import * as XLSX from "xlsx";
 
-import type { DashboardData, TicketAggregate, TicketRecord } from "../types/dashboard";
+import type {
+  DashboardData,
+  TicketAggregate,
+  TicketRecord,
+} from "../types/dashboard";
 
 import {
   clean,
@@ -9,6 +13,8 @@ import {
   getField,
   getRawField,
   hoursBetween,
+  normalizeHeader,
+  normalizeSiteId,
   openingMonthLabel,
   parseDateValue,
   parseDurationHours,
@@ -24,20 +30,21 @@ import {
 
 export function groupTickets(rows: TicketRecord[]): TicketAggregate[] {
   const grouped = new Map<string, TicketAggregate>();
-  rows.forEach(row => {
+  rows.forEach((row) => {
     if (!row.tt) return;
+    const siteId = normalizeSiteId(row.siteId);
     const existing = grouped.get(row.tt);
     if (!existing) {
       grouped.set(row.tt, {
         tt: row.tt,
         primary: row,
-        siteIds: new Set(row.siteId ? [row.siteId] : []),
+        siteIds: new Set(siteId ? [siteId] : []),
         siteNames: new Set(row.siteName ? [row.siteName] : []),
         rows: [row],
       });
     } else {
       existing.rows.push(row);
-      if (row.siteId) existing.siteIds.add(row.siteId);
+      if (siteId) existing.siteIds.add(siteId);
       if (row.siteName) existing.siteNames.add(row.siteName);
       const currentDate = dateKey(existing.primary.observationDate);
       const nextDate = dateKey(row.observationDate);
@@ -48,10 +55,41 @@ export function groupTickets(rows: TicketRecord[]): TicketAggregate[] {
   return Array.from(grouped.values());
 }
 
+export function parseRcaLookup(
+  workbook: XLSX.WorkBook,
+): { action: string; rca: string }[] {
+  const rcaSheetName = workbook.SheetNames.find((name) => {
+    const n = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return n === "rca" || n === "rcalist" || n === "rcadata";
+  });
+  if (!rcaSheetName) return [];
+
+  const sheet = workbook.Sheets[rcaSheetName];
+  const raw2d = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    defval: null,
+  }) as unknown[][];
+
+  const seen = new Set<string>();
+  const result: { action: string; rca: string }[] = [];
+
+  for (let ri = 0; ri < raw2d.length; ri++) {
+    const row = raw2d[ri];
+    const first = clean(String(row[0] ?? ""));
+    const second = clean(String(row[1] ?? ""));
+    if (!first || normalizeHeader(first) === "action") continue;
+    const key = normalizeHeader(first);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ action: first, rca: second });
+  }
+
+  return result;
+}
 export function parseSiteOrder(
-  workbook: XLSX.WorkBook
+  workbook: XLSX.WorkBook,
 ): { siteId: string; siteName: string }[] {
-  const siteSheetName = workbook.SheetNames.find(name => {
+  const siteSheetName = workbook.SheetNames.find((name) => {
     const n = name.toLowerCase().replace(/[^a-z0-9]/g, "");
     return (
       n === "dashboarddata" ||
@@ -87,14 +125,19 @@ export function parseSiteOrder(
     }
     if (siteIdCol >= 0 && siteNameCol >= 0) break;
   }
-  if (headerRowIdx < 0 || siteIdCol < 0) return [];
+  if (headerRowIdx < 0 || siteIdCol < 0) {
+    siteIdCol = 1;
+    siteNameCol = 2;
+    headerRowIdx = -1;
+  }
   const seen = new Set<string>();
   const result: { siteId: string; siteName: string }[] = [];
   for (let ri = headerRowIdx + 1; ri < raw2d.length; ri++) {
     const row = raw2d[ri];
-    const id = clean(String(row[siteIdCol] ?? ""));
+    const id = normalizeSiteId(clean(String(row[siteIdCol] ?? "")));
     const name = siteNameCol >= 0 ? clean(String(row[siteNameCol] ?? "")) : "";
-    if (!id) break;
+    if (!id) continue;
+    if (normalizeHeader(id) === "siteid") continue;
     if (!seen.has(id)) {
       seen.add(id);
       result.push({ siteId: id, siteName: name });
@@ -103,8 +146,11 @@ export function parseSiteOrder(
   return result;
 }
 
-export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardData {
-  const preferred = workbook.SheetNames.find(name => {
+export function parseRows(
+  workbook: XLSX.WorkBook,
+  fileName: string,
+): DashboardData {
+  const preferred = workbook.SheetNames.find((name) => {
     const normalized = name.toLowerCase().replace(/[^a-z0-9]/g, "");
     return normalized.includes("ticketsdata") || normalized === "tthistory";
   });
@@ -115,6 +161,7 @@ export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardD
     raw: true,
   });
   const siteOrder = parseSiteOrder(workbook);
+  const rcaLookup = parseRcaLookup(workbook);
 
   function toDateStr(val: unknown): string {
     if (val === null || val === undefined || val === "") return "";
@@ -146,30 +193,30 @@ export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardD
   const rows: TicketRecord[] = raw
     .map((row, index) => {
       const observationDate = toDateStr(
-        getRawField(row, ["Observation Date", "Observed Date"]) || ""
+        getRawField(row, ["Observation Date", "Observed Date"]) || "",
       );
       const monthKey = resolveOpeningMonthKey(
         getField(row, ["Opening Month Key", "OpeningMonthKey"]),
         getField(row, ["Opening Month", "OpeningMonth"]),
-        observationDate
+        observationDate,
       );
       const observationTime = toTimeStr(
         getRawField(row, [
           "Observation Time",
           "Observed Time",
           "ObservationTime",
-        ])
+        ]),
       );
       const recoveryDate = toDateStr(getRawField(row, ["Recovery Date"]) || "");
       const recoveryTime = toTimeStr(
-        getRawField(row, ["Recovery Time", "RecoveryTime"])
+        getRawField(row, ["Recovery Time", "RecoveryTime"]),
       );
       const duration = String(
         getRawField(row, [
           "Total Duration Days/Hours",
           "Total Durration Days/Hours",
           "Duration",
-        ]) ?? ""
+        ]) ?? "",
       );
       const l3Date = toDateStr(
         getRawField(row, [
@@ -179,7 +226,7 @@ export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardD
           "L3 Escalation Date",
           "Escalation L3 Date",
           "Escalated L3 Date",
-        ]) || ""
+        ]) || "",
       );
       const l3Time = toTimeStr(
         getRawField(row, [
@@ -189,7 +236,7 @@ export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardD
           "L3 Escalation Time",
           "Escalation L3 Time",
           "Escalated L3 Time",
-        ])
+        ]),
       );
       const observedAt = combineDateTime(observationDate, observationTime);
       const l3At = combineDateTime(l3Date, l3Time);
@@ -201,8 +248,8 @@ export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardD
             "Avg FRT",
             "First Reply Time",
             "First Response Time",
-          ]) ?? ""
-        )
+          ]) ?? "",
+        ),
       );
       const explicitResponse = parseDurationHours(
         String(
@@ -210,8 +257,8 @@ export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardD
             "Response Time",
             "Avg Response Time",
             "Ticket Response Time",
-          ]) ?? ""
-        )
+          ]) ?? "",
+        ),
       );
       const explicitResolution = parseDurationHours(
         String(
@@ -219,14 +266,10 @@ export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardD
             "Resolution Time",
             "Avg Resolution Time",
             "Ticket Resolution Time",
-          ]) ?? ""
-        )
+          ]) ?? "",
+        ),
       );
-      const rca = getField(row, [
-        "RCA",
-        "Root Cause Analysis",
-        "Root Cause",
-      ]);
+      const rca = getField(row, ["RCA", "Root Cause Analysis", "Root Cause"]);
       const rcaFamily = getRcaFamily(rca);
       return {
         rowNo: index + 2,
@@ -238,7 +281,9 @@ export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardD
           "Ticket",
           "Ticket Number",
         ]),
-        siteId: getField(row, ["Site ID", "SiteID", "Site Name", "SiteName"]),
+        siteId: normalizeSiteId(
+          getField(row, ["Site ID", "SiteID", "Site Name", "SiteName"]),
+        ),
         siteName: getField(row, ["Site Name", "SiteName"]),
         managedResource: getField(row, [
           "Managed Resource",
@@ -286,7 +331,7 @@ export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardD
         sourceFile: fileName,
       };
     })
-    .filter(row => row.tt || row.siteId || row.siteName || row.issue);
+    .filter((row) => row.tt);
 
   return {
     fileName,
@@ -295,5 +340,6 @@ export function parseRows(workbook: XLSX.WorkBook, fileName: string): DashboardD
     rows,
     uniqueTickets: groupTickets(rows),
     siteOrder,
+    rcaLookup,
   };
 }

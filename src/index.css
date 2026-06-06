@@ -162,8 +162,16 @@
   padding: 22px;
   color: #e2e8f0;
   background:
-    radial-gradient(circle at 10% 0%, rgba(34, 211, 238, 0.10), transparent 34rem),
-    radial-gradient(circle at 90% 0%, rgba(96, 165, 250, 0.08), transparent 32rem),
+    radial-gradient(
+      circle at 10% 0%,
+      rgba(34, 211, 238, 0.1),
+      transparent 34rem
+    ),
+    radial-gradient(
+      circle at 90% 0%,
+      rgba(96, 165, 250, 0.08),
+      transparent 32rem
+    ),
     linear-gradient(180deg, #020617 0%, #071426 48%, #020617 100%);
   background-attachment: fixed;
 }
@@ -743,10 +751,9 @@
 
 .filters-panel {
   display: grid;
-  grid-template-columns: minmax(240px, 1.4fr) repeat(
-      5,
-      minmax(130px, 0.75fr)
-    ) auto;
+  grid-template-columns:
+    minmax(240px, 1.4fr) repeat(5, minmax(130px, 0.75fr))
+    auto;
   gap: 12px;
   align-items: end;
   max-width: 1320px;
@@ -995,10 +1002,9 @@
 }
 .monthly-export-panel {
   display: grid;
-  grid-template-columns: minmax(280px, 1.4fr) minmax(230px, 280px) minmax(
-      150px,
-      auto
-    ) minmax(150px, auto);
+  grid-template-columns:
+    minmax(280px, 1.4fr) minmax(230px, 280px) minmax(150px, auto)
+    minmax(150px, auto);
   align-items: end;
   gap: 14px;
   width: min(100%, 1080px);
@@ -1046,10 +1052,9 @@
   overflow: hidden;
 }
 .hero-export-card--5col {
-  grid-template-columns: minmax(180px, 1fr) minmax(160px, 220px) minmax(
-      140px,
-      200px
-    ) auto;
+  grid-template-columns:
+    minmax(180px, 1fr) minmax(160px, 220px) minmax(140px, 200px)
+    auto;
 }
 .export-badge-mini {
   display: inline-flex;
@@ -1213,7 +1218,6 @@
   }
 }
 
-
 .perf-kpi-row {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -1233,18 +1237,35 @@
   border-radius: 18px;
   background:
     linear-gradient(135deg, rgba(6, 14, 30, 0.96), rgba(10, 24, 46, 0.92)),
-    radial-gradient(circle at 15% 0%, rgba(34, 211, 238, 0.12), transparent 32%),
-    radial-gradient(circle at 90% 0%, rgba(244, 114, 182, 0.09), transparent 34%);
+    radial-gradient(
+      circle at 15% 0%,
+      rgba(34, 211, 238, 0.12),
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at 90% 0%,
+      rgba(244, 114, 182, 0.09),
+      transparent 34%
+    );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 18px 42px rgba(0, 0, 0, 0.22);
 }
 
-.dashboard-shell[data-dashboard-theme="light"] .hero-export-row:has(.perf-kpi-row) {
+.dashboard-shell[data-dashboard-theme="light"]
+  .hero-export-row:has(.perf-kpi-row) {
   border-color: rgba(14, 116, 144, 0.16);
   background:
-    linear-gradient(135deg, rgba(249, 252, 255, 0.95), rgba(237, 245, 255, 0.94)),
-    radial-gradient(circle at 15% 0%, rgba(14, 165, 233, 0.12), transparent 32%),
+    linear-gradient(
+      135deg,
+      rgba(249, 252, 255, 0.95),
+      rgba(237, 245, 255, 0.94)
+    ),
+    radial-gradient(
+      circle at 15% 0%,
+      rgba(14, 165, 233, 0.12),
+      transparent 32%
+    ),
     radial-gradient(circle at 90% 0%, rgba(168, 85, 247, 0.08), transparent 34%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.72),
@@ -1264,7 +1285,8 @@
   text-transform: uppercase;
 }
 
-.dashboard-shell[data-dashboard-theme="light"] .hero-export-row:has(.perf-kpi-row)::before {
+.dashboard-shell[data-dashboard-theme="light"]
+  .hero-export-row:has(.perf-kpi-row)::before {
   color: #0f2740;
   border-left-color: #0891b2;
 }
@@ -1282,7 +1304,11 @@
   border: 1px solid color-mix(in srgb, var(--gauge-color), transparent 68%);
   background:
     linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(9, 16, 32, 0.92)),
-    radial-gradient(circle at 50% 10%, color-mix(in srgb, var(--gauge-color), transparent 84%), transparent 62%);
+    radial-gradient(
+      circle at 50% 10%,
+      color-mix(in srgb, var(--gauge-color), transparent 84%),
+      transparent 62%
+    );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 16px 38px rgba(2, 6, 23, 0.26),
@@ -1296,8 +1322,16 @@
 
 .dashboard-shell[data-dashboard-theme="light"] .perf-gauge-card {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(241, 247, 255, 0.95)),
-    radial-gradient(circle at 50% 10%, color-mix(in srgb, var(--gauge-color), white 82%), transparent 62%);
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.97),
+      rgba(241, 247, 255, 0.95)
+    ),
+    radial-gradient(
+      circle at 50% 10%,
+      color-mix(in srgb, var(--gauge-color), white 82%),
+      transparent 62%
+    );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
     0 14px 36px rgba(15, 23, 42, 0.1),
@@ -1312,7 +1346,11 @@
   height: 124px;
   transform: translateX(-50%);
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--gauge-color), transparent 80%) 0%, transparent 68%);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--gauge-color), transparent 80%) 0%,
+    transparent 68%
+  );
   opacity: 0.84;
   pointer-events: none;
 }
@@ -1354,10 +1392,18 @@
   text-align: center;
   white-space: nowrap;
 }
-.perf-gauge-card__status--excellent { color: #34d399; }
-.perf-gauge-card__status--good { color: #22d3ee; }
-.perf-gauge-card__status--warning { color: #f59e0b; }
-.perf-gauge-card__status--critical { color: #f87171; }
+.perf-gauge-card__status--excellent {
+  color: #34d399;
+}
+.perf-gauge-card__status--good {
+  color: #22d3ee;
+}
+.perf-gauge-card__status--warning {
+  color: #f59e0b;
+}
+.perf-gauge-card__status--critical {
+  color: #f87171;
+}
 
 .perf-gauge-card__dial-wrap {
   position: relative;
@@ -1385,7 +1431,8 @@
   stroke: rgba(148, 163, 184, 0.18);
 }
 
-.dashboard-shell[data-dashboard-theme="light"] .perf-gauge-card__dial-arc-track {
+.dashboard-shell[data-dashboard-theme="light"]
+  .perf-gauge-card__dial-arc-track {
   stroke: rgba(148, 163, 184, 0.24);
 }
 
@@ -1403,7 +1450,6 @@
 .dashboard-shell[data-dashboard-theme="light"] .perf-gauge-card__tick {
   stroke: rgba(71, 85, 105, 0.28);
 }
-
 
 .perf-gauge-card__center {
   position: absolute;
@@ -1426,7 +1472,8 @@
   border-radius: 999px;
   color: var(--gauge-color);
   background: color-mix(in srgb, var(--gauge-color), transparent 88%);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gauge-color), transparent 70%);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--gauge-color), transparent 70%);
 }
 
 .perf-gauge-card__value {
@@ -1447,7 +1494,6 @@
 .dashboard-shell[data-dashboard-theme="light"] .perf-gauge-card__caption {
   color: #4b6480;
 }
-
 
 .perf-gauge-card__footer {
   margin-top: auto;
@@ -1477,7 +1523,6 @@
     transform: translateY(0) scale(1);
   }
 }
-
 
 @media (max-width: 1360px) {
   .perf-kpi-row {
@@ -2619,8 +2664,13 @@ Does this choice reinforce or dilute our design philosophy?
   --dashboard-page-max: 1840px;
   --dashboard-card-radius: 24px;
   --dashboard-card-border: rgba(148, 163, 184, 0.18);
-  --dashboard-card-bg: linear-gradient(135deg, rgba(2, 6, 23, 0.9), rgba(8, 47, 73, 0.58));
-  --dashboard-card-shadow: 0 28px 90px rgba(2, 6, 23, 0.42), inset 0 1px rgba(255, 255, 255, 0.07);
+  --dashboard-card-bg: linear-gradient(
+    135deg,
+    rgba(2, 6, 23, 0.9),
+    rgba(8, 47, 73, 0.58)
+  );
+  --dashboard-card-shadow:
+    0 28px 90px rgba(2, 6, 23, 0.42), inset 0 1px rgba(255, 255, 255, 0.07);
   --dashboard-muted: #94a3b8;
   --dashboard-body: #cbd5e1;
   --dashboard-heading: #e2e8f0;
@@ -2781,7 +2831,11 @@ Does this choice reinforce or dilute our design philosophy?
   border: 1px solid color-mix(in srgb, var(--insight-tone), transparent 72%);
   background:
     linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(2, 6, 23, 0.58)),
-    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--insight-tone), transparent 78%), transparent 42%);
+    radial-gradient(
+      circle at 100% 0%,
+      color-mix(in srgb, var(--insight-tone), transparent 78%),
+      transparent 42%
+    );
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.05);
   min-height: 124px;
 }
@@ -2961,7 +3015,11 @@ Does this choice reinforce or dilute our design philosophy?
   padding: clamp(18px, 2vw, 26px);
   border-color: rgba(167, 139, 250, 0.24);
   background:
-    radial-gradient(circle at top left, rgba(167, 139, 250, 0.14), transparent 32%),
+    radial-gradient(
+      circle at top left,
+      rgba(167, 139, 250, 0.14),
+      transparent 32%
+    ),
     linear-gradient(145deg, rgba(8, 17, 34, 0.92), rgba(15, 31, 56, 0.72));
 }
 
@@ -2989,8 +3047,14 @@ Does this choice reinforce or dilute our design philosophy?
 .dashboard-shell .deep-dive-actions-card {
   border: 1px solid rgba(125, 211, 252, 0.16);
   border-radius: 22px;
-  background: linear-gradient(145deg, rgba(15, 31, 56, 0.82), rgba(2, 6, 23, 0.68));
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25), inset 0 1px rgba(255, 255, 255, 0.06);
+  background: linear-gradient(
+    145deg,
+    rgba(15, 31, 56, 0.82),
+    rgba(2, 6, 23, 0.68)
+  );
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.25),
+    inset 0 1px rgba(255, 255, 255, 0.06);
 }
 
 .dashboard-shell .deep-dive-kpi-card {
@@ -3025,7 +3089,10 @@ Does this choice reinforce or dilute our design philosophy?
 
 .dashboard-shell .deep-dive-chart-grid {
   display: grid;
-  grid-template-columns: minmax(250px, 0.82fr) minmax(270px, 0.9fr) minmax(430px, 1.38fr);
+  grid-template-columns: minmax(250px, 0.82fr) minmax(270px, 0.9fr) minmax(
+      430px,
+      1.38fr
+    );
   gap: 16px;
   margin-bottom: 16px;
   align-items: stretch;
@@ -3167,7 +3234,11 @@ Does this choice reinforce or dilute our design philosophy?
 .dashboard-shell[data-dashboard-theme="light"] {
   color: #0f172a;
   background:
-    radial-gradient(circle at 12% 0%, rgba(14, 165, 233, 0.14), transparent 34rem),
+    radial-gradient(
+      circle at 12% 0%,
+      rgba(14, 165, 233, 0.14),
+      transparent 34rem
+    ),
     linear-gradient(180deg, #f8fafc 0%, #eef7ff 46%, #e2e8f0 100%);
 }
 
@@ -3180,8 +3251,12 @@ Does this choice reinforce or dilute our design philosophy?
 
 .dashboard-shell[data-dashboard-theme="light"] .hero-panel::after {
   background:
-    linear-gradient(180deg, transparent 60%, rgba(248, 250, 252, 0.70)),
-    radial-gradient(circle at 60% 60%, rgba(14, 165, 233, 0.16), transparent 26rem);
+    linear-gradient(180deg, transparent 60%, rgba(248, 250, 252, 0.7)),
+    radial-gradient(
+      circle at 60% 60%,
+      rgba(14, 165, 233, 0.16),
+      transparent 26rem
+    );
 }
 
 .dashboard-shell[data-dashboard-theme="light"] .brand-title-center span,
@@ -3199,7 +3274,7 @@ Does this choice reinforce or dilute our design philosophy?
   border-color: rgba(14, 165, 233, 0.18);
   background: rgba(255, 255, 255, 0.68);
   color: #075985;
-  box-shadow: 0 14px 36px rgba(14, 165, 233, 0.10);
+  box-shadow: 0 14px 36px rgba(14, 165, 233, 0.1);
 }
 
 .dashboard-shell[data-dashboard-theme="light"] .primary-button {
@@ -3291,8 +3366,14 @@ Does this choice reinforce or dilute our design philosophy?
   padding: 10px 12px;
   border: 1px solid rgba(34, 211, 238, 0.2);
   border-radius: 20px;
-  background: linear-gradient(135deg, rgba(2, 6, 23, 0.82), rgba(8, 47, 73, 0.48));
-  box-shadow: 0 18px 52px rgba(2, 6, 23, 0.36), inset 0 1px rgba(255,255,255,.07);
+  background: linear-gradient(
+    135deg,
+    rgba(2, 6, 23, 0.82),
+    rgba(8, 47, 73, 0.48)
+  );
+  box-shadow:
+    0 18px 52px rgba(2, 6, 23, 0.36),
+    inset 0 1px rgba(255, 255, 255, 0.07);
   backdrop-filter: blur(18px);
 }
 
@@ -3315,13 +3396,23 @@ Does this choice reinforce or dilute our design philosophy?
   border: 1px solid rgba(125, 211, 252, 0.28);
   border-radius: 999px;
   color: #dff8ff;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(14, 116, 144, 0.28));
-  box-shadow: inset 0 1px rgba(255,255,255,.08), 0 10px 24px rgba(2, 6, 23, 0.24);
+  background: linear-gradient(
+    135deg,
+    rgba(15, 23, 42, 0.9),
+    rgba(14, 116, 144, 0.28)
+  );
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.08),
+    0 10px 24px rgba(2, 6, 23, 0.24);
   font-size: 12px;
   font-weight: 800;
-  letter-spacing: .02em;
+  letter-spacing: 0.02em;
   cursor: pointer;
-  transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .section-nav-button,
@@ -3333,7 +3424,7 @@ Does this choice reinforce or dilute our design philosophy?
   padding: 8px 14px;
   white-space: nowrap;
   color: #02111f;
-  border-color: rgba(34, 211, 238, .5);
+  border-color: rgba(34, 211, 238, 0.5);
   background: linear-gradient(135deg, #67e8f9, #38bdf8 48%, #22c55e);
 }
 
@@ -3343,7 +3434,9 @@ Does this choice reinforce or dilute our design philosophy?
 .chart-export-png-button:hover {
   transform: translateY(-1px);
   border-color: rgba(103, 232, 249, 0.72);
-  box-shadow: 0 16px 34px rgba(8, 145, 178, 0.22), inset 0 1px rgba(255,255,255,.13);
+  box-shadow:
+    0 16px 34px rgba(8, 145, 178, 0.22),
+    inset 0 1px rgba(255, 255, 255, 0.13);
 }
 
 .section-control-panel {
@@ -3356,23 +3449,33 @@ Does this choice reinforce or dilute our design philosophy?
   padding: 10px 12px 10px 16px;
   border: 1px solid rgba(34, 211, 238, 0.16);
   border-radius: 18px;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.72), rgba(8, 47, 73, 0.36));
-  box-shadow: inset 0 1px rgba(255,255,255,.06);
+  background: linear-gradient(
+    135deg,
+    rgba(15, 23, 42, 0.72),
+    rgba(8, 47, 73, 0.36)
+  );
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.06);
 }
 
 .section-control-panel.section-control-panel-collapsed {
   margin-top: 6px;
   margin-bottom: 6px;
   border-color: rgba(34, 211, 238, 0.1);
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.62), rgba(8, 47, 73, 0.26));
+  background: linear-gradient(
+    135deg,
+    rgba(15, 23, 42, 0.62),
+    rgba(8, 47, 73, 0.26)
+  );
 }
 
-.section-control-panel.section-control-panel-collapsed + .dashboard-section-content-block {
+.section-control-panel.section-control-panel-collapsed
+  + .dashboard-section-content-block {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
 }
 
-.section-control-panel + .dashboard-section-content-block.dashboard-section-collapsed {
+.section-control-panel
+  + .dashboard-section-content-block.dashboard-section-collapsed {
   display: block !important;
   height: 0 !important;
   min-height: 0 !important;
@@ -3395,13 +3498,16 @@ Does this choice reinforce or dilute our design philosophy?
   font: inherit;
   font-size: 13px;
   font-weight: 900;
-  letter-spacing: .08em;
+  letter-spacing: 0.08em;
   line-height: 1.2;
   text-align: left;
   text-transform: uppercase;
   cursor: pointer;
   border-radius: 12px;
-  transition: background .18s ease, color .18s ease, transform .18s ease;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
 }
 
 .section-control-title:hover,
@@ -3421,7 +3527,7 @@ Does this choice reinforce or dilute our design philosophy?
   border-radius: 999px;
   color: #08111f;
   background: linear-gradient(135deg, #22d3ee, #22c55e);
-  box-shadow: 0 0 18px rgba(34, 211, 238, .55);
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.55);
   font-size: 15px;
   font-weight: 1000;
   line-height: 1;
@@ -3445,7 +3551,12 @@ Does this choice reinforce or dilute our design philosophy?
 
 .dashboard-section-content-block {
   scroll-margin-top: 104px;
-  transition: opacity .22s ease, transform .22s ease, max-height .22s ease, margin .22s ease, padding .22s ease;
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease,
+    max-height 0.22s ease,
+    margin 0.22s ease,
+    padding 0.22s ease;
 }
 
 .dashboard-section-content-block.dashboard-section-collapsed {
@@ -3474,7 +3585,7 @@ Does this choice reinforce or dilute our design philosophy?
   padding: 5px 9px;
   font-size: 10px;
   line-height: 1;
-  opacity: .78;
+  opacity: 0.78;
 }
 
 .chart-export-target:hover .chart-export-png-button {
@@ -3488,14 +3599,24 @@ Does this choice reinforce or dilute our design philosophy?
 [data-dashboard-theme="light"] .dashboard-section-nav,
 [data-dashboard-theme="light"] .section-control-panel {
   border-color: rgba(14, 116, 144, 0.18);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(224, 242, 254, 0.58));
-  box-shadow: 0 16px 42px rgba(15, 23, 42, .11), inset 0 1px rgba(255,255,255,.72);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.84),
+    rgba(224, 242, 254, 0.58)
+  );
+  box-shadow:
+    0 16px 42px rgba(15, 23, 42, 0.11),
+    inset 0 1px rgba(255, 255, 255, 0.72);
 }
 
-
-[data-dashboard-theme="light"] .section-control-panel.section-control-panel-collapsed {
+[data-dashboard-theme="light"]
+  .section-control-panel.section-control-panel-collapsed {
   border-color: rgba(14, 116, 144, 0.12);
-  background: linear-gradient(135deg, rgba(255,255,255,.78), rgba(224,242,254,.42));
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.78),
+    rgba(224, 242, 254, 0.42)
+  );
 }
 
 [data-dashboard-theme="light"] .section-control-title {
@@ -3517,8 +3638,12 @@ Does this choice reinforce or dilute our design philosophy?
 [data-dashboard-theme="light"] .section-tool-button,
 [data-dashboard-theme="light"] .chart-export-png-button {
   color: #0f172a;
-  border-color: rgba(14, 116, 144, .24);
-  background: linear-gradient(135deg, rgba(255,255,255,.92), rgba(224,242,254,.76));
+  border-color: rgba(14, 116, 144, 0.24);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.92),
+    rgba(224, 242, 254, 0.76)
+  );
 }
 
 @media (max-width: 900px) {
@@ -3553,7 +3678,6 @@ Does this choice reinforce or dilute our design philosophy?
     pointer-events: auto !important;
   }
 }
-
 
 /* ==========================================================
    Table Width + Theme Background Focus Fix
@@ -3808,7 +3932,6 @@ Does this choice reinforce or dilute our design philosophy?
   }
 }
 
-
 /* ==========================================================
    CDR tab/layout correction: remove inactive performance tab behavior,
    fit tab contents naturally, compact filters, and lock theme image geometry.
@@ -3902,7 +4025,11 @@ Does this choice reinforce or dilute our design philosophy?
 .dashboard-shell[data-dashboard-theme="light"] .hero-panel::after {
   background:
     linear-gradient(180deg, transparent 60%, rgba(248, 250, 252, 0.62)),
-    radial-gradient(circle at 60% 60%, rgba(14, 165, 233, 0.12), transparent 26rem);
+    radial-gradient(
+      circle at 60% 60%,
+      rgba(14, 165, 233, 0.12),
+      transparent 26rem
+    );
 }
 
 @media (max-width: 900px) {
@@ -3911,12 +4038,13 @@ Does this choice reinforce or dilute our design philosophy?
   }
 }
 
-
 /* Unified compact filter settings across all CDR-style tabs */
 .dashboard-shell .dashboard-filters-panel,
 .dashboard-shell .filters-panel.dashboard-filters-panel {
   display: grid !important;
-  grid-template-columns: minmax(220px, 1.35fr) repeat(7, minmax(112px, 0.82fr)) max-content !important;
+  grid-template-columns:
+    minmax(220px, 1.35fr) repeat(7, minmax(112px, 0.82fr))
+    max-content !important;
   align-items: end !important;
   gap: 8px !important;
   margin: 0 24px 14px !important;
@@ -4129,7 +4257,6 @@ Does this choice reinforce or dilute our design philosophy?
   font-size: 11px !important;
 }
 
-
 /* Final tabs/filter compact fit and Tickets-first view refinement */
 .dashboard-shell .hero-panel {
   min-height: auto !important;
@@ -4304,8 +4431,11 @@ Does this choice reinforce or dilute our design philosophy?
 .dashboard-shell .section-tabs-panel .dashboard-filters-panel {
   position: relative !important;
   z-index: 35 !important;
-  background:
-    linear-gradient(135deg, rgba(8, 17, 34, 0.98), rgba(12, 29, 54, 0.96)) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(8, 17, 34, 0.98),
+    rgba(12, 29, 54, 0.96)
+  ) !important;
   box-shadow:
     0 18px 44px rgba(0, 0, 0, 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
@@ -4441,13 +4571,17 @@ Does this choice reinforce or dilute our design philosophy?
   color: #3f6174 !important;
 }
 
-.dashboard-shell[data-dashboard-theme="light"] .google-region-row input[type="url"] {
+.dashboard-shell[data-dashboard-theme="light"]
+  .google-region-row
+  input[type="url"] {
   color: #092033 !important;
   background: rgba(255, 255, 255, 0.9) !important;
   border-color: rgba(0, 115, 176, 0.24) !important;
 }
 
-.dashboard-shell[data-dashboard-theme="light"] .google-region-row input[type="url"]::placeholder {
+.dashboard-shell[data-dashboard-theme="light"]
+  .google-region-row
+  input[type="url"]::placeholder {
   color: rgba(63, 97, 116, 0.72) !important;
 }
 
@@ -4515,7 +4649,9 @@ Does this choice reinforce or dilute our design philosophy?
 
 .dashboard-shell.dashboard-shell--welcome .upload-actions .primary-button.large,
 .dashboard-shell.dashboard-shell--welcome .upload-actions .ghost-button.large,
-.dashboard-shell.dashboard-shell--welcome .google-sheet-loader .ghost-button.large {
+.dashboard-shell.dashboard-shell--welcome
+  .google-sheet-loader
+  .ghost-button.large {
   min-height: 36px !important;
   height: 36px !important;
   padding: 0 14px !important;
@@ -4598,7 +4734,11 @@ Does this choice reinforce or dilute our design philosophy?
   border-radius: 24px !important;
   background:
     url("./assets/h.png") center top / cover no-repeat,
-    linear-gradient(135deg, rgba(2, 10, 28, 0.94), rgba(0, 34, 74, 0.78)) !important;
+    linear-gradient(
+      135deg,
+      rgba(2, 10, 28, 0.94),
+      rgba(0, 34, 74, 0.78)
+    ) !important;
   background-blend-mode: normal !important;
   box-shadow:
     0 24px 60px rgba(0, 0, 0, 0.38),
@@ -4615,15 +4755,28 @@ Does this choice reinforce or dilute our design philosophy?
   pointer-events: none !important;
   border-radius: inherit !important;
   background:
-    linear-gradient(90deg, rgba(2, 6, 23, 0.28), rgba(2, 13, 28, 0.04) 54%, rgba(2, 6, 23, 0.2)),
-    radial-gradient(circle at 18% 58%, rgba(14, 165, 233, 0.12), transparent 32%),
+    linear-gradient(
+      90deg,
+      rgba(2, 6, 23, 0.28),
+      rgba(2, 13, 28, 0.04) 54%,
+      rgba(2, 6, 23, 0.2)
+    ),
+    radial-gradient(
+      circle at 18% 58%,
+      rgba(14, 165, 233, 0.12),
+      transparent 32%
+    ),
     radial-gradient(circle at 84% 78%, rgba(20, 184, 166, 0.1), transparent 28%) !important;
 }
 
 .dashboard-shell[data-dashboard-theme="light"] .hero-panel {
   background:
     url("./assets/h.png") center top / cover no-repeat,
-    linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(226, 246, 255, 0.58)) !important;
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.72),
+      rgba(226, 246, 255, 0.58)
+    ) !important;
   border-color: rgba(0, 120, 180, 0.2) !important;
   box-shadow:
     0 18px 42px rgba(24, 78, 119, 0.16),
@@ -4632,9 +4785,22 @@ Does this choice reinforce or dilute our design philosophy?
 
 .dashboard-shell[data-dashboard-theme="light"] .hero-panel::after {
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.12) 54%, rgba(255, 255, 255, 0.34)),
-    radial-gradient(circle at 18% 58%, rgba(14, 165, 233, 0.08), transparent 32%),
-    radial-gradient(circle at 84% 78%, rgba(20, 184, 166, 0.07), transparent 28%) !important;
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.5),
+      rgba(255, 255, 255, 0.12) 54%,
+      rgba(255, 255, 255, 0.34)
+    ),
+    radial-gradient(
+      circle at 18% 58%,
+      rgba(14, 165, 233, 0.08),
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at 84% 78%,
+      rgba(20, 184, 166, 0.07),
+      transparent 28%
+    ) !important;
 }
 
 .dashboard-shell .topbar,
@@ -4666,13 +4832,14 @@ Does this choice reinforce or dilute our design philosophy?
 
 .dashboard-shell .header-logo-group--left.header-logo-group--solo {
   position: absolute !important;
-  top: 6px !important;
-  left: 6px !important;
-  z-index: 5 !important;
-  display: grid !important;
-  place-items: start !important;
-  width: 170px !important;
-  height: 170px !important;
+  top: 18px !important;
+  left: 18px !important;
+  z-index: 30 !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  width: 178px !important;
+  height: 178px !important;
   padding: 0 !important;
   margin: 0 !important;
   background: transparent !important;
@@ -4681,23 +4848,55 @@ Does this choice reinforce or dilute our design philosophy?
   box-shadow: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
   pointer-events: none !important;
 }
 
 .dashboard-shell .header-logo-img.nasco-logo--hero {
-  width: 166px !important;
-  height: 166px !important;
+  display: block !important;
+  width: 170px !important;
+  height: 170px !important;
   max-width: none !important;
   object-fit: contain !important;
   object-position: top left !important;
+  opacity: 1 !important;
+  visibility: visible !important;
   filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.32)) !important;
 }
 
 .dashboard-shell .header-logo-group--right {
-  grid-column: 3 !important;
-  grid-row: 1 !important;
-  justify-self: end !important;
-  min-width: 180px !important;
+  position: absolute !important;
+  top: 22px !important;
+  right: 22px !important;
+  z-index: 30 !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: flex-end !important;
+  width: 244px !important;
+  height: 150px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: none !important;
+}
+
+.dashboard-shell .header-logo-group--right .se-logo {
+  display: block !important;
+  width: 236px !important;
+  height: 142px !important;
+  max-width: none !important;
+  object-fit: contain !important;
+  object-position: top right !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.3)) !important;
 }
 
 .dashboard-shell .brand-title-center {
@@ -4793,7 +4992,10 @@ Does this choice reinforce or dilute our design philosophy?
   box-shadow: 0 12px 28px rgba(34, 211, 238, 0.24) !important;
 }
 
-.dashboard-shell[data-dashboard-theme="light"] .topbar-actions .theme-toggle button,
+.dashboard-shell[data-dashboard-theme="light"]
+  .topbar-actions
+  .theme-toggle
+  button,
 .dashboard-shell[data-dashboard-theme="light"] .topbar-actions .ghost-button,
 .dashboard-shell[data-dashboard-theme="light"] .topbar-actions .primary-button {
   color: #083047 !important;
@@ -4801,7 +5003,10 @@ Does this choice reinforce or dilute our design philosophy?
   border-color: rgba(0, 120, 180, 0.25) !important;
 }
 
-.dashboard-shell[data-dashboard-theme="light"] .topbar-actions .theme-toggle button.active,
+.dashboard-shell[data-dashboard-theme="light"]
+  .topbar-actions
+  .theme-toggle
+  button.active,
 .dashboard-shell[data-dashboard-theme="light"] .topbar-actions .primary-button {
   color: #06283d !important;
   background: linear-gradient(135deg, #22d3ee, #60a5fa) !important;
@@ -4834,7 +5039,8 @@ Does this choice reinforce or dilute our design philosophy?
     inset 0 0 0 1px rgba(255, 255, 255, 0.025) !important;
 }
 
-.dashboard-shell[data-dashboard-theme="light"] .dashboard-section-nav.dashboard-tabs-nav {
+.dashboard-shell[data-dashboard-theme="light"]
+  .dashboard-section-nav.dashboard-tabs-nav {
   background: rgba(255, 255, 255, 0.92) !important;
   border-color: rgba(0, 100, 150, 0.2) !important;
   box-shadow:
@@ -4886,8 +5092,10 @@ Does this choice reinforce or dilute our design philosophy?
   border-color: rgba(0, 100, 150, 0.26) !important;
 }
 
-.dashboard-shell[data-dashboard-theme="light"] .section-nav-button.section-tab-button-active,
-.dashboard-shell[data-dashboard-theme="light"] .section-tab-button.section-tab-button-active {
+.dashboard-shell[data-dashboard-theme="light"]
+  .section-nav-button.section-tab-button-active,
+.dashboard-shell[data-dashboard-theme="light"]
+  .section-tab-button.section-tab-button-active {
   color: #06283d !important;
   background: linear-gradient(135deg, #22d3ee, #20d3b0) !important;
 }
@@ -4918,7 +5126,9 @@ Does this choice reinforce or dilute our design philosophy?
 .dashboard-shell .dashboard-filters-panel,
 .dashboard-shell .filters-panel.dashboard-filters-panel {
   display: grid !important;
-  grid-template-columns: minmax(240px, 1.25fr) repeat(7, minmax(110px, 0.75fr)) auto !important;
+  grid-template-columns:
+    minmax(240px, 1.25fr) repeat(7, minmax(110px, 0.75fr))
+    auto !important;
   align-items: end !important;
   justify-content: start !important;
   column-gap: 10px !important;
@@ -4937,7 +5147,8 @@ Does this choice reinforce or dilute our design philosophy?
 }
 
 .dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel,
-.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel {
+.dashboard-shell[data-dashboard-theme="light"]
+  .filters-panel.dashboard-filters-panel {
   background: rgba(255, 255, 255, 0.92) !important;
   border-color: rgba(0, 100, 150, 0.2) !important;
   box-shadow:
@@ -4982,14 +5193,34 @@ Does this choice reinforce or dilute our design philosophy?
   color: #9fb6c7 !important;
 }
 
-.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .search-box,
-.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .filter-field,
-.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .search-box,
-.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .filter-field,
-.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .search-box > span,
-.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .filter-field > span,
-.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .search-box > span,
-.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .filter-field > span {
+.dashboard-shell[data-dashboard-theme="light"]
+  .dashboard-filters-panel
+  .search-box,
+.dashboard-shell[data-dashboard-theme="light"]
+  .dashboard-filters-panel
+  .filter-field,
+.dashboard-shell[data-dashboard-theme="light"]
+  .filters-panel.dashboard-filters-panel
+  .search-box,
+.dashboard-shell[data-dashboard-theme="light"]
+  .filters-panel.dashboard-filters-panel
+  .filter-field,
+.dashboard-shell[data-dashboard-theme="light"]
+  .dashboard-filters-panel
+  .search-box
+  > span,
+.dashboard-shell[data-dashboard-theme="light"]
+  .dashboard-filters-panel
+  .filter-field
+  > span,
+.dashboard-shell[data-dashboard-theme="light"]
+  .filters-panel.dashboard-filters-panel
+  .search-box
+  > span,
+.dashboard-shell[data-dashboard-theme="light"]
+  .filters-panel.dashboard-filters-panel
+  .filter-field
+  > span {
   color: #3f6174 !important;
 }
 
@@ -5032,12 +5263,28 @@ Does this choice reinforce or dilute our design philosophy?
   padding-left: 40px !important;
 }
 
-.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .search-box input,
-.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .multi-select-trigger,
-.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .select-wrap select,
-.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .search-box input,
-.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .multi-select-trigger,
-.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .select-wrap select {
+.dashboard-shell[data-dashboard-theme="light"]
+  .dashboard-filters-panel
+  .search-box
+  input,
+.dashboard-shell[data-dashboard-theme="light"]
+  .dashboard-filters-panel
+  .multi-select-trigger,
+.dashboard-shell[data-dashboard-theme="light"]
+  .dashboard-filters-panel
+  .select-wrap
+  select,
+.dashboard-shell[data-dashboard-theme="light"]
+  .filters-panel.dashboard-filters-panel
+  .search-box
+  input,
+.dashboard-shell[data-dashboard-theme="light"]
+  .filters-panel.dashboard-filters-panel
+  .multi-select-trigger,
+.dashboard-shell[data-dashboard-theme="light"]
+  .filters-panel.dashboard-filters-panel
+  .select-wrap
+  select {
   color: #092033 !important;
   background: rgba(255, 255, 255, 0.94) !important;
   border-color: rgba(0, 115, 176, 0.28) !important;
@@ -5060,8 +5307,12 @@ Does this choice reinforce or dilute our design philosophy?
   box-shadow: none !important;
 }
 
-.dashboard-shell[data-dashboard-theme="light"] .dashboard-filters-panel .ghost-button,
-.dashboard-shell[data-dashboard-theme="light"] .filters-panel.dashboard-filters-panel .ghost-button {
+.dashboard-shell[data-dashboard-theme="light"]
+  .dashboard-filters-panel
+  .ghost-button,
+.dashboard-shell[data-dashboard-theme="light"]
+  .filters-panel.dashboard-filters-panel
+  .ghost-button {
   color: #083047 !important;
   background: #ffffff !important;
   border-color: rgba(0, 100, 150, 0.26) !important;
@@ -5082,8 +5333,11 @@ Does this choice reinforce or dilute our design philosophy?
   padding: 14px 16px !important;
   border: 1px solid rgba(34, 211, 238, 0.22) !important;
   border-radius: 18px !important;
-  background:
-    linear-gradient(135deg, rgba(8, 18, 38, 0.92), rgba(9, 62, 82, 0.58)) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(8, 18, 38, 0.92),
+    rgba(9, 62, 82, 0.58)
+  ) !important;
   box-shadow:
     0 18px 42px rgba(0, 0, 0, 0.24),
     inset 0 1px rgba(255, 255, 255, 0.07) !important;
@@ -5136,8 +5390,11 @@ Does this choice reinforce or dilute our design philosophy?
 
 .dashboard-shell[data-dashboard-theme="light"] .online-source-panel {
   border-color: rgba(14, 116, 144, 0.22) !important;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(224, 242, 254, 0.7)) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.88),
+    rgba(224, 242, 254, 0.7)
+  ) !important;
   box-shadow: 0 16px 34px rgba(24, 78, 119, 0.13) !important;
 }
 
@@ -5145,7 +5402,9 @@ Does this choice reinforce or dilute our design philosophy?
   color: #0e7490 !important;
 }
 
-.dashboard-shell[data-dashboard-theme="light"] .online-source-panel__head strong {
+.dashboard-shell[data-dashboard-theme="light"]
+  .online-source-panel__head
+  strong {
   color: #0f172a !important;
 }
 
@@ -5184,7 +5443,16 @@ Does this choice reinforce or dilute our design philosophy?
   }
 
   .dashboard-shell .header-logo-group--right {
-    display: none !important;
+    top: 14px !important;
+    right: 14px !important;
+    display: flex !important;
+    width: 152px !important;
+    height: 92px !important;
+  }
+
+  .dashboard-shell .header-logo-group--right .se-logo {
+    width: 148px !important;
+    height: 90px !important;
   }
 
   .dashboard-shell .dashboard-filters-panel,
@@ -5252,4 +5520,285 @@ Does this choice reinforce or dilute our design philosophy?
   .dashboard-shell .filters-panel.dashboard-filters-panel {
     grid-template-columns: 1fr !important;
   }
+}
+
+/* Executive tab now owns the repeated-offender site follow-up table. */
+.dashboard-shell .executive-rca-sla-table {
+  width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed !important;
+}
+
+.dashboard-shell .executive-rca-sla-table th,
+.dashboard-shell .executive-rca-sla-table td {
+  box-sizing: border-box;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding: 10px 8px !important;
+  white-space: normal !important;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.dashboard-shell .executive-rca-sla-table th:nth-child(1),
+.dashboard-shell .executive-rca-sla-table td:nth-child(1) {
+  width: 5% !important;
+  text-align: center;
+}
+
+.dashboard-shell .executive-rca-sla-table th:nth-child(2),
+.dashboard-shell .executive-rca-sla-table td:nth-child(2) {
+  width: 8% !important;
+  text-align: center;
+}
+
+.dashboard-shell .executive-rca-sla-table th:nth-child(3),
+.dashboard-shell .executive-rca-sla-table td:nth-child(3) {
+  width: 11% !important;
+}
+
+.dashboard-shell .executive-rca-sla-table th:nth-child(4),
+.dashboard-shell .executive-rca-sla-table td:nth-child(4) {
+  width: 24% !important;
+}
+
+.dashboard-shell .executive-rca-sla-table th:nth-child(5),
+.dashboard-shell .executive-rca-sla-table td:nth-child(5) {
+  width: 6% !important;
+  text-align: center;
+}
+
+.dashboard-shell .executive-rca-sla-table th:nth-child(6),
+.dashboard-shell .executive-rca-sla-table td:nth-child(6),
+.dashboard-shell .executive-rca-sla-table th:nth-child(7),
+.dashboard-shell .executive-rca-sla-table td:nth-child(7),
+.dashboard-shell .executive-rca-sla-table th:nth-child(8),
+.dashboard-shell .executive-rca-sla-table td:nth-child(8) {
+  width: 10% !important;
+  text-align: center;
+}
+
+.dashboard-shell .executive-rca-sla-table th:nth-child(9),
+.dashboard-shell .executive-rca-sla-table td:nth-child(9) {
+  width: 16% !important;
+}
+.dashboard-shell .deep-dive-bottom-grid--actions-only {
+  grid-template-columns: 1fr;
+}
+
+/* Manual ticket input */
+.dashboard-shell .manual-input-tt-lookup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.34);
+}
+
+.dashboard-shell .manual-input-tt-lookup label {
+  display: grid;
+  min-width: 260px;
+  gap: 6px;
+  color: #9bdcf5;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dashboard-shell .manual-input-tt-lookup input {
+  min-height: 38px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #eaf6ff;
+  font: 800 14px/1.2 inherit;
+  padding: 0 12px;
+  outline: none;
+}
+
+.dashboard-shell.dashboard-theme-light .manual-input-tt-lookup {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.dashboard-shell.dashboard-theme-light .manual-input-tt-lookup label {
+  color: #0369a1;
+}
+
+.dashboard-shell.dashboard-theme-light .manual-input-tt-lookup input {
+  background: rgba(255, 255, 255, 0.94);
+  color: #0f172a;
+}
+.dashboard-shell .manual-input-section {
+  overflow: hidden;
+}
+
+.dashboard-shell .manual-input-heading {
+  gap: 16px;
+  align-items: center;
+}
+
+.dashboard-shell .manual-input-actions,
+.dashboard-shell .manual-input-row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.dashboard-shell .manual-input-empty {
+  border: 1px dashed rgba(125, 211, 252, 0.35);
+  border-radius: 14px;
+  padding: 20px;
+  color: #b7c6d9;
+  background: rgba(2, 8, 23, 0.28);
+  text-align: center;
+  font-weight: 700;
+}
+
+.dashboard-shell .manual-input-table-wrap {
+  width: 100%;
+  overflow: auto;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 14px;
+  background: rgba(2, 8, 23, 0.35);
+}
+
+.dashboard-shell .manual-input-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.dashboard-shell .manual-input-table th,
+.dashboard-shell .manual-input-table td {
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  padding: 6px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.dashboard-shell .manual-input-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(14, 54, 91, 0.96);
+  color: #dff9ff;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.dashboard-shell .manual-input-table input,
+.dashboard-shell .manual-input-table select {
+  width: 150px;
+  min-height: 34px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  border-radius: 8px;
+  background: rgba(2, 8, 23, 0.78);
+  color: #e5f6ff;
+  padding: 6px 8px;
+  font: inherit;
+  font-weight: 700;
+  outline: none;
+}
+
+.dashboard-shell .manual-input-table input[type="date"],
+.dashboard-shell .manual-input-table input[type="time"],
+.dashboard-shell .manual-input-table input[type="number"] {
+  width: 125px;
+}
+
+.dashboard-shell .manual-input-table input:focus,
+.dashboard-shell .manual-input-table select:focus {
+  border-color: rgba(34, 211, 238, 0.9);
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.15);
+}
+
+.dashboard-shell .manual-input-status {
+  border: 1px solid rgba(34, 211, 238, 0.32);
+  border-radius: 12px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: rgba(8, 47, 73, 0.52);
+  color: #dff9ff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.dashboard-shell .manual-input-lookup-cell {
+  display: flex;
+  min-width: 170px;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dashboard-shell .manual-input-override {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #9bdcf5;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.dashboard-shell .manual-input-override input {
+  width: 14px !important;
+  min-height: 14px !important;
+  margin: 0;
+  accent-color: #22d3ee;
+}
+
+.dashboard-shell .manual-input-table input[readonly],
+.dashboard-shell .manual-input-table .manual-input-calculated {
+  background: rgba(15, 23, 42, 0.62);
+  color: #bfeaff;
+  cursor: default;
+}
+
+.dashboard-shell.dashboard-theme-light .manual-input-status {
+  background: rgba(224, 242, 254, 0.86);
+  color: #075985;
+}
+
+.dashboard-shell.dashboard-theme-light .manual-input-override {
+  color: #0369a1;
+}
+
+.dashboard-shell .manual-input-row-locked td:not(:nth-child(2)) input,
+.dashboard-shell .manual-input-row-locked td:not(:nth-child(2)) select,
+.dashboard-shell .manual-input-row-locked td:not(:nth-child(2)) button,
+.dashboard-shell .manual-input-row-locked td:not(:nth-child(2)) label {
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.dashboard-shell .manual-input-row-locked td:not(:nth-child(2)) {
+  background: rgba(15, 23, 42, 0.2);
+}
+.dashboard-shell .manual-input-row-actions .ghost-button {
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.dashboard-shell.dashboard-theme-light .manual-input-empty,
+.dashboard-shell.dashboard-theme-light .manual-input-table-wrap {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.dashboard-shell.dashboard-theme-light .manual-input-table input,
+.dashboard-shell.dashboard-theme-light .manual-input-table select {
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
 }

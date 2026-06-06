@@ -9,6 +9,6 @@
 #
 # Then paste the Application (client) ID and Directory (tenant) ID below.
 
-clientId= hfuad@nasco.com.sa
-tenantId=common
-scopes=User.Read Files.Read.All Sites.Read.All
+clientId= 
+tenantId=consumers
+scopes=User.Read Files.Read

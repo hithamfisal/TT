@@ -32,6 +32,46 @@ Site downtime is capped to the selected period hours:
 siteDownHours = min(calculatedSiteDownHours, selectedPeriodHours)
 ```
 
+
+## Formula Helpers
+
+### Clamp
+
+`clamp(value, min, max)` keeps a calculated number inside an allowed range:
+
+```text
+clamp(value, min, max) = Math.max(min, Math.min(max, value))
+```
+
+Examples:
+
+```text
+clamp(25, 0, 20) = 20
+clamp(-5, 0, 20) = 0
+clamp(12, 0, 20) = 12
+```
+
+The dashboard uses `clamp` to stop one metric from overpowering the full score. For example, the downtime penalty can never exceed 20 points even if downtime is very high.
+
+### Region + RF Site Key
+
+Several analytics use a region-aware site key:
+
+```text
+analyticsSiteKey = normalizedRegion + RF Site ID
+```
+
+Region normalization:
+
+```text
+EOA and NEOA -> EOA
+SOA          -> SOA
+COA          -> COA
+WOA          -> WOA
+```
+
+This prevents `RF SITE 28` in SOA from being merged with `RF SITE 28` in EOA.
+
 ## High Risk Sites Ranking
 
 The High Risk Sites Ranking is calculated in `src/lib/ticketAnalytics.ts`.
@@ -70,7 +110,7 @@ Low:      score < 25
 
 The downtime shown in the ranking table is intentionally aligned with the reliability value by using the performance calculation whenever it exists. A site's displayed downtime cannot exceed the total hours in the selected month range.
 
-The first column is `Region`. If a site appears in more than one region in the loaded source rows, the regions are joined with `/`.
+The first column is `Region`. Region is part of the internal site key, so the same RF Site number in different regions is kept as separate rows instead of being joined.
 
 ## Repeated Offender Sites
 
@@ -126,7 +166,7 @@ Repeated offender sites are sorted by:
 
 The table shows the top 10 sites after this ranking.
 
-The first column is `Region`. If a repeated site appears in more than one region in the loaded source rows, the regions are joined with `/`.
+The first column is `Region`. Region is part of the internal site key, so repeated offender rows remain one region per RF Site row.
 
 ## Recommended Management Actions
 
@@ -762,3 +802,38 @@ Performance exports use perfMonths + perfRegions
 ```
 
 The global dashboard filters do not affect the report export cards.
+
+## Calculation Audit Checklist
+
+The README documents the dashboard calculations for these areas:
+
+```text
+Duration parsing and downtime capping
+Grouped/distinct TT logic
+Monthly tickets export logic
+Monthly performance export logic
+Dashboard KPI cards
+Performance KPI cards and gauges
+Performance table calculations
+Site availability chart
+Site downtime chart
+Network Health Score
+High Risk Sites Ranking
+Repeated Offender Sites
+Recommended Management Actions
+RCA downtime charts and cards
+Highest MTTR by RCA
+Operational Quality & Follow-Up Priorities
+SLA averages and breach buckets
+Pending aging buckets
+Preventability by tickets and downtime
+RCA family deep-dive
+Missing RCA by region
+Responsible team load
+Overview charts
+Trend charts
+Tickets data table
+Report export filter behavior
+```
+
+If a new dashboard card, table, chart, or export is added, add its formula here at the same time as the code change.

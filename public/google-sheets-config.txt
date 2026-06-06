@@ -5,3 +5,9 @@
 EOA&NEOA= https://docs.google.com/spreadsheets/d/1YhPcJt3Gech-BP6MJYAWOHRjMb-sHlUr9a7276mnSQU/edit?gid=1563375692#gid=1563375692
 SOA= https://docs.google.com/spreadsheets/d/1NqCezkUjyhXLM9AV997B8OdgFhWOL-huWogU4pFAAM8/edit?gid=1353903534#gid=1353903534
 COA&WOA=
+
+# Optional: paste Google Apps Script Web App URLs here to save manual input rows back to TT-History.
+# Deploy the script as Web app: Execute as Me, Who has access: Anyone with the link.
+EOA&NEOA_SAVE= https://script.google.com/macros/s/AKfycbzmYjrEQDmJHANvWMgAFdbTQUNgpByEv_V4VMvl00VHuOzoSere3E5LWzBHQaFzekh0/exec
+SOA_SAVE= https://script.google.com/macros/s/AKfycbzzjI4-3SzE371dui7S6yJ5TmjVAKkGysanCjRjuNtl9z__4r5yFEW_lT3Mn_ZlSmyYfg/exec
+COA&WOA_SAVE=

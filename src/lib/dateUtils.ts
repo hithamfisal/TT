@@ -14,10 +14,13 @@ export function normalizeHeader(value: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-export function getField(row: Record<string, unknown>, aliases: string[]): string {
+export function getField(
+  row: Record<string, unknown>,
+  aliases: string[],
+): string {
   const map = new Map<string, unknown>();
   Object.entries(row).forEach(([key, value]) =>
-    map.set(normalizeHeader(key), value)
+    map.set(normalizeHeader(key), value),
   );
 
   for (const alias of aliases) {
@@ -30,11 +33,11 @@ export function getField(row: Record<string, unknown>, aliases: string[]): strin
 
 export function getRawField(
   row: Record<string, unknown>,
-  aliases: string[]
+  aliases: string[],
 ): unknown {
   const map = new Map<string, unknown>();
   Object.entries(row).forEach(([key, value]) =>
-    map.set(normalizeHeader(key), value)
+    map.set(normalizeHeader(key), value),
   );
 
   for (const alias of aliases) {
@@ -55,7 +58,7 @@ export function parseDateValue(value: unknown): Date | null {
     return new Date(
       value.getUTCFullYear(),
       value.getUTCMonth(),
-      value.getUTCDate()
+      value.getUTCDate(),
     );
   }
 
@@ -92,7 +95,7 @@ export function parseDateValue(value: unknown): Date | null {
   if (!Number.isNaN(direct.getTime())) return direct;
 
   const match = text.match(
-    /(\d{1,2})[-/ ]([A-Za-z]{3,}|\d{1,2})[-/ ](\d{2,4})/
+    /(\d{1,2})[-/ ]([A-Za-z]{3,}|\d{1,2})[-/ ](\d{2,4})/,
   );
 
   if (!match) return null;
@@ -125,7 +128,7 @@ export function openingMonthKey(value: unknown): string {
 export function resolveOpeningMonthKey(
   sourceKey: unknown,
   sourceLabel: unknown,
-  observationDate: unknown
+  observationDate: unknown,
 ): string {
   return (
     normalizeMonthKey(sourceKey) ??
@@ -160,7 +163,7 @@ export function weekKey(value: unknown): string {
 
   return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(
     2,
-    "0"
+    "0",
   )}-${String(start.getDate()).padStart(2, "0")}`;
 }
 
@@ -184,7 +187,7 @@ export function weekLabel(key: string): string {
 
   const endLabel = end.toLocaleDateString(
     "en",
-    sameMonth ? { day: "2-digit" } : { day: "2-digit", month: "short" }
+    sameMonth ? { day: "2-digit" } : { day: "2-digit", month: "short" },
   );
 
   return `${startLabel}-${endLabel}`;
@@ -196,12 +199,12 @@ export function recordDateMonthKey(value: string): string {
 
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(
     2,
-    "0"
+    "0",
   )}`;
 }
 
 export function selectedMonthRange(
-  selectedMonth: string
+  selectedMonth: string,
 ): { start: Date; end: Date } | null {
   const match = selectedMonth.match(/^(\d{4})-(\d{2})$/);
   if (!match) return null;
@@ -250,7 +253,7 @@ export function coveredMonthKeys(row: TicketRecord): string[] {
 
   while (cursor <= final && guard < 240) {
     keys.add(
-      `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`
+      `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`,
     );
 
     cursor.setMonth(cursor.getMonth() + 1);
@@ -264,7 +267,10 @@ export function isPendingStatus(value: string): boolean {
   return clean(value).toLowerCase() === "pending";
 }
 
-export function dateWithinMonth(dateValue: string, selectedMonth: string): boolean {
+export function dateWithinMonth(
+  dateValue: string,
+  selectedMonth: string,
+): boolean {
   const range = selectedMonthRange(selectedMonth);
   if (!range) return false;
 
@@ -276,14 +282,14 @@ export function dateWithinMonth(dateValue: string, selectedMonth: string): boole
 
 export function ticketMatchesMonthlyExport(
   ticket: TicketAggregate,
-  selectedMonth: string
+  selectedMonth: string,
 ): boolean {
   if (selectedMonth === "all") return true;
 
   const range = selectedMonthRange(selectedMonth);
   if (!range) return false;
 
-  return ticket.rows.some(row => {
+  return ticket.rows.some((row) => {
     const obsDate = parseDateValue(row.observationDate);
     const recDate = parseDateValue(row.recoveryDate);
 
@@ -341,9 +347,15 @@ export function parseDurationHours(duration: string): number | null {
   if (!text) return null;
 
   if (/(?:days?|d|hrs?|hours?|h|mins?|minutes?|m)\b/i.test(text)) {
-    const days = Number(text.match(/(\d+(?:\.\d+)?)\s*(?:days?|d)\b/i)?.[1] ?? 0);
-    const hrs = Number(text.match(/(\d+(?:\.\d+)?)\s*(?:hrs?|hours?|h)\b/i)?.[1] ?? 0);
-    const mins = Number(text.match(/(\d+(?:\.\d+)?)\s*(?:mins?|minutes?|m)\b/i)?.[1] ?? 0);
+    const days = Number(
+      text.match(/(\d+(?:\.\d+)?)\s*(?:days?|d)\b/i)?.[1] ?? 0,
+    );
+    const hrs = Number(
+      text.match(/(\d+(?:\.\d+)?)\s*(?:hrs?|hours?|h)\b/i)?.[1] ?? 0,
+    );
+    const mins = Number(
+      text.match(/(\d+(?:\.\d+)?)\s*(?:mins?|minutes?|m)\b/i)?.[1] ?? 0,
+    );
 
     const total = days * 24 + hrs + mins / 60;
     return Number.isFinite(total) ? total : null;
@@ -380,7 +392,10 @@ export function combineDateTime(dateStr: string, timeStr: string): Date | null {
   return parsed;
 }
 
-export function hoursBetween(start: Date | null, end: Date | null): number | null {
+export function hoursBetween(
+  start: Date | null,
+  end: Date | null,
+): number | null {
   if (!start || !end || end < start) return null;
 
   return Math.round(((end.getTime() - start.getTime()) / 36e5) * 10) / 10;
@@ -389,7 +404,7 @@ export function hoursBetween(start: Date | null, end: Date | null): number | nul
 export function average(values: Array<number | null | undefined>): number {
   const valid = values.filter(
     (value): value is number =>
-      typeof value === "number" && Number.isFinite(value)
+      typeof value === "number" && Number.isFinite(value),
   );
 
   return valid.length
@@ -404,10 +419,9 @@ export function formatHours(value: number): string {
 }
 
 export function normalizeSiteId(id: string): string {
-  return id
-    .replace(
-      /(\D+)(\d+)$/,
-      (_, prefix, num) => prefix.toUpperCase() + String(parseInt(num, 10))
-    )
-    .trim();
+  const value = clean(id);
+  const rfMatch = value.match(/^rf\s*site\s*0*(\d+)$/i);
+  if (rfMatch) return `RF Site ${rfMatch[1].padStart(2, "0")}`;
+
+  return value;
 }
