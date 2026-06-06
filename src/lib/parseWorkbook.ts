@@ -275,6 +275,8 @@ export function parseRows(
         rowNo: index + 2,
         tt: getField(row, [
           "TT",
+          "TT's",
+          "TTs",
           "TT Number",
           "TT No",
           "TT #",

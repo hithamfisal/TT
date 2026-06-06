@@ -128,9 +128,21 @@ function getPreviousSerialNumber(sheet, beforeRow) {
   return 0;
 }
 
+function ensureSheetDimensions(sheet, requiredRows, requiredColumns) {
+  const maxRows = sheet.getMaxRows();
+  if (maxRows < requiredRows) {
+    sheet.insertRowsAfter(maxRows, requiredRows - maxRows);
+  }
+  const maxColumns = sheet.getMaxColumns();
+  if (maxColumns < requiredColumns) {
+    sheet.insertColumnsAfter(maxColumns, requiredColumns - maxColumns);
+  }
+}
+
 function copyFormatFromPreviousRow(sheet, startRow, rowCount) {
   const sourceRow = Math.max(1, startRow - 1);
   const maxColumns = Math.max(HEADERS.length, sheet.getLastColumn());
+  ensureSheetDimensions(sheet, startRow + rowCount - 1, maxColumns);
   const source = sheet.getRange(sourceRow, 1, 1, maxColumns);
   const target = sheet.getRange(startRow, 1, rowCount, maxColumns);
   source.copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
@@ -204,6 +216,7 @@ function doPost(e) {
         const values = HEADERS.map((header) => item.row[header] ?? '');
         const existingSerial = sheet.getRange(item.rowNumber, 1).getDisplayValue();
         values[0] = existingSerial || item.row['SN.'] || '';
+        ensureSheetDimensions(sheet, item.rowNumber, HEADERS.length);
         sheet.getRange(item.rowNumber, 1, 1, HEADERS.length).setValues([values]);
         return { rowNumber: item.rowNumber, tt: values[1] || '', siteId: values[2] || '', siteName: values[3] || '' };
       });
@@ -218,6 +231,7 @@ function doPost(e) {
           row[0] = previousSerial + index + 1;
         });
         copyFormatFromPreviousRow(sheet, startRow, values.length);
+        ensureSheetDimensions(sheet, startRow + values.length - 1, HEADERS.length);
         sheet.getRange(startRow, 1, values.length, HEADERS.length).setValues(values);
         writtenRows = sheet
           .getRange(startRow, 1, values.length, HEADERS.length)

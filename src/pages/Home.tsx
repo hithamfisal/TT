@@ -108,6 +108,11 @@ type GoogleRegionKey = (typeof GOOGLE_REGION_LINKS)[number]["key"];
 type GoogleRegionLinks = Record<GoogleRegionKey, string>;
 type GoogleRegionSaveLinks = Record<GoogleRegionKey, string>;
 type GoogleRegionSelection = Record<GoogleRegionKey, boolean>;
+type UploadedWorkbookSource = {
+  fileName: string;
+  workbook: XLSX.WorkBook;
+  data: DashboardData;
+};
 type MicrosoftGraphConfig = {
   clientId: string;
   tenantId: string;
@@ -5052,6 +5057,9 @@ export default function Home() {
   const addRegionRef = useRef<HTMLInputElement | null>(null);
   const [data, setData] = useState<DashboardData | null>(null);
   const [regions, setRegions] = useState<DashboardData[]>([]);
+  const [uploadedWorkbookSources, setUploadedWorkbookSources] = useState<
+    UploadedWorkbookSource[]
+  >([]);
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const statsRef = useRef<HTMLDivElement | null>(null);
@@ -5197,11 +5205,10 @@ export default function Home() {
     );
   }
 
-  async function parseWorkbookBuffer(
-    buffer: ArrayBuffer,
+  function parseWorkbookObject(
+    workbook: XLSX.WorkBook,
     fileName: string,
-  ): Promise<DashboardData> {
-    const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
+  ): DashboardData {
     const parsed = parseRows(workbook, fileName);
 
     if (!parsed.rows.length || !parsed.uniqueTickets.length) {
@@ -5213,8 +5220,27 @@ export default function Home() {
     return parsed;
   }
 
+  async function parseWorkbookBuffer(
+    buffer: ArrayBuffer,
+    fileName: string,
+  ): Promise<DashboardData> {
+    const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
+    return parseWorkbookObject(workbook, fileName);
+  }
+
   async function parseWorkbookFile(file: File): Promise<DashboardData> {
     return parseWorkbookBuffer(await file.arrayBuffer(), file.name);
+  }
+
+  async function parseUploadedWorkbookFile(
+    file: File,
+  ): Promise<UploadedWorkbookSource> {
+    const workbook = XLSX.read(await file.arrayBuffer(), {
+      type: "array",
+      cellDates: false,
+    });
+    const parsed = parseWorkbookObject(workbook, file.name);
+    return { fileName: file.name, workbook, data: parsed };
   }
 
   function extractGoogleSpreadsheetId(value: string): string {
@@ -7611,10 +7637,73 @@ export default function Home() {
     activeDashboardTab,
   ]);
 
-  const siteLookupOptions = useMemo(
-    () => (data?.siteOrder ?? []).filter((site) => clean(site.siteId)),
-    [data?.siteOrder],
-  );
+  const selectedManualRegionKey = (region: string): GoogleRegionKey | null => {
+    const normalized = normalizeHeader(region);
+    if (normalized === "eoa" || normalized === "neoa") return "eoaNeoa";
+    if (normalized === "soa") return "soa";
+    if (normalized === "coa" || normalized === "woa") return "coaWoa";
+    return null;
+  };
+
+  const inferSiteRegionKey = (
+    siteName: string,
+    datasetRegions: Set<string>,
+  ): GoogleRegionKey | null => {
+    const normalizedName = normalizeHeader(siteName);
+    if (normalizedName.includes("neoa") || normalizedName.includes("eoa"))
+      return "eoaNeoa";
+    if (normalizedName.includes("soa")) return "soa";
+    if (normalizedName.includes("coa") || normalizedName.includes("woa"))
+      return "coaWoa";
+    const regionKeys = Array.from(datasetRegions)
+      .map(selectedManualRegionKey)
+      .filter((key): key is GoogleRegionKey => Boolean(key));
+    const uniqueKeys = Array.from(new Set(regionKeys));
+    return uniqueKeys.length === 1 ? uniqueKeys[0] : null;
+  };
+
+  const siteLookupOptions = useMemo(() => {
+    const datasets = regions.length ? regions : data ? [data] : [];
+    const options: Array<{
+      siteId: string;
+      siteName: string;
+      regionKey: GoogleRegionKey | null;
+    }> = [];
+    const seen = new Set<string>();
+    datasets.forEach((dataset) => {
+      const datasetRegions = new Set(
+        dataset.rows.map((row) => clean(row.region)),
+      );
+      dataset.siteOrder.forEach((site) => {
+        const siteId = normalizeSiteId(clean(site.siteId));
+        if (!siteId) return;
+        const siteName = clean(site.siteName);
+        const regionKey = inferSiteRegionKey(siteName, datasetRegions);
+        const key = `${regionKey ?? "all"}||${siteId}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        options.push({ siteId, siteName, regionKey });
+      });
+    });
+    return options.sort((a, b) => {
+      const byRegion = clean(a.regionKey ?? "").localeCompare(
+        clean(b.regionKey ?? ""),
+      );
+      if (byRegion !== 0) return byRegion;
+      return clean(a.siteId).localeCompare(clean(b.siteId), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
+  }, [data, regions]);
+
+  const siteLookupOptionsForRegion = (region: string) => {
+    const regionKey = selectedManualRegionKey(region);
+    if (!regionKey) return [];
+    return siteLookupOptions.filter(
+      (site) => !site.regionKey || site.regionKey === regionKey,
+    );
+  };
   const actionRcaLookup = useMemo(
     () => data?.rcaLookup ?? [],
     [data?.rcaLookup],
@@ -7638,9 +7727,10 @@ export default function Home() {
     [allDataRows],
   );
 
-  const findSiteLookup = (value: string) => {
+  const findSiteLookup = (value: string, region = "") => {
     const siteId = normalizeSiteId(clean(value));
-    return siteLookupOptions.find(
+    const scopedOptions = siteLookupOptionsForRegion(region);
+    return scopedOptions.find(
       (item) => normalizeSiteId(clean(item.siteId)) === siteId,
     );
   };
@@ -7690,10 +7780,10 @@ export default function Home() {
 
   const handleManualSiteIdChange = (id: string, value: string) => {
     const siteId = normalizeSiteId(clean(value));
-    const site = findSiteLookup(siteId);
     setManualDrafts((prev) =>
       prev.map((draft) => {
         if (draft.id !== id) return draft;
+        const site = findSiteLookup(siteId, draft.region);
         const customSite = draft.customSite || !site;
         return {
           ...draft,
@@ -7710,7 +7800,7 @@ export default function Home() {
     setManualDrafts((prev) =>
       prev.map((draft) => {
         if (draft.id !== id) return draft;
-        const site = findSiteLookup(draft.siteId);
+        const site = findSiteLookup(draft.siteId, draft.region);
         return {
           ...draft,
           customSite,
@@ -7762,13 +7852,13 @@ export default function Home() {
       sheetRowValue(row, ["Site ID", "Site No", "Equipment/site"]),
     );
     const siteName = sheetRowValue(row, ["Site Name"]);
-    const site = findSiteLookup(siteId);
-    const action = sheetRowValue(row, ["Action"]);
-    const rca = sheetRowValue(row, ["RCA"]);
-    const actionMatch = findActionLookup(action);
     const fallbackRegion =
       fallbackKey === "soa" ? "SOA" : fallbackKey === "coaWoa" ? "COA" : "EOA";
     const sourceRegion = sheetRowValue(row, ["Region"]) || fallbackRegion;
+    const site = findSiteLookup(siteId, sourceRegion);
+    const action = sheetRowValue(row, ["Action"]);
+    const rca = sheetRowValue(row, ["RCA"]);
+    const actionMatch = findActionLookup(action);
     return {
       id: `${Date.now()}-${row.rowNumber}-${Math.random().toString(36).slice(2)}`,
       sourceRowNumber: row.rowNumber,
@@ -7882,6 +7972,129 @@ export default function Home() {
     } finally {
       setExistingTtLoading(false);
     }
+  };
+  function workbookTicketSheetName(workbook: XLSX.WorkBook): string {
+    return (
+      workbook.SheetNames.find((name) => {
+        const normalized = normalizeHeader(name);
+        return normalized.includes("ticketsdata") || normalized === "tthistory";
+      }) ??
+      workbook.SheetNames[0] ??
+      "TT-History"
+    );
+  }
+
+  function regionToGoogleKey(region: string): GoogleRegionKey | null {
+    const normalized = normalizeHeader(region);
+    if (normalized === "eoa" || normalized === "neoa") return "eoaNeoa";
+    if (normalized === "soa") return "soa";
+    if (normalized === "coa" || normalized === "woa") return "coaWoa";
+    return null;
+  }
+
+  function sourceWorkbookKeys(
+    source: UploadedWorkbookSource,
+  ): Set<GoogleRegionKey> {
+    const keys = new Set<GoogleRegionKey>();
+    source.data.rows.forEach((row) => {
+      const key = regionToGoogleKey(row.region);
+      if (key) keys.add(key);
+    });
+    return keys;
+  }
+
+  function sourceMatchesManualDraft(
+    source: UploadedWorkbookSource,
+    draft: ManualTicketDraft,
+  ): boolean {
+    const sourceKeys = sourceWorkbookKeys(source);
+    if (!sourceKeys.size) return true;
+    const draftKey = manualDraftRegionKey(draft);
+    return Boolean(draftKey && sourceKeys.has(draftKey));
+  }
+
+  function nextManualWorkbookSerial(sheet: XLSX.WorkSheet): number {
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      defval: "",
+    }) as unknown[][];
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      const match = String(rows[index]?.[0] ?? "").match(/\d+/);
+      if (match) return Number(match[0]) + 1;
+    }
+    return 1;
+  }
+
+  function cloneWorkbook(workbook: XLSX.WorkBook): XLSX.WorkBook {
+    const buffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+    return XLSX.read(buffer, { type: "array", cellDates: false });
+  }
+
+  function appendManualRowsToWorkbook(
+    workbook: XLSX.WorkBook,
+    drafts: ManualTicketDraft[],
+  ): number {
+    if (!drafts.length) return 0;
+    const sheetName = workbookTicketSheetName(workbook);
+    let sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
+      sheet = XLSX.utils.aoa_to_sheet([MANUAL_TICKET_EXPORT_HEADERS]);
+      XLSX.utils.book_append_sheet(workbook, sheet, sheetName || "TT-History");
+    }
+    let nextSerial = nextManualWorkbookSerial(sheet);
+    const rows = drafts.map((draft, index) => {
+      const row = manualDraftToSheetRow(draft, index) as Record<
+        string,
+        unknown
+      >;
+      row["SN."] = nextSerial;
+      nextSerial += 1;
+      return MANUAL_TICKET_EXPORT_HEADERS.map((header) => row[header] ?? "");
+    });
+    XLSX.utils.sheet_add_aoa(sheet, rows, { origin: -1 });
+    sheet["!cols"] =
+      sheet["!cols"] ?? MANUAL_TICKET_EXPORT_HEADERS.map(() => ({ wch: 16 }));
+    return rows.length;
+  }
+
+  const downloadUpdatedUploadedWorkbooks = () => {
+    const validDrafts = manualDrafts.filter((draft) =>
+      manualDraftToTicketRecord(draft, 0),
+    );
+    if (!validDrafts.length) {
+      setManualSaveStatus(
+        "Add at least one valid manual ticket row before downloading an updated workbook.",
+      );
+      return;
+    }
+    if (!uploadedWorkbookSources.length) {
+      setManualSaveStatus(
+        "Load an Excel workbook first, then use this button to download an updated workbook copy.",
+      );
+      return;
+    }
+
+    let exportedCount = 0;
+    uploadedWorkbookSources.forEach((source) => {
+      const sourceDrafts = validDrafts.filter((draft) =>
+        sourceMatchesManualDraft(source, draft),
+      );
+      if (!sourceDrafts.length) return;
+      const workbook = cloneWorkbook(source.workbook);
+      const appended = appendManualRowsToWorkbook(workbook, sourceDrafts);
+      if (!appended) return;
+      const baseName = makeFileSafeName(
+        source.fileName.replace(/\.[^.]+$/, ""),
+      );
+      XLSX.writeFile(workbook, `Updated_${baseName}.xlsx`);
+      exportedCount += 1;
+    });
+
+    setManualSaveStatus(
+      exportedCount
+        ? `Downloaded ${exportedCount} updated workbook${exportedCount === 1 ? "" : "s"} with the manual rows appended.`
+        : "No manual rows matched the loaded workbook regions.",
+    );
   };
   async function postToGoogleAppsScript(
     url: string,
@@ -8320,6 +8533,17 @@ export default function Home() {
                   <button
                     className="ghost-button"
                     type="button"
+                    onClick={downloadUpdatedUploadedWorkbooks}
+                    disabled={
+                      !manualDrafts.length || !uploadedWorkbookSources.length
+                    }
+                  >
+                    <Download size={16} />
+                    Download Updated Workbook
+                  </button>
+                  <button
+                    className="ghost-button"
+                    type="button"
                     onClick={() => setManualDrafts([])}
                     disabled={!manualDrafts.length}
                   >
@@ -8352,15 +8576,7 @@ export default function Home() {
                   {existingTtLoading ? "Searching..." : "Load TT"}
                 </button>
               </div>
-              <datalist id="manual-site-id-options">
-                {siteLookupOptions.map((site) => (
-                  <option
-                    key={site.siteId}
-                    value={normalizeSiteId(clean(site.siteId))}
-                    label={site.siteName}
-                  />
-                ))}
-              </datalist>
+
               <datalist id="manual-managed-resource-options">
                 {managedResourceOptions.map((value) => (
                   <option key={value} value={value} />
@@ -8443,11 +8659,22 @@ export default function Home() {
                             <td>
                               <select
                                 value={draft.region}
-                                onChange={(event) =>
+                                onChange={(event) => {
+                                  const nextRegion = event.target.value;
+                                  const site = draft.siteId
+                                    ? findSiteLookup(draft.siteId, nextRegion)
+                                    : null;
                                   updateManualDraft(draft.id, {
-                                    region: event.target.value,
-                                  })
-                                }
+                                    region: nextRegion,
+                                    customSite:
+                                      draft.customSite ||
+                                      !draft.siteId ||
+                                      !site,
+                                    siteName: draft.customSite
+                                      ? draft.siteName
+                                      : site?.siteName || "",
+                                  });
+                                }}
                               >
                                 <option value="">Select region</option>
                                 {REGION_OPTIONS.map((option) => (
@@ -8470,7 +8697,7 @@ export default function Home() {
                             </td>
                             <td>
                               <input
-                                list="manual-site-id-options"
+                                list={`manual-site-id-options-${draft.id}`}
                                 value={draft.siteId}
                                 disabled={!rowEnabled}
                                 onChange={(event) =>
@@ -8480,6 +8707,21 @@ export default function Home() {
                                   )
                                 }
                               />
+                              <datalist
+                                id={`manual-site-id-options-${draft.id}`}
+                              >
+                                {siteLookupOptionsForRegion(draft.region).map(
+                                  (site) => (
+                                    <option
+                                      key={`${site.regionKey ?? "all"}-${site.siteId}`}
+                                      value={normalizeSiteId(
+                                        clean(site.siteId),
+                                      )}
+                                      label={site.siteName}
+                                    />
+                                  ),
+                                )}
+                              </datalist>
                             </td>
                             <td>
                               <div className="manual-input-lookup-cell">
