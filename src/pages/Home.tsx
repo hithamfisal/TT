@@ -1,4 +1,4 @@
-import PptxGenJS from "pptxgenjs";
+﻿import PptxGenJS from "pptxgenjs";
 import {
   type CSSProperties,
   type ReactNode,
@@ -13,8 +13,8 @@ import jsPDF from "jspdf";
 import nascoLogoSrc from "../assets/nascologo.png";
 
 const THEME_IMAGES = {
-  dark: "/dark.png",
-  light: "/light.png",
+  dark: "/dark-bg.png",
+  light: "/light-bg.png",
 } as const;
 
 type DashboardTheme = keyof typeof THEME_IMAGES;
@@ -97,6 +97,9 @@ const INITIAL_COLLAPSED_SECTIONS: Record<DashboardSectionId, boolean> = {
 
 const SAVED_DASHBOARD_KEY = "followup-dashboard:last-workbook:v1";
 const SAVED_MANUAL_TICKETS_KEY = "followup-dashboard:manual-tickets:v1";
+const LOGIN_SESSION_KEY = "followup-dashboard:login-session:v1";
+const DASHBOARD_LOGIN_USERNAME = "admin";
+const DASHBOARD_LOGIN_PASSWORD = "DMR@2026";
 
 const GOOGLE_REGION_LINKS = [
   { key: "eoaNeoa", label: "EOA&NEOA" },
@@ -118,6 +121,11 @@ type MicrosoftGraphConfig = {
   tenantId: string;
   scopes: string;
 };
+
+function getInitialLoginState() {
+  if (typeof window === "undefined") return false;
+  return window.sessionStorage.getItem(LOGIN_SESSION_KEY) === "authenticated";
+}
 
 const EMPTY_GOOGLE_REGION_LINKS: GoogleRegionLinks = {
   eoaNeoa: "",
@@ -150,6 +158,8 @@ import {
   BarChart3,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleDot,
   Download,
   FileSpreadsheet,
@@ -159,6 +169,7 @@ import {
   Layers3,
   ImageDown,
   Link as LinkIcon,
+  LogOut,
   Maximize2,
   Minimize2,
   Moon,
@@ -835,7 +846,7 @@ const ensureExcelTableStyle = (
   return nextIndex;
 };
 
-// ─── MODIFIED: plain body style — font size 20, thin black border, white fill ─
+// â”€â”€â”€ MODIFIED: plain body style â€” font size 20, thin black border, white fill â”€
 const ensureExcelPlainTicketBodyStyle = (
   files: ZipFileMap,
   codec: ZipTextCodec,
@@ -844,9 +855,9 @@ const ensureExcelPlainTicketBodyStyle = (
   if (!files[stylesKey]) return 0;
 
   // Build the components we need: a size-20 font, a white fill, a thin black border.
-  const fontId = ensureExcelFont(files, codec, { size: 20 }); // ← font size 20
-  const fillId = ensureExcelWhiteFill(files, codec); // ← no colour fill (white)
-  const borderId = ensureExcelThinBlackBorder(files, codec); // ← border on all sides
+  const fontId = ensureExcelFont(files, codec, { size: 20 }); // â† font size 20
+  const fillId = ensureExcelWhiteFill(files, codec); // â† no colour fill (white)
+  const borderId = ensureExcelThinBlackBorder(files, codec); // â† border on all sides
 
   let stylesXml = codec.strFromU8(files[stylesKey]);
   const cellXfsStart = stylesXml.indexOf("<cellXfs");
@@ -1194,7 +1205,7 @@ const exportPerfPpt = (
     });
     if (executiveInsights) {
       s1.addText(
-        `Network Health Score: ${executiveInsights.healthScore.score} / 100 · ${executiveInsights.healthScore.status}`,
+        `Network Health Score: ${executiveInsights.healthScore.score} / 100 Â· ${executiveInsights.healthScore.status}`,
         {
           x: 0.7,
           y: 2.95,
@@ -1234,7 +1245,7 @@ const exportPerfPpt = (
       color: WHITE,
       fontFace: "Segoe UI",
     });
-    kpiSlide.addText(`Month: ${monthLabel}  ·  ${data.length} sites`, {
+    kpiSlide.addText(`Month: ${monthLabel}  Â·  ${data.length} sites`, {
       x: 0.5,
       y: 0.55,
       w: 12,
@@ -1461,7 +1472,7 @@ const exportPerfPpt = (
       h: 0.06,
       fill: { color: CYAN },
     });
-    slide3.addText("Site Availability — Hours", {
+    slide3.addText("Site Availability - Hours", {
       x: 0.5,
       y: 0.18,
       w: 12,
@@ -1500,7 +1511,7 @@ const exportPerfPpt = (
       h: 0.06,
       fill: { color: RED },
     });
-    slide4.addText("Site Downtime — Hours", {
+    slide4.addText("Site Downtime - Hours", {
       x: 0.5,
       y: 0.18,
       w: 12,
@@ -1510,7 +1521,7 @@ const exportPerfPpt = (
       fontFace: "Segoe UI",
     });
     slide4.addText(
-      `Month: ${monthLabel}  ·  ${data.filter((r) => r.sitesDownHours > 0).length} of ${data.length} sites affected`,
+      `Month: ${monthLabel}  Â·  ${data.filter((r) => r.sitesDownHours > 0).length} of ${data.length} sites affected`,
       {
         x: 0.5,
         y: 0.52,
@@ -2738,7 +2749,7 @@ async function exportPerfTemplate(
     );
     if (!res.ok)
       throw new Error(
-        `HTTP ${res.status} — place Network_Performance_Report.xlsx in your public/ folder`,
+        `HTTP ${res.status} - place Network_Performance_Report.xlsx in your public/ folder`,
       );
     const rawBuf = await res.arrayBuffer();
     const { unzipSync, zipSync, strFromU8, strToU8 } = await import("fflate");
@@ -3469,12 +3480,12 @@ async function exportPerfPdf(rows: PerfRow[], monthKey: string) {
   }
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// END OF PART 1 — continue in Part 2
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// PART 2 — paste directly after the last line of Part 1
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+// END OF PART 1 â€” continue in Part 2
+// â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+// â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+// PART 2 â€” paste directly after the last line of Part 1
+// â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
 
 function uniqueTicketValues(
   ticket: TicketAggregate,
@@ -3638,7 +3649,7 @@ function exportAnalyticsWorkbookExcel(
   XLSX.writeFile(workbook, fileName);
 }
 
-// ─── MODIFIED exportTicketTemplate ───────────────────────────────────────────
+// â”€â”€â”€ MODIFIED exportTicketTemplate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function exportTicketTemplate(
   tickets: TicketAggregate[],
   monthKey: string,
@@ -3718,7 +3729,7 @@ async function exportTicketTemplate(
     "Q",
   ];
 
-  // ── XML helpers ────────────────────────────────────────────────────────────
+  // â”€â”€ XML helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const xmlEsc = (s: string) =>
     s
       .replace(/&/g, "&amp;")
@@ -3815,7 +3826,7 @@ async function exportTicketTemplate(
     return sheetXml.replace("</sheetData>", `${rowXml}</sheetData>`);
   };
 
-  // ── MODIFIED: plain cell writer — inlineStr for all non-numeric values ─────
+  // â”€â”€ MODIFIED: plain cell writer â€” inlineStr for all non-numeric values â”€â”€â”€â”€â”€
   // This prevents Excel from inheriting the number format / fill color from the
   // row above (the template header row).  Every data cell is written as a plain
   // inline string so the source text is rendered exactly as-is.
@@ -3832,7 +3843,7 @@ async function exportTicketTemplate(
     }
     const str = String(value ?? "").trim();
     if (!str) {
-      // Truly empty — self-closing, no <v>, no type
+      // Truly empty â€” self-closing, no <v>, no type
       return `<c r="${col}${rowNumber}" s="${styleIndex}"/>`;
     }
     // inlineStr: Excel renders the literal string; no date-serial or number coercion
@@ -3904,7 +3915,7 @@ async function exportTicketTemplate(
   };
 
   try {
-    // ── 1. Fetch template ──────────────────────────────────────────────────
+    // â”€â”€ 1. Fetch template â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const res = await fetch(publicWorkbookUrl(templateConfig.url), {
       cache: "no-store",
     });
@@ -3914,11 +3925,11 @@ async function exportTicketTemplate(
       );
     const buf = await res.arrayBuffer();
 
-    // ── 2. Unzip ───────────────────────────────────────────────────────────
+    // â”€â”€ 2. Unzip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const { unzipSync, zipSync, strFromU8, strToU8 } = await import("fflate");
     const files = unzipSync(new Uint8Array(buf));
 
-    // ── 3. Locate worksheet ────────────────────────────────────────────────
+    // â”€â”€ 3. Locate worksheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const sheetKey = Object.keys(files).find((k) =>
       /^xl\/worksheets\/sheet\d+\.xml$/.test(k),
     );
@@ -3926,7 +3937,7 @@ async function exportTicketTemplate(
       throw new Error("Could not find worksheet XML inside template");
     let xml = strFromU8(files[sheetKey]);
 
-    // ── 4. Month label ─────────────────────────────────────────────────────
+    // â”€â”€ 4. Month label â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const full = monthKey !== "all" ? formatMonthMMMMYYYY(monthKey) : "All";
     const parts = full.split(" ");
     const label =
@@ -3941,11 +3952,11 @@ async function exportTicketTemplate(
         ),
       ).join(" / ") || "EOA";
 
-    // ── 5. Set metadata cells ──────────────────────────────────────────────
+    // â”€â”€ 5. Set metadata cells â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     xml = setCell(xml, "C5", regionLabel);
     xml = setCell(xml, "Q5", label);
 
-    // ── 6. Rename sheet ────────────────────────────────────────────────────
+    // â”€â”€ 6. Rename sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const wbKey = "xl/workbook.xml";
     if (files[wbKey]) {
       let wbXml = strFromU8(files[wbKey]);
@@ -3960,7 +3971,7 @@ async function exportTicketTemplate(
       files[wbKey] = strToU8(wbXml);
     }
 
-    // ── 7. Row insertion when more tickets than template rows ──────────────
+    // â”€â”€ 7. Row insertion when more tickets than template rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const needed = tickets.length;
     if (needed > AVAIL) {
       const extra = needed - AVAIL;
@@ -4019,7 +4030,7 @@ async function exportTicketTemplate(
       }
     }
 
-    // ── 8. Build plain body style (no inherited fill/format from template) ─
+    // â”€â”€ 8. Build plain body style (no inherited fill/format from template) â”€
     const styleCodec = { strFromU8, strToU8 };
     const plainBodyStyle = ensureExcelPlainTicketBodyStyle(files, styleCodec);
 
@@ -4027,7 +4038,7 @@ async function exportTicketTemplate(
       COLS.map((col) => [col, []]),
     );
 
-    // ── 9. Write data rows ─────────────────────────────────────────────────
+    // â”€â”€ 9. Write data rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     tickets.forEach((ticket, i) => {
       const row = DATA_START + i;
       const p = ticket.primary;
@@ -4037,7 +4048,7 @@ async function exportTicketTemplate(
       const rca = p.rca || uniqueTicketValues(ticket, "rca") || "";
 
       const values: Record<string, string | number> = {
-        A: i + 1, // serial — numeric
+        A: i + 1, // serial â€” numeric
         B: siteLines.siteIds,
         C: siteLines.siteNames,
         D: p.managedResource || "",
@@ -4076,7 +4087,7 @@ async function exportTicketTemplate(
       xml = rewriteWorksheetRow(xml, row, rowXml);
     });
 
-    // ── 10. Clear unused template rows ─────────────────────────────────────
+    // â”€â”€ 10. Clear unused template rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     for (let r = DATA_START + needed; r < PROTECTED; r++) {
       const emptyRowXml =
         `<row r="${r}">` +
@@ -4121,8 +4132,8 @@ async function exportTicketTemplate(
     console.error("Template export failed:", err);
     alert(
       "Template export failed.\n\nCheck:\n" +
-        `  • ${templateConfig.url.slice(1)} must be inside the  public/  folder\n` +
-        "  • Regional templates are: EOA_DMR_Monthly_Report.xlsx, SOA_DMR_Monthly_Report.xlsx, COA_DMR_Monthly_Report.xlsx, WOA_DMR_Monthly_Report.xlsx\n\n" +
+        `  â€¢ ${templateConfig.url.slice(1)} must be inside the  public/  folder\n` +
+        "  â€¢ Regional templates are: EOA_DMR_Monthly_Report.xlsx, SOA_DMR_Monthly_Report.xlsx, COA_DMR_Monthly_Report.xlsx, WOA_DMR_Monthly_Report.xlsx\n\n" +
         "Error: " +
         (err?.message ?? String(err)),
     );
@@ -4294,10 +4305,10 @@ async function exportPdf(rows: TicketAggregate[], monthKey: string) {
   }
 }
 
-// ─── All remaining component code (StatCard, PartnerLogoStrip, SelectFilter,
+// â”€â”€â”€ All remaining component code (StatCard, PartnerLogoStrip, SelectFilter,
 //     MultiSelectFilter, and the default export Home) is IDENTICAL to your
 //     original file from this point forward. Paste it here unchanged.
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function clampGaugePercent(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -4386,7 +4397,7 @@ const PERFORMANCE_GAUGE_CONFIG: PerformanceGaugeConfig[] = [
     getValue: (kpi) => extractFirstNumericValue(kpi.mttr) ?? 0,
     getScale: () => ({ min: 0, max: 24 }),
     formatValue: (kpi) => kpi.mttr,
-    caption: () => "Target ≤ 24 hrs mean repair time",
+    caption: () => "Target <= 24 hrs mean repair time",
     helper: (kpi) =>
       `${(extractFirstNumericValue(kpi.mttr) ?? 0).toFixed(2)} hrs average repair`,
     sparkline: (rows) =>
@@ -4402,7 +4413,7 @@ const PERFORMANCE_GAUGE_CONFIG: PerformanceGaugeConfig[] = [
     getValue: (kpi) => extractFirstNumericValue(kpi.mtbf) ?? 0,
     getScale: () => ({ min: 0, max: 168 }),
     formatValue: (kpi) => kpi.mtbf,
-    caption: () => "Target ≥ 168 hrs between failures",
+    caption: () => "Target >= 168 hrs between failures",
     helper: (kpi) =>
       `${(extractFirstNumericValue(kpi.mtbf) ?? 0).toFixed(2)} hrs between failures`,
     sparkline: (rows) => rows.map((r) => r.availHours),
@@ -4417,7 +4428,7 @@ const PERFORMANCE_GAUGE_CONFIG: PerformanceGaugeConfig[] = [
     getValue: (kpi) => extractFirstNumericValue(kpi.mttf) ?? 0,
     getScale: () => ({ min: 0, max: 192 }),
     formatValue: (kpi) => kpi.mttf,
-    caption: () => "Target ≥ 192 hrs expected failure-free time",
+    caption: () => "Target >= 192 hrs expected failure-free time",
     helper: (kpi) =>
       `${(extractFirstNumericValue(kpi.mttf) ?? 0).toFixed(2)} hrs uptime horizon`,
     sparkline: (rows) =>
@@ -4731,7 +4742,73 @@ function PartnerLogoStrip() {
 }
 
 function HeaderRightLogo() {
-  return null;
+  return (
+    <div
+      className="header-logo-group header-logo-group--right"
+      aria-label="Saudi Energy logo"
+    >
+      <img
+        src="/assets/se.png"
+        alt="Saudi Energy"
+        className="header-logo-img se-logo se-logo--hero"
+      />
+    </div>
+  );
+}
+function ReportFileIcon({ kind }: { kind: "xlsx" | "pdf" | "ppt" | "png" }) {
+  if (kind === "png") {
+    return (
+      <svg
+        className="file-export-svg file-export-svg-png"
+        viewBox="0 0 64 64"
+        aria-hidden="true"
+      >
+        <path className="file-page" d="M14 5h25l11 11v43H14Z" />
+        <path className="file-fold" d="M39 5v12h11" />
+        <circle className="file-mark" cx="25" cy="24" r="5" />
+        <path className="file-mark" d="m18 49 11-13 7 8 5-6 8 11Z" />
+      </svg>
+    );
+  }
+
+  const meta = {
+    xlsx: { color: "#21a366", label: "XLS" },
+    pdf: { color: "#ef4444", label: "PDF" },
+    ppt: { color: "#f97316", label: "PPT" },
+  }[kind];
+
+  return (
+    <svg
+      className={`file-export-svg file-export-svg-${kind}`}
+      viewBox="0 0 64 64"
+      aria-hidden="true"
+      style={{ "--file-color": meta.color } as CSSProperties}
+    >
+      <path className="file-page" d="M14 5h25l11 11v43H14Z" />
+      <path className="file-fold" d="M39 5v12h11" />
+      <path className="file-lines" d="M22 24h18M22 31h18M22 38h12" />
+      {kind === "xlsx" && (
+        <path
+          className="file-grid"
+          d="M22 23h20M22 30h20M22 37h20M28 20v22M36 20v22"
+        />
+      )}
+      {kind === "ppt" && (
+        <path className="file-chart" d="M25 41V29h5v12m4 0V24h5v17" />
+      )}
+      <rect
+        className="file-ribbon"
+        x="6"
+        y="34"
+        width="52"
+        height="20"
+        rx="3"
+      />
+      <text className="file-label" x="32" y="49" textAnchor="middle">
+        {meta.label}
+      </text>
+    </svg>
+  );
 }
 
 function SelectFilter({
@@ -5007,7 +5084,7 @@ function MultiSelectFilter({
               className="multi-select-clear"
               onClick={() => onChange([])}
             >
-              ✕ Clear
+              Clear
             </button>
           )}
           {options.map((opt) => (
@@ -5048,10 +5125,10 @@ function MultiSelectFilter({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // The default export Home() component is IDENTICAL to your original file.
-// Paste the entire "export default function Home() { … }" block here unchanged.
-// ─────────────────────────────────────────────────────────────────────────────
+// Paste the entire "export default function Home() { â€¦ }" block here unchanged.
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function Home() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const addRegionRef = useRef<HTMLInputElement | null>(null);
@@ -5074,6 +5151,10 @@ export default function Home() {
   const [perfMonths, setPerfMonths] = useState<string[]>([]);
   const [perfRegions, setPerfRegions] = useState<string[]>([]);
   const [dashboardTheme, setDashboardTheme] = useState<DashboardTheme>("dark");
+  const [isAuthenticated, setIsAuthenticated] = useState(getInitialLoginState);
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [collapsedSections, setCollapsedSections] = useState<
     Record<DashboardSectionId, boolean>
   >(INITIAL_COLLAPSED_SECTIONS);
@@ -5098,25 +5179,77 @@ export default function Home() {
   const [manualSaveStatus, setManualSaveStatus] = useState("");
   const [existingTtSearch, setExistingTtSearch] = useState("");
   const [existingTtLoading, setExistingTtLoading] = useState(false);
-  const activeThemeImage = THEME_IMAGES.dark;
+  const activeThemeImage = THEME_IMAGES[dashboardTheme];
   const heroThemeOverlay =
-    dashboardTheme === "dark"
-      ? "linear-gradient(90deg, rgba(3,7,18,.94) 0%, rgba(3,7,18,.70) 42%, rgba(3,7,18,.18) 100%)"
-      : "linear-gradient(90deg, rgba(255,255,255,.55) 0%, rgba(248,250,252,.36) 42%, rgba(255,255,255,.10) 100%)";
+    "linear-gradient(90deg, rgba(0,0,0,0), rgba(0,0,0,0))";
   const ribbonThemeOverlay =
-    dashboardTheme === "dark"
-      ? "linear-gradient(90deg, rgba(4,13,31,.88), rgba(4,13,31,.70))"
-      : "linear-gradient(90deg, rgba(255,255,255,.48), rgba(248,250,252,.28))";
+    "linear-gradient(90deg, rgba(0,0,0,0), rgba(0,0,0,0))";
+  function handleLoginSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const usernameMatches =
+      loginUsername.trim().toLowerCase() === DASHBOARD_LOGIN_USERNAME;
+    const passwordMatches = loginPassword === DASHBOARD_LOGIN_PASSWORD;
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // TABLE COLUMN WIDTHS — edit the px values below to size each column.
+    if (!usernameMatches || !passwordMatches) {
+      setLoginError("Invalid username or password.");
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(LOGIN_SESSION_KEY, "authenticated");
+    }
+    setLoginError("");
+    setLoginPassword("");
+    setIsAuthenticated(true);
+  }
+
+  function handleLogout() {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(LOGIN_SESSION_KEY);
+    }
+    setIsAuthenticated(false);
+    setLoginPassword("");
+  }
+
+  const renderThemeToggle = (modifierClass = "") => (
+    <div
+      className={`theme-toggle no-print ${modifierClass}`}
+      aria-label="Dashboard theme selector"
+    >
+      <button
+        type="button"
+        className="active"
+        onClick={() =>
+          setDashboardTheme((prev) => (prev === "dark" ? "light" : "dark"))
+        }
+        aria-pressed={dashboardTheme === "light"}
+        aria-label={`Switch to ${dashboardTheme === "dark" ? "light" : "dark"} theme`}
+        title={`Switch to ${dashboardTheme === "dark" ? "Light" : "Dark"} Theme`}
+      >
+        {dashboardTheme === "dark" ? (
+          <>
+            <Moon size={18} strokeWidth={2.4} />
+            <span>Dark Theme</span>
+          </>
+        ) : (
+          <>
+            <Sun size={18} strokeWidth={2.4} />
+            <span>Light Theme</span>
+          </>
+        )}
+      </button>
+    </div>
+  );
+
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // TABLE COLUMN WIDTHS â€” edit the px values below to size each column.
   //
-  //   • Each header has a clear `width =` entry.
-  //   • Resizable columns: user can drag the right edge to adjust at runtime.
-  //   • Wrap columns:      listed in *_WRAP_COLUMNS — no drag handle, text wraps.
-  // ══════════════════════════════════════════════════════════════════════════
+  //   â€¢ Each header has a clear `width =` entry.
+  //   â€¢ Resizable columns: user can drag the right edge to adjust at runtime.
+  //   â€¢ Wrap columns:      listed in *_WRAP_COLUMNS â€” no drag handle, text wraps.
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-  // ── Tickets table — one entry per header in DISTINCT_REPORT_HEADERS ───────
+  // â”€â”€ Tickets table â€” one entry per header in DISTINCT_REPORT_HEADERS â”€â”€â”€â”€â”€â”€â”€
   const TICKETS_COLUMN_WIDTHS: Record<string, number> = {
     "#": 56, // width =
     "Site ID": 110, // width =
@@ -5138,7 +5271,7 @@ export default function Home() {
     Action: 400, // width =
   };
 
-  // ── Performance table — one entry per header in PERF_REPORT_HEADERS ───────
+  // â”€â”€ Performance table â€” one entry per header in PERF_REPORT_HEADERS â”€â”€â”€â”€â”€â”€â”€
   const PERF_COLUMN_WIDTHS: Record<string, number> = {
     "S No": 20, // width =
     "Site ID": 80, // width =
@@ -5151,7 +5284,7 @@ export default function Home() {
     "Sites Down, hrs": 120, // width =
   };
 
-  // ── Runtime override maps — populated by drag handles, fall through to config above
+  // â”€â”€ Runtime override maps â€” populated by drag handles, fall through to config above
   const [ticketColumnWidths, setTicketColumnWidths] = useState<
     Record<string, number>
   >({});
@@ -5164,7 +5297,7 @@ export default function Home() {
   const getPerfColumnWidth = (h: string): number =>
     perfColumnWidths[h] ?? PERF_COLUMN_WIDTHS[h] ?? 130;
 
-  // Shared resize handler factory — wires a header name to the right state setter.
+  // Shared resize handler factory â€” wires a header name to the right state setter.
   function createResizeHandler(
     setWidths: React.Dispatch<React.SetStateAction<Record<string, number>>>,
     getCurrent: (h: string) => number,
@@ -6540,7 +6673,7 @@ export default function Home() {
       monthlyResolutionMap.set(key, bucket);
     });
 
-    // Pending-age aggregate — all Pending tickets land in current calendar month.
+    // Pending-age aggregate â€” all Pending tickets land in current calendar month.
     const nowDate = new Date();
     const currentMonthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, "0")}`;
     const pendingSamples = primaryRows
@@ -7491,19 +7624,25 @@ export default function Home() {
       panel.id = `section-control-${section.id}`;
       panel.className =
         "section-control-panel section-control-panel-tab-active no-print";
+      const iconSvg = {
+        png: '<svg class="file-export-svg file-export-svg-png" viewBox="0 0 64 64" aria-hidden="true"><path class="file-page" d="M14 5h25l11 11v43H14Z"/><path class="file-fold" d="M39 5v12h11"/><circle class="file-mark" cx="25" cy="24" r="5"/><path class="file-mark" d="m18 49 11-13 7 8 5-6 8 11Z"/></svg>',
+        excel:
+          '<svg class="file-export-svg file-export-svg-xlsx" viewBox="0 0 64 64" aria-hidden="true" style="--file-color:#21a366"><path class="file-page" d="M14 5h25l11 11v43H14Z"/><path class="file-fold" d="M39 5v12h11"/><path class="file-grid" d="M22 24h20M22 32h20M22 40h20M28 20v26M36 20v26"/><rect class="file-ribbon" x="6" y="34" width="52" height="20" rx="3"/><text class="file-label" x="32" y="49" text-anchor="middle">XLS</text></svg>',
+        top: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>',
+      };
       panel.innerHTML = `
         <div class="section-control-title section-control-title-static">
           <span class="section-control-tab-dot" aria-hidden="true"></span>
           <span class="section-control-title-text">${section.title}</span>
         </div>
         <div class="section-control-actions">
-          <button type="button" class="section-tool-button" data-action="png">Export PNG</button>
+          <button type="button" class="section-tool-button" data-action="png">${iconSvg.png}<span>PNG</span></button>
           ${
             showExcel
-              ? '<button type="button" class="section-tool-button" data-action="excel">Export Excel</button>'
+              ? `<button type="button" class="section-tool-button" data-action="excel">${iconSvg.excel}<span>Excel</span></button>`
               : ""
           }
-          <button type="button" class="section-tool-button" data-action="top">Top Nav</button>
+          <button type="button" class="section-tool-button" data-action="top">${iconSvg.top}<span>Top Nav</span></button>
         </div>
       `;
 
@@ -7529,7 +7668,7 @@ export default function Home() {
         } finally {
           if (pngButton) {
             pngButton.disabled = false;
-            pngButton.textContent = "Export PNG";
+            pngButton.innerHTML = `${iconSvg.png}<span>PNG</span>`;
           }
         }
       };
@@ -7614,7 +7753,8 @@ export default function Home() {
       button.type = "button";
       button.className = "chart-export-png-button no-print";
       button.title = `Export ${title} as PNG`;
-      button.textContent = "PNG";
+      button.innerHTML =
+        '<svg class="file-export-svg file-export-svg-png" viewBox="0 0 64 64" aria-hidden="true"><path class="file-page" d="M14 5h25l11 11v43H14Z"/><path class="file-fold" d="M39 5v12h11"/><circle class="file-mark" cx="25" cy="24" r="5"/><path class="file-mark" d="m18 49 11-13 7 8 5-6 8 11Z"/></svg><span>PNG</span>';
       const handler = (event: MouseEvent) => {
         event.preventDefault();
         event.stopPropagation();
@@ -8184,6 +8324,24 @@ export default function Home() {
       setManualSaveLoading(false);
     }
   };
+  const getDashboardSectionIcon = (sectionId: DashboardSectionId) => {
+    const Icon =
+      sectionId === "input"
+        ? FileSpreadsheet
+        : sectionId === "performanceKpis"
+          ? Activity
+          : sectionId === "ticketsTable"
+            ? FileSpreadsheet
+            : sectionId === "overviewCharts"
+              ? BarChart3
+              : sectionId === "executive"
+                ? ShieldAlert
+                : sectionId === "trendCharts"
+                  ? BarChart3
+                  : Presentation;
+
+    return <Icon size={15} strokeWidth={2.5} aria-hidden="true" />;
+  };
   const filtersPanel =
     data &&
     activeDashboardTab !== "reports" &&
@@ -8289,10 +8447,82 @@ export default function Home() {
       </section>
     ) : null;
 
+  if (!isAuthenticated) {
+    return (
+      <main
+        className="dashboard-shell dashboard-login-shell"
+        data-dashboard-theme={dashboardTheme}
+      >
+        <section
+          className="dashboard-login-panel"
+          style={{
+            backgroundImage: `${heroThemeOverlay}, url(${activeThemeImage})`,
+          }}
+        >
+          <div className="dashboard-login-brand">
+            <img src={nascoLogoSrc} alt="NASCO" />
+            <div>
+              <span>DMR Ticketing Dashboard</span>
+              <strong>Secure access</strong>
+            </div>
+          </div>
+
+          <form className="dashboard-login-card" onSubmit={handleLoginSubmit}>
+            <div className="dashboard-login-heading">
+              <ShieldAlert size={34} />
+              <div>
+                <span>Welcome Back</span>
+                <h1>Sign in</h1>
+              </div>
+            </div>
+
+            <label className="dashboard-login-field">
+              <span>Username</span>
+              <input
+                type="text"
+                value={loginUsername}
+                onChange={(event) => {
+                  setLoginUsername(event.target.value);
+                  setLoginError("");
+                }}
+                autoComplete="username"
+                autoFocus
+              />
+            </label>
+
+            <label className="dashboard-login-field">
+              <span>Password</span>
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(event) => {
+                  setLoginPassword(event.target.value);
+                  setLoginError("");
+                }}
+                autoComplete="current-password"
+              />
+            </label>
+
+            {loginError && (
+              <p className="dashboard-login-error">{loginError}</p>
+            )}
+
+            <div className="dashboard-login-actions">
+              <button type="submit" className="primary-button">
+                Login
+              </button>
+              {renderThemeToggle("theme-toggle--login")}
+            </div>
+          </form>
+        </section>
+      </main>
+    );
+  }
   return (
     <main
       className={`dashboard-shell ${data ? "dashboard-shell--loaded" : "dashboard-shell--welcome"}`}
       data-dashboard-theme={dashboardTheme}
+      data-active-tab={activeDashboardTab}
     >
       <section
         className="hero-panel"
@@ -8313,35 +8543,7 @@ export default function Home() {
             <HeaderRightLogo />
           </div>
           <div className="topbar-actions">
-            <div
-              className="theme-toggle no-print"
-              aria-label="Dashboard theme selector"
-            >
-              <button
-                type="button"
-                className="active"
-                onClick={() =>
-                  setDashboardTheme((prev) =>
-                    prev === "dark" ? "light" : "dark",
-                  )
-                }
-                aria-pressed={dashboardTheme === "light"}
-                aria-label={`Switch to ${dashboardTheme === "dark" ? "light" : "dark"} theme`}
-                title={`Switch to ${dashboardTheme === "dark" ? "Light" : "Dark"} Theme`}
-              >
-                {dashboardTheme === "dark" ? (
-                  <>
-                    <Moon size={18} strokeWidth={2.4} />
-                    <span>Dark Theme</span>
-                  </>
-                ) : (
-                  <>
-                    <Sun size={18} strokeWidth={2.4} />
-                    <span>Light Theme</span>
-                  </>
-                )}
-              </button>
-            </div>
+            {renderThemeToggle("theme-toggle--topbar")}
             {data && (
               <button
                 type="button"
@@ -8379,6 +8581,14 @@ export default function Home() {
                 <Printer size={30} /> Dashboard PDF
               </button>
             )}
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={handleLogout}
+              title="Logout from the dashboard"
+            >
+              <LogOut size={30} /> Logout
+            </button>
           </div>
         </nav>
         {data && (
@@ -9129,7 +9339,7 @@ export default function Home() {
                   <span>Monthly Tickets Export</span>
 
                   <strong>
-                    Total Tickets —{" "}
+                    Total Tickets -{" "}
                     {exportMonths.length === 0
                       ? "All Months"
                       : exportMonths.length === 1
@@ -9194,7 +9404,7 @@ export default function Home() {
                       }
                     }}
                   >
-                    <FileSpreadsheet size={16} /> Excel
+                    <ReportFileIcon kind="xlsx" /> Excel
                   </button>
                   <button
                     className="ghost-button"
@@ -9202,7 +9412,7 @@ export default function Home() {
                       exportPdf(monthlyExportTickets, exportMonths[0] ?? "all")
                     }
                   >
-                    <Printer size={16} /> PDF
+                    <ReportFileIcon kind="pdf" /> PDF
                   </button>
                   {/* ====== ADD YOUR NEW PPT BUTTON HERE ====== */}
                   <button
@@ -9228,7 +9438,7 @@ export default function Home() {
                     }}
                   >
                     {" "}
-                    <Presentation size={16} /> PPT{" "}
+                    <ReportFileIcon kind="ppt" /> PPT{" "}
                   </button>
                 </div>
               </aside>
@@ -9254,7 +9464,7 @@ export default function Home() {
                 >
                   <span>Monthly Performance</span>
                   <strong>
-                    Sites Performance —{" "}
+                    Sites Performance -{" "}
                     {perfMonths.length === 0
                       ? "All Months"
                       : perfMonths.length === 1
@@ -9315,7 +9525,7 @@ export default function Home() {
                       )
                     }
                   >
-                    <FileSpreadsheet size={16} /> Excel
+                    <ReportFileIcon kind="xlsx" /> Excel
                   </button>
                   <button
                     className="ghost-button"
@@ -9323,7 +9533,7 @@ export default function Home() {
                       exportPerfPdf(perfRows, perfMonths[0] ?? "all")
                     }
                   >
-                    <Printer size={16} /> PDF
+                    <ReportFileIcon kind="pdf" /> PDF
                   </button>
                   <button
                     className="ghost-button"
@@ -9338,7 +9548,7 @@ export default function Home() {
                       exportPerfPpt(perfRows, lbl, executiveInsights);
                     }}
                   >
-                    <Presentation size={16} /> PPT
+                    <ReportFileIcon kind="ppt" /> PPT
                   </button>
                 </div>
               </aside>
@@ -9392,7 +9602,7 @@ export default function Home() {
                     }
                     title="Export executive stat cards and high-risk sites to Excel"
                   >
-                    <FileSpreadsheet size={16} /> Excel
+                    <ReportFileIcon kind="xlsx" /> Excel
                   </button>
                 </div>
               </aside>
@@ -9447,7 +9657,7 @@ export default function Home() {
                     }
                     title="Export operational quality KPI, chart data, repeated sites, and actions to Excel"
                   >
-                    <FileSpreadsheet size={16} /> Excel
+                    <ReportFileIcon kind="xlsx" /> Excel
                   </button>
                 </div>
               </aside>{" "}
@@ -9489,9 +9699,12 @@ export default function Home() {
             }}
           >
             <div className="upload-copy">
-              <span className="section-kicker">
-                <UploadCloud size={14} /> Workbooks Upload
-              </span>
+              <div className="upload-kicker-row">
+                <span className="section-kicker">
+                  <UploadCloud size={14} /> Workbooks Upload
+                </span>
+                {renderThemeToggle("theme-toggle--upload")}
+              </div>
               <h2>Load the tickets workbook(s)</h2>
               <p>
                 Start with the main Follow-Up Sheets workbook, then add regional
@@ -9567,7 +9780,7 @@ export default function Home() {
               </div>
             </div>
             <div className="upload-visual">
-              <img src={activeThemeImage} alt="Dashboard workbook preview" />
+              <img src="/h.png" alt="Dashboard workbook preview" />
             </div>
           </div>
         </section>
@@ -9577,317 +9790,116 @@ export default function Home() {
             ref={statsRef}
             id="section-kpis"
             className="stats-grid workbook-cards dashboard-section-content-block"
-            style={{
-              backgroundImage: `${ribbonThemeOverlay}, url(${activeThemeImage})`,
-              backgroundSize: "100% auto",
-              backgroundPosition: "center top",
-              backgroundRepeat: "no-repeat",
-              display: "grid",
-              // 48 columns lets every card span 6 tracks: 8 cards per row, 2 rows total.
-              gridTemplateColumns: "repeat(48, 1fr)",
-              gap: "16px",
-              width: "100%",
-              boxSizing: "border-box",
-              textAlign: "center",
-              alignItems: "stretch",
-            }}
           >
             {/* Standard StatCards */}
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Total TT's`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: "bold",
-                    color: "#ff0000",
-                  }}
-                >
-                  {analytics.totalUnique.toLocaleString()}
-                </span>
-              }
-              // note={<span style={{ fontSize: "14px", fontWeight: 500, color: "#00ff15" }}> TT's Opened</span>}
+              label="Total TT's"
+              value={analytics.totalUnique.toLocaleString()}
+              // note={<span>TT's Opened</span>}
               icon={Layers3}
               tone="#fff200"
               onClick={() => {
                 setFilters(EMPTY_FILTERS);
                 setTablePage(1);
               }}
-              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Closed TT's`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: "bold",
-                    color: "#ff0000",
-                  }}
-                >
-                  {closed.toLocaleString()}
-                </span>
-              }
-              // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Closed TT's</span>}
+              label="Closed TT's"
+              value={closed.toLocaleString()}
+              // note={<span>Closed TT's</span>}
               icon={CheckCircle2}
               tone="#34d399"
               onClick={() => {
                 setFilters({ ...EMPTY_FILTERS, status: ["Closed"] });
                 setTablePage(1);
               }}
-              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Pending TT's`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: "bold",
-                    color: "#ff0000",
-                  }}
-                >
-                  {pending.toLocaleString()}
-                </span>
-              }
-              // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Pending TT's</span>}
+              label="Pending TT's"
+              value={pending.toLocaleString()}
+              // note={<span>Pending TT's</span>}
               icon={ShieldAlert}
               tone="#f59e0b"
               onClick={() => {
                 setFilters({ ...EMPTY_FILTERS, status: ["Pending"] });
                 setTablePage(1);
               }}
-              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Resolved TT's`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: "bold",
-                    color: "#ff0000",
-                  }}
-                >
-                  {resolved.toLocaleString()}
-                </span>
-              }
-              // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Resolved TT's</span>}
+              label="Resolved TT's"
+              value={resolved.toLocaleString()}
+              // note={<span>Resolved TT's</span>}
               icon={CheckCircle2}
               tone="#60a5fa"
               onClick={() => {
                 setFilters({ ...EMPTY_FILTERS, status: ["Resolved"] });
                 setTablePage(1);
               }}
-              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Critical TT's`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: "bold",
-                    color: "#ff0000",
-                  }}
-                >
-                  {critical.toLocaleString()}
-                </span>
-              }
-              // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Critical TT's</span>}
+              label="Critical TT's"
+              value={critical.toLocaleString()}
+              // note={<span>Critical TT's</span>}
               icon={AlertTriangle}
               tone="#ef4444"
               onClick={() => {
                 setFilters({ ...EMPTY_FILTERS, severity: ["Critical"] });
                 setTablePage(1);
               }}
-              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Major TT's`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: "bold",
-                    color: "#ff0000",
-                  }}
-                >
-                  {major.toLocaleString()}
-                </span>
-              }
-              // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Major TT's</span>}
+              label="Major TT's"
+              value={major.toLocaleString()}
+              // note={<span>Major TT's</span>}
               icon={Activity}
               tone="#f59e0b"
               onClick={() => {
                 setFilters({ ...EMPTY_FILTERS, severity: ["Major"] });
                 setTablePage(1);
               }}
-              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Minor TT's`}</span>
-              }
+              label="Minor TT's"
               value={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: "bold",
-                    color: "#ff0000",
-                  }}
-                >
-                  {minor !== undefined && minor !== null
-                    ? minor.toLocaleString()
-                    : "0"}
-                </span>
+                minor !== undefined && minor !== null
+                  ? minor.toLocaleString()
+                  : "0"
               }
-              // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Minor TT's</span>}
+              // note={<span>Minor TT's</span>}
               icon={CircleDot}
               tone="#22d3ee"
               onClick={() => {
                 setFilters({ ...EMPTY_FILTERS, severity: ["Minor"] });
                 setTablePage(1);
               }}
-              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Region Sites`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: 1000,
-                    color: "#ff0000",
-                  }}
-                >
-                  {analytics.regionSiteTotal.toLocaleString()}
-                </span>
-              }
-              // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>{`${analytics.uniqueSites.toLocaleString()} Unique RF Sites`}</span>}
+              label="Region Sites"
+              value={analytics.regionSiteTotal.toLocaleString()}
+              // note={<span>{`${analytics.uniqueSites.toLocaleString()} Unique RF Sites`}</span>}
               icon={BarChart3}
               tone="#60a5fa"
-              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Regions`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: 1000,
-                    color: "#ff0000",
-                  }}
-                >
-                  {analytics.region.length.toLocaleString()}
-                </span>
-              }
-              // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Total Regions</span>}
+              label="Regions"
+              value={analytics.region.length.toLocaleString()}
+              // note={<span>Total Regions</span>}
               icon={CircleDot}
               tone="#60a5fa"
-              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Non-Service Impact`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: 1000,
-                    color: "#ff0000",
-                  }}
-                >
-                  {nonServiceImpact.toLocaleString()}
-                </span>
-              }
-              // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>No Service Impact</span>}
+              label="Non-Service Impact"
+              value={nonServiceImpact.toLocaleString()}
+              // note={<span>No Service Impact</span>}
               icon={CloudOff}
               tone="#94a3b8"
               onClick={() => {
@@ -9897,76 +9909,26 @@ export default function Home() {
                 });
                 setTablePage(1);
               }}
-              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Service Impact`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: 1000,
-                    color: "#ff0000",
-                  }}
-                >
-                  {serviceImpact.toLocaleString()}
-                </span>
-              }
-              // note={<span style={{ fontSize: "14px", fontWeight: 1000, color: "#00ff15" }}>Exact Service Impact</span>}
+              label="Service Impact"
+              value={serviceImpact.toLocaleString()}
+              // note={<span>Exact Service Impact</span>}
               icon={Network}
               tone="#ef4444"
               onClick={() => {
                 setFilters({ ...EMPTY_FILTERS, impact: ["Service Impact"] });
                 setTablePage(1);
               }}
-              style={{ gridColumn: "span 6" }}
             />
 
-            {/* Top RCA by Tickets Count — direct grid child so it stretches to the same height as siblings */}
+            {/* Top RCA by Tickets Count â€” direct grid child so it stretches to the same height as siblings */}
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Top RCA / TT's`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "18px",
-                    fontWeight: 1000,
-                    color: "#ff0000",
-                    display: "block",
-                    wordBreak: "keep-all",
-                    whiteSpace: "normal",
-                    lineHeight: "1.3",
-                  }}
-                >
-                  {analytics.topRcaByCount.name || "N/A"}
-                </span>
-              }
+              label="Top RCA / TT's"
+              value={analytics.topRcaByCount.name || "N/A"}
               note={
-                <span
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                    marginTop: "4px",
-                    display: "block",
-                  }}
-                >
+                <span>
                   {analytics.topRcaByCount.value
                     ? `${analytics.topRcaByCount.value.toLocaleString()} Tickets`
                     : ""}
@@ -9975,161 +9937,42 @@ export default function Home() {
               icon={BarChart3}
               tone="#22d3ee"
               className="rca-inline-fix"
-              style={{
-                gridColumn: "span 6",
-                alignSelf: "stretch",
-                height: "auto",
-              }}
             />
 
             {/* Top RCA by Downtime */}
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Top RCA / Downtime`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#ff0000",
-                    display: "block",
-                    wordBreak: "keep-all",
-                    whiteSpace: "normal",
-                    lineHeight: "1.3",
-                  }}
-                >
-                  {analytics.topRcaByDowntime.name || "N/A"}
-                </span>
-              }
+              label="Top RCA / Downtime"
+              value={analytics.topRcaByDowntime.name || "N/A"}
               note={
-                <span
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                    marginTop: "4px",
-                    display: "block",
-                  }}
-                >
-                  {formatHours(analytics.topRcaByDowntime.value)}
-                </span>
+                <span>{formatHours(analytics.topRcaByDowntime.value)}</span>
               }
               icon={Activity}
               tone="#f59e0b"
-              style={{ gridColumn: "span 6" }}
             />
 
             {/* Highest MTTR RCA */}
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Highest MTTR RCA`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#ff0000",
-                    display: "block",
-                    wordBreak: "keep-all",
-                    whiteSpace: "normal",
-                    lineHeight: "1.3",
-                  }}
-                >
-                  {analytics.highestMttrRca.name || "N/A"}
-                </span>
-              }
-              note={
-                <span
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                    marginTop: "4px",
-                    display: "block",
-                  }}
-                >
-                  {formatHours(analytics.highestMttrRca.value)}
-                </span>
-              }
+              label="Highest MTTR RCA"
+              value={analytics.highestMttrRca.name || "N/A"}
+              note={<span>{formatHours(analytics.highestMttrRca.value)}</span>}
               icon={AlertTriangle}
               tone="#ef4444"
-              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "20px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`Repeated RCA/Sites`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: 1000,
-                    color: "#ff0000",
-                    display: "block",
-                    wordBreak: "keep-all",
-                    whiteSpace: "normal",
-                    lineHeight: "1.3",
-                  }}
-                >
-                  {analytics.repeatedRcaSites.toLocaleString()}
-                </span>
-              }
+              label="Repeated RCA/Sites"
+              value={analytics.repeatedRcaSites.toLocaleString()}
               note={<span />}
               icon={Network}
               tone="#a78bfa"
-              style={{ gridColumn: "span 6" }}
             />
 
             <StatCard
-              label={
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 1000,
-                    color: "#00ff15",
-                  }}
-                >{`RCA not Provided %`}</span>
-              }
-              value={
-                <span
-                  style={{
-                    fontSize: "30px",
-                    fontWeight: 1000,
-                    color: "#ff0000",
-                    display: "block",
-                    wordBreak: "keep-all",
-                    whiteSpace: "normal",
-                    lineHeight: "1.3",
-                  }}
-                >
-                  {analytics.rcaNotProvidedCount.toLocaleString()}
-                </span>
-              }
+              label="RCA not Provided %"
+              value={analytics.rcaNotProvidedCount.toLocaleString()}
               note={<span />}
               icon={ShieldAlert}
               tone="#ff0000"
-              style={{ gridColumn: "span 6" }}
             />
           </section>
 
@@ -10453,7 +10296,7 @@ export default function Home() {
                       disabled={!executiveRcaSlaRows.length}
                       title="Export repeated offender sites to Excel"
                     >
-                      <FileSpreadsheet size={16} /> Excel
+                      <ReportFileIcon kind="xlsx" /> Excel
                     </button>
                   </div>
                 </div>
@@ -10515,12 +10358,12 @@ export default function Home() {
             </section>
           </section>
 
-          {/* ══ Charts ══ */}
+          {/* â•â• Charts â•â• */}
           <div
             id="section-overview-charts"
             className="chart-2col dashboard-chart-grid dashboard-section-content-block"
           >
-            {/* ── Column 1 — five charts, one per row ─────────────────────────── */}
+            {/* â”€â”€ Column 1 â€” five charts, one per row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <article
               className="glass-card"
               style={{ gridColumn: "1 / 7", gridRow: 2 }}
@@ -10987,7 +10830,7 @@ export default function Home() {
                                       `${value.toFixed(2)} h (n=${p.pendingCount ?? 0}, total ${p.pendingTotal ?? 0} h)`,
                                       name,
                                     ]
-                                  : ["—", name];
+                                  : ["-", name];
                               }
                               return [value, name];
                             }}
@@ -11031,7 +10874,7 @@ export default function Home() {
               </div>
             </article>
 
-            {/* ── Column 2 — five charts stacked vertically, spans column 1 rows 1-4 ── */}
+            {/* â”€â”€ Column 2 â€” five charts stacked vertically, spans column 1 rows 1-4 â”€â”€ */}
             <div
               style={{
                 display: "contents",
@@ -11294,7 +11137,7 @@ export default function Home() {
             </div>
           </div>
           {/* /chart-2col */}
-          {/* ══ Full-width + bottom-row charts ═══════════════════════════════════ */}
+          {/* â•â• Full-width + bottom-row charts â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
           <section
             id="section-trend-charts"
             className="chart-mosaic dashboard-section-content-block"
@@ -11925,9 +11768,9 @@ export default function Home() {
                   className="ghost-button"
                   onClick={() => exportExcel(filteredTickets)}
                   disabled={!filteredTickets.length}
-                  title="Export filtered tickets table to Excel"
+                  title="Download filtered tickets table to Excel"
                 >
-                  <FileSpreadsheet size={16} /> Excel
+                  <ReportFileIcon kind="xlsx" /> Excel
                 </button>
               </div>
             </div>
@@ -11935,8 +11778,7 @@ export default function Home() {
               <div ref={tableRef}>
                 <div style={{ marginBottom: "12px" }}>
                   <button className="ghost-button" onClick={scrollToTopCards}>
-                    {" "}
-                    ↑ Back to Summary{" "}
+                    <ArrowUp size={16} /> Back to Summary
                   </button>
                 </div>
 
@@ -12016,8 +11858,13 @@ export default function Home() {
                         tablePage * TABLE_PAGE_SIZE,
                       )
                       .map((ticket, index) => {
+                        const absoluteIndex =
+                          (tablePage - 1) * TABLE_PAGE_SIZE + index;
                         const row = ticket.primary;
-                        const reportRow = distinctReportRow(ticket, index);
+                        const reportRow = distinctReportRow(
+                          ticket,
+                          absoluteIndex,
+                        );
                         const siteIds = Array.from(ticket.siteIds).filter(
                           Boolean,
                         );
@@ -12040,7 +11887,7 @@ export default function Home() {
                         ]);
 
                         // Every cell follows the same pattern:
-                        //   <td>  →  <div width=col-width, flex-column, overflow:hidden>  →  <span overflow:ellipsis>
+                        //   <td>  â†’  <div width=col-width, flex-column, overflow:hidden>  â†’  <span overflow:ellipsis>
                         // Outer <td> keeps `title` for hover-tooltip; inner div constrains the visual width.
                         const baseStyle: React.CSSProperties = {
                           verticalAlign: "top",
@@ -12140,7 +11987,7 @@ export default function Home() {
                                 );
                               }
 
-                              // Pill: Severity / Status — the pill itself replaces the span.
+                              // Pill: Severity / Status â€” the pill itself replaces the span.
                               if (
                                 header === "Severity" ||
                                 header === "Status"
@@ -12196,14 +12043,15 @@ export default function Home() {
                   disabled={tablePage <= 1}
                   onClick={() => setTablePage(1)}
                 >
-                  «
+                  <ChevronLeft size={16} />
+                  <ChevronLeft size={16} />
                 </button>
                 <button
                   className="ghost-button"
                   disabled={tablePage <= 1}
                   onClick={() => setTablePage((p) => p - 1)}
                 >
-                  ‹ Prev
+                  <ChevronLeft size={16} /> Prev
                 </button>
                 {Array.from(
                   {
@@ -12250,7 +12098,7 @@ export default function Home() {
                   }
                   onClick={() => setTablePage((p) => p + 1)}
                 >
-                  Next ›
+                  Next <ChevronRight size={16} />
                 </button>
                 <button
                   className="ghost-button"
@@ -12264,7 +12112,8 @@ export default function Home() {
                     )
                   }
                 >
-                  »
+                  <ChevronRight size={16} />
+                  <ChevronRight size={16} />
                 </button>
               </div>
             )}
@@ -12286,7 +12135,7 @@ export default function Home() {
                         ? formatMonthMMMMYYYY(perfMonths[0])
                         : `${perfMonths.length} months`}
                     {perfRegions.length > 0
-                      ? ` — ${perfRegions.join(", ")}`
+                      ? ` - ${perfRegions.join(", ")}`
                       : ""}
                   </h2>
                   <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 4 }}>
@@ -12312,8 +12161,7 @@ export default function Home() {
               </div>
               <div style={{ marginBottom: "12px" }}>
                 <button className="ghost-button" onClick={scrollToTopCards}>
-                  {" "}
-                  ↑ Back to Summary{" "}
+                  <ArrowUp size={16} /> Back to Summary
                 </button>
               </div>
               <div className="table-scroll">
@@ -12410,7 +12258,7 @@ export default function Home() {
                               : undefined; // no highlight at/above 99%
 
                         // Every cell follows the same pattern (matches the tickets table):
-                        //   <td>  →  <div width=col-width, flex-column, overflow:hidden>  →  <span overflow:ellipsis>
+                        //   <td>  â†’  <div width=col-width, flex-column, overflow:hidden>  â†’  <span overflow:ellipsis>
                         const baseStyle: React.CSSProperties = {
                           verticalAlign: "top",
                           padding: "10px 12px",
@@ -12517,7 +12365,7 @@ export default function Home() {
                           </tr>
                         );
                       })}
-                    {/* Total summary row — always computed over the full dataset, shown only on the last page */}
+                    {/* Total summary row â€” always computed over the full dataset, shown only on the last page */}
                     {perfPage ===
                       Math.max(
                         1,
@@ -12612,14 +12460,15 @@ export default function Home() {
                     disabled={perfPage <= 1}
                     onClick={() => setPerfPage(1)}
                   >
-                    «
+                    <ChevronLeft size={16} />
+                    <ChevronLeft size={16} />
                   </button>
                   <button
                     className="ghost-button"
                     disabled={perfPage <= 1}
                     onClick={() => setPerfPage((p) => p - 1)}
                   >
-                    ‹ Prev
+                    <ChevronLeft size={16} /> Prev
                   </button>
                   {Array.from(
                     { length: Math.ceil(perfRows.length / TABLE_PAGE_SIZE) },
@@ -12665,7 +12514,7 @@ export default function Home() {
                     }
                     onClick={() => setPerfPage((p) => p + 1)}
                   >
-                    Next ›
+                    Next <ChevronRight size={16} />
                   </button>
                   <button
                     className="ghost-button"
@@ -12676,7 +12525,8 @@ export default function Home() {
                       setPerfPage(Math.ceil(perfRows.length / TABLE_PAGE_SIZE))
                     }
                   >
-                    »
+                    <ChevronRight size={16} />
+                    <ChevronRight size={16} />
                   </button>
                 </div>
               )}

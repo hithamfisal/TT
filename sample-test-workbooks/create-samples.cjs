@@ -1,4 +1,4 @@
-const XLSX = require('xlsx');
+﻿const XLSX = require('xlsx');
 const fs = require('fs');
 const path = require('path');
 
@@ -57,57 +57,75 @@ function durationText(hours) {
 function siteName(siteNo, reg) {
   return `Sample ${pick(siteWords, siteNo)} ${pick(['Hub', 'Relay', 'Switching', 'Terminal', 'Node', 'Gateway'], siteNo)} (${reg})`;
 }
+const TT_PER_REGION = 50;
+const SITES_PER_REGION = 10;
+
+function regionSiteNumber(regs, region, siteIndex) {
+  const regionOffset = regs.indexOf(region) * SITES_PER_REGION;
+  return regionOffset + siteIndex;
+}
+
 function makeSites(regs) {
   const rows = [['#', 'Site ID', 'Site Name', 'Region']];
-  for (let i = 1; i <= 60; i += 1) {
-    const reg = regs[(i - 1) % regs.length];
-    rows.push([i, `RF Site ${pad(i)}`, siteName(i, reg), reg]);
+  let sn = 1;
+  for (const reg of regs) {
+    for (let siteIndex = 1; siteIndex <= SITES_PER_REGION; siteIndex += 1) {
+      const siteNo = regionSiteNumber(regs, reg, siteIndex);
+      rows.push([sn, `RF Site ${pad(siteNo)}`, siteName(siteNo, reg), reg]);
+      sn += 1;
+    }
   }
   return rows;
 }
 function makeRows(regs, ttPrefix) {
   const rows = [headers];
-  for (let i = 1; i <= 100; i += 1) {
-    const reg = regs[(i - 1) % regs.length];
-    const siteNo = ((i * 7) % 60) + 1;
-    const siteId = `RF Site ${pad(siteNo)}`;
-    const status = pick(statuses, i);
-    const start = new Date(2026, 4, 1 + ((i * 3) % 27), (i * 5) % 24, (i * 11) % 60);
-    const dur = status === 'Pending' ? null : Math.round((0.25 + rand(i) * 36) * 10) / 10;
-    const rec = dur === null ? null : new Date(start.getTime() + dur * 3600000);
-    const l3 = i % 4 === 0 ? new Date(start.getTime() + Math.round((0.2 + rand(i + 9) * 2) * 60) * 60000) : null;
-    const action = pick(actions, i);
-    rows.push([
-      i,
-      `${ttPrefix}${String(60000 + i).slice(-5)}`,
-      siteId,
-      siteName(siteNo, reg),
-      pick(resources, i),
-      pick(issues, i),
-      pick(severity, i),
-      reg,
-      dmy(start),
-      hm(start),
-      rec ? dmy(rec) : '',
-      rec ? hm(rec) : '',
-      l3 ? dmy(l3) : '',
-      l3 ? hm(l3) : '',
-      dur === null ? 'TT in progress' : durationText(dur),
-      dur === null ? '' : dur,
-      `Demo impacted object ${pad(i)}`,
-      pick(impacts, i),
-      String((i * 2) % 5),
-      pick(['Demo L2 Desk', 'Sample L3 Support', 'Test Vendor', 'Training Desk'], i),
-      pick(escalations, i),
-      status,
-      status === 'Pending' ? '' : dmy(rec),
-      status === 'Pending' ? 'Pending follow-up' : 'Closed after test restoration',
-      pick(teams, i),
-      `050000${pad(i)}`,
-      `${action[0]} completed for sample data`,
-      action[0],
-      action[1]
-    ]);
+  let sn = 1;
+  for (const reg of regs) {
+    const regionCode = reg.replace(/[^A-Z0-9]/gi, '').slice(0, 2).toUpperCase();
+    for (let regionRow = 1; regionRow <= TT_PER_REGION; regionRow += 1) {
+      const i = sn;
+      const siteIndex = ((regionRow - 1) % SITES_PER_REGION) + 1;
+      const siteNo = regionSiteNumber(regs, reg, siteIndex);
+      const siteId = `RF Site ${pad(siteNo)}`;
+      const status = pick(statuses, i);
+      const start = new Date(2026, 4, 1 + ((i * 3) % 27), (i * 5) % 24, (i * 11) % 60);
+      const dur = status === 'Pending' ? null : Math.round((0.25 + rand(i) * 36) * 10) / 10;
+      const rec = dur === null ? null : new Date(start.getTime() + dur * 3600000);
+      const l3 = i % 4 === 0 ? new Date(start.getTime() + Math.round((0.2 + rand(i + 9) * 2) * 60) * 60000) : null;
+      const action = pick(actions, i);
+      rows.push([
+        sn,
+        `${ttPrefix}${regionCode}${pad(regionRow)}`,
+        siteId,
+        siteName(siteNo, reg),
+        pick(resources, i),
+        pick(issues, i),
+        pick(severity, i),
+        reg,
+        dmy(start),
+        hm(start),
+        rec ? dmy(rec) : '',
+        rec ? hm(rec) : '',
+        l3 ? dmy(l3) : '',
+        l3 ? hm(l3) : '',
+        dur === null ? 'TT in progress' : durationText(dur),
+        dur === null ? '' : dur,
+        `Demo impacted object ${pad(i)}`,
+        pick(impacts, i),
+        String((i * 2) % 5),
+        pick(['Demo L2 Desk', 'Sample L3 Support', 'Test Vendor', 'Training Desk'], i),
+        pick(escalations, i),
+        status,
+        status === 'Pending' ? '' : dmy(rec),
+        status === 'Pending' ? 'Pending follow-up' : 'Closed after test restoration',
+        pick(teams, i),
+        `050000${pad(i)}`,
+        `${action[0]} completed for sample data`,
+        action[0],
+        action[1]
+      ]);
+      sn += 1;
+    }
   }
   return rows;
 }
@@ -137,3 +155,4 @@ for (const [file, regs, prefix] of groups) {
   XLSX.writeFile(wb, outputPath, { bookType: 'xlsx' });
   console.log(outputPath);
 }
+
