@@ -8492,3 +8492,410 @@ body:has(.dashboard-shell[data-dashboard-theme="dark"]) {
     grid-template-columns: 1fr !important;
   }
 }
+
+
+/* Enhanced corporate banner shared by upload and dashboard states */
+.dashboard-shell .hero-panel.hero-panel--corporate-banner,
+.dashboard-shell[data-dashboard-theme="light"] .hero-panel.hero-panel--corporate-banner {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  width: 100% !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.corporate-banner-header {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) minmax(0, 1fr) minmax(140px, 220px);
+  align-items: center;
+  min-height: 178px;
+  width: 100%;
+  padding: 24px clamp(16px, 3.4vw, 54px);
+  overflow: hidden;
+  isolation: isolate;
+  background: linear-gradient(135deg, #020f2e 0%, #041a4a 40%, #0a1f5c 60%, #0d0a1e 100%);
+  border-bottom: 1px solid rgba(125, 211, 252, 0.28);
+  box-shadow:
+    0 18px 44px rgba(2, 6, 23, 0.34),
+    inset 0 1px rgba(255, 255, 255, 0.1),
+    inset 0 -1px rgba(56, 189, 248, 0.22);
+}
+
+.corporate-banner-header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.2), transparent 26%),
+    radial-gradient(circle at 85% 52%, rgba(239, 68, 68, 0.19), transparent 25%),
+    linear-gradient(90deg, rgba(255,255,255,0.05), transparent 28%, transparent 72%, rgba(255,255,255,0.04));
+  mix-blend-mode: screen;
+}
+
+.corporate-banner-svg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.banner-logo-glow {
+  position: absolute;
+  z-index: 1;
+  width: clamp(170px, 22vw, 310px);
+  height: clamp(86px, 12vw, 150px);
+  border-radius: 999px;
+  filter: blur(14px);
+  opacity: 0.88;
+  pointer-events: none;
+}
+
+.banner-logo-glow--left {
+  left: clamp(10px, 3vw, 46px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.52), rgba(20, 184, 166, 0.14) 58%, transparent 72%);
+}
+
+.banner-logo-glow--right {
+  right: clamp(10px, 3vw, 46px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: radial-gradient(circle, rgba(239, 68, 68, 0.46), rgba(251, 113, 133, 0.14) 58%, transparent 72%);
+}
+
+.banner-logo-card {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  width: clamp(112px, 13vw, 172px);
+  height: clamp(66px, 7.6vw, 94px);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.banner-logo-card--right {
+  justify-self: end;
+  box-shadow: none;
+}
+
+.banner-logo-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 16px 34px rgba(0, 0, 0, 0.42));
+}
+
+.banner-title-lockup {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  text-align: center;
+  padding: 0 18px;
+}
+
+.dashboard-shell .banner-title-lockup h1,
+.dashboard-shell[data-dashboard-theme="light"] .banner-title-lockup h1 {
+  margin: 0 !important;
+  color: #ffffff !important;
+  font-family: "DM Sans", Inter, "Segoe UI", Arial, sans-serif !important;
+  font-size: 26px !important;
+  font-weight: 900 !important;
+  line-height: 1.08 !important;
+  letter-spacing: 0.01em !important;
+  text-align: center !important;
+  text-shadow:
+    0 0 10px rgba(56, 189, 248, 0.95),
+    0 0 24px rgba(37, 99, 235, 0.62),
+    0 2px 0 rgba(2, 6, 23, 0.5) !important;
+}
+
+.dashboard-shell .banner-title-lockup p,
+.dashboard-shell[data-dashboard-theme="light"] .banner-title-lockup p {
+  margin: 8px 0 0 !important;
+  color: rgba(0, 206, 209, 0.9) !important;
+  font-family: "DM Sans", Inter, "Segoe UI", Arial, sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0.16em !important;
+  text-transform: uppercase !important;
+  text-align: center !important;
+  text-shadow: 0 0 14px rgba(0, 206, 209, 0.42) !important;
+}
+
+.banner-control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px clamp(12px, 2.4vw, 34px);
+  background: var(--ui-panel, rgba(3, 13, 30, 0.94));
+  border-bottom: 1px solid var(--ui-control-border, rgba(103, 232, 249, 0.34));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.banner-control-bar__spacer {
+  flex: 1 1 auto;
+}
+
+.dashboard-shell .theme-toggle--banner-control {
+  margin-left: auto !important;
+}
+
+.dashboard-shell .theme-toggle--banner-control button {
+  min-height: 34px !important;
+  padding: 7px 13px !important;
+  border-radius: 999px !important;
+}
+
+.dashboard-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  padding: 8px clamp(12px, 2.4vw, 34px);
+  background: color-mix(in srgb, var(--ui-panel, rgba(3, 13, 30, 0.94)) 90%, transparent);
+  border-bottom: 1px solid rgba(125, 211, 252, 0.18);
+}
+
+.dashboard-shell .dashboard-action-bar .ghost-button,
+.dashboard-shell .dashboard-action-bar .primary-button {
+  min-height: 36px !important;
+  padding: 8px 12px !important;
+  border-radius: 999px !important;
+}
+
+.dashboard-shell .dashboard-action-bar svg {
+  width: 18px !important;
+  height: 18px !important;
+  flex: 0 0 18px !important;
+}
+
+@media (max-width: 760px) {
+  .corporate-banner-header {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "left right"
+      "title title";
+    row-gap: 16px;
+    min-height: 230px;
+    padding: 20px 14px 22px;
+  }
+
+  .banner-logo-card--left {
+    grid-area: left;
+    justify-self: start;
+  }
+
+  .banner-logo-card--right {
+    grid-area: right;
+    justify-self: end;
+  }
+
+  .banner-title-lockup {
+    grid-area: title;
+  }
+
+  .dashboard-shell .banner-title-lockup h1,
+  .dashboard-shell[data-dashboard-theme="light"] .banner-title-lockup h1 {
+    font-size: 23px !important;
+  }
+
+  .dashboard-shell .banner-title-lockup p,
+  .dashboard-shell[data-dashboard-theme="light"] .banner-title-lockup p {
+    font-size: 11.5px !important;
+    letter-spacing: 0.12em !important;
+  }
+
+  .dashboard-action-bar {
+    justify-content: stretch;
+  }
+
+  .dashboard-action-bar > button {
+    flex: 1 1 calc(50% - 8px);
+  }
+}
+
+/* Final banner stacking and no-overlap fixes */
+.dashboard-shell {
+  overflow-x: hidden !important;
+}
+
+.dashboard-shell .hero-panel.hero-panel--corporate-banner,
+.dashboard-shell[data-dashboard-theme="light"] .hero-panel.hero-panel--corporate-banner {
+  position: relative !important;
+  z-index: 80 !important;
+  flex: 0 0 auto !important;
+  margin: 0 !important;
+  overflow: visible !important;
+  isolation: isolate !important;
+}
+
+.dashboard-shell .corporate-banner-header {
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+.dashboard-shell .banner-control-bar {
+  position: relative !important;
+  z-index: 81 !important;
+  flex: 0 0 auto !important;
+}
+
+.dashboard-shell .upload-stage,
+.dashboard-shell.dashboard-shell--welcome .upload-stage,
+.dashboard-shell > .upload-stage,
+.dashboard-shell.dashboard-shell--welcome > .upload-stage {
+  margin: 28px auto 48px !important;
+  position: relative !important;
+  z-index: 10 !important;
+  clear: both !important;
+}
+
+.dashboard-shell .upload-card {
+  position: relative !important;
+  z-index: 10 !important;
+  transform: none;
+}
+
+.dashboard-shell .dashboard-page-surface,
+.dashboard-shell .dashboard-section-nav,
+.dashboard-shell .dashboard-tabs-nav,
+.dashboard-shell .dashboard-action-bar,
+.dashboard-shell .section-tabs-bar,
+.dashboard-shell .dashboard-filters-panel,
+.dashboard-shell .section-control-panel,
+.dashboard-shell .dashboard-section-content-block {
+  position: relative !important;
+  z-index: 12 !important;
+}
+
+.dashboard-shell .dashboard-action-bar,
+.dashboard-shell .dashboard-section-nav,
+.dashboard-shell .dashboard-tabs-nav {
+  margin-top: 0 !important;
+}
+
+.dashboard-login-shell {
+  min-height: 100vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  place-items: initial !important;
+  gap: 0 !important;
+  padding: 0 0 34px !important;
+}
+
+.dashboard-login-shell .hero-panel.hero-panel--corporate-banner {
+  width: 100% !important;
+  align-self: stretch !important;
+}
+
+.dashboard-login-shell .dashboard-login-panel {
+  align-self: center !important;
+  width: min(1080px, calc(100% - 36px)) !important;
+  margin: 34px auto 0 !important;
+  position: relative !important;
+  z-index: 12 !important;
+}
+
+.dashboard-login-shell .dashboard-login-actions {
+  justify-content: flex-start !important;
+}
+
+@media (max-width: 820px) {
+  .dashboard-shell .upload-stage,
+  .dashboard-shell.dashboard-shell--welcome .upload-stage,
+  .dashboard-shell > .upload-stage,
+  .dashboard-shell.dashboard-shell--welcome > .upload-stage {
+    margin-top: 22px !important;
+    margin-bottom: 34px !important;
+  }
+
+  .dashboard-login-shell {
+    padding: 0 0 22px !important;
+  }
+
+  .dashboard-login-shell .dashboard-login-panel {
+    width: min(100% - 24px, 1080px) !important;
+    margin-top: 24px !important;
+  }
+}
+
+/* Theme toggle moved into page action button groups */
+.dashboard-shell .theme-toggle--action {
+  display: inline-flex !important;
+  align-items: center !important;
+  flex: 0 0 auto !important;
+  gap: 4px !important;
+  margin: 0 !important;
+}
+
+.dashboard-shell .dashboard-action-bar .theme-toggle--action,
+.dashboard-shell .dashboard-login-actions .theme-toggle--action,
+.dashboard-shell .upload-actions .theme-toggle--action {
+  margin: 0 !important;
+}
+
+.dashboard-shell .theme-toggle--action button {
+  min-height: 36px !important;
+  padding: 8px 12px !important;
+  border-radius: 999px !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-shell .upload-actions .theme-toggle--action button,
+.dashboard-shell .dashboard-login-actions .theme-toggle--action button {
+  min-height: 42px !important;
+  padding: 10px 14px !important;
+}
+
+.dashboard-shell .theme-toggle--upload-action {
+  order: 4;
+}
+
+.dashboard-shell .hero-panel.hero-panel--corporate-banner {
+  gap: 0 !important;
+}
+
+@media (max-width: 760px) {
+  .dashboard-shell .dashboard-action-bar .theme-toggle--action,
+  .dashboard-shell .upload-actions .theme-toggle--action,
+  .dashboard-shell .dashboard-login-actions .theme-toggle--action {
+    flex: 1 1 auto !important;
+  }
+
+  .dashboard-shell .dashboard-action-bar .theme-toggle--action button,
+  .dashboard-shell .upload-actions .theme-toggle--action button,
+  .dashboard-shell .dashboard-login-actions .theme-toggle--action button {
+    flex: 1 1 0 !important;
+    justify-content: center !important;
+  }
+}

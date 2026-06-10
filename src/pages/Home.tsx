@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import nascoLogoSrc from "../assets/nascologo.png";
+import { useTheme } from "../contexts/ThemeContext";
 
 const THEME_IMAGES = {
   dark: "/dark-bg.png",
@@ -4726,33 +4727,117 @@ function StatCard({
   );
 }
 
-function PartnerLogoStrip() {
+function BannerDecorativeSvg() {
   return (
-    <div
-      className="header-logo-group header-logo-group--left header-logo-group--solo"
-      aria-label="NASCO logo"
+    <svg
+      className="corporate-banner-svg"
+      viewBox="0 0 1440 260"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      focusable="false"
     >
-      <img
-        src={nascoLogoSrc}
-        alt="NASCO"
-        className="header-logo-img nasco-logo nasco-logo--hero"
-      />
-    </div>
+      <defs>
+        <pattern id="bannerDotGrid" width="28" height="28" patternUnits="userSpaceOnUse">
+          <circle cx="3" cy="3" r="1.35" fill="rgba(125,211,252,0.34)" />
+        </pattern>
+        <linearGradient id="leftBlueWave" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="#00d4ff" stopOpacity="0.9" />
+          <stop offset="1" stopColor="#1d4ed8" stopOpacity="0.1" />
+        </linearGradient>
+        <linearGradient id="rightRedWave" x1="1" y1="0" x2="0" y2="0">
+          <stop offset="0" stopColor="#ef4444" stopOpacity="0.95" />
+          <stop offset="1" stopColor="#fb7185" stopOpacity="0.08" />
+        </linearGradient>
+        <filter id="bannerGlow" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="8" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      <rect width="1440" height="260" fill="url(#bannerDotGrid)" opacity="0.72" />
+
+      <ellipse cx="170" cy="118" rx="185" ry="88" fill="#0ea5e9" opacity="0.18" filter="url(#bannerGlow)" />
+      <ellipse cx="1274" cy="116" rx="182" ry="86" fill="#ef4444" opacity="0.2" filter="url(#bannerGlow)" />
+      <ellipse cx="720" cy="22" rx="120" ry="34" fill="#38bdf8" opacity="0.12" filter="url(#bannerGlow)" />
+
+      <path d="M-20 70 C120 20 198 35 310 92 C395 135 486 128 610 74" fill="none" stroke="url(#leftBlueWave)" strokeWidth="4" opacity="0.82" />
+      <path d="M-30 124 C112 70 210 82 330 142 C412 183 500 168 628 118" fill="none" stroke="url(#leftBlueWave)" strokeWidth="2.8" opacity="0.58" />
+      <path d="M-38 174 C96 132 214 142 340 198 C435 240 530 220 660 172" fill="none" stroke="url(#leftBlueWave)" strokeWidth="2" opacity="0.45" />
+
+      <path d="M1468 78 C1325 24 1230 38 1125 96 C1038 144 944 134 826 82" fill="none" stroke="url(#rightRedWave)" strokeWidth="4" opacity="0.85" />
+      <path d="M1478 130 C1342 78 1238 86 1120 150 C1034 195 936 176 806 122" fill="none" stroke="url(#rightRedWave)" strokeWidth="2.8" opacity="0.62" />
+      <path d="M1488 188 C1348 136 1246 146 1118 204 C1022 248 916 222 792 176" fill="none" stroke="url(#rightRedWave)" strokeWidth="2" opacity="0.48" />
+
+      <line x1="350" y1="92" x2="1090" y2="92" stroke="rgba(56,189,248,0.52)" strokeWidth="1.4" filter="url(#bannerGlow)" />
+      <line x1="390" y1="174" x2="1050" y2="174" stroke="rgba(20,184,166,0.48)" strokeWidth="1.2" filter="url(#bannerGlow)" />
+      <line x1="438" y1="102" x2="1002" y2="102" stroke="rgba(255,255,255,0.16)" strokeWidth="0.8" />
+      <line x1="438" y1="164" x2="1002" y2="164" stroke="rgba(255,255,255,0.14)" strokeWidth="0.8" />
+
+      <g className="banner-mini-chart" transform="translate(470 54)" opacity="0.84">
+        <rect x="0" y="30" width="7" height="22" rx="2" fill="#22d3ee" />
+        <rect x="14" y="18" width="7" height="34" rx="2" fill="#60a5fa" />
+        <rect x="28" y="8" width="7" height="44" rx="2" fill="#38bdf8" />
+        <rect x="42" y="24" width="7" height="28" rx="2" fill="#14b8a6" />
+        <path d="M-5 55H58" stroke="rgba(255,255,255,0.28)" strokeWidth="1.2" />
+      </g>
+
+      <g className="banner-mini-donut" transform="translate(923 54)" opacity="0.86">
+        <circle cx="28" cy="28" r="22" fill="none" stroke="rgba(239,68,68,0.42)" strokeWidth="8" />
+        <path d="M28 6a22 22 0 0 1 19 33" fill="none" stroke="#fb7185" strokeWidth="8" strokeLinecap="round" />
+        <path d="M47 39A22 22 0 0 1 12 44" fill="none" stroke="#22d3ee" strokeWidth="8" strokeLinecap="round" />
+        <circle cx="28" cy="28" r="10" fill="rgba(2,15,46,0.72)" />
+      </g>
+
+      <g className="banner-circuit" stroke="rgba(125,211,252,0.52)" strokeWidth="1.3" fill="none" opacity="0.8">
+        <path d="M74 34h54v34h42" />
+        <path d="M76 220h72v-32h54" />
+        <path d="M1266 36h-58v34h-42" />
+        <path d="M1264 218h-70v-32h-54" />
+      </g>
+      <g fill="rgba(34,211,238,0.82)" filter="url(#bannerGlow)">
+        <circle cx="74" cy="34" r="4" /><circle cx="128" cy="68" r="3.5" /><circle cx="170" cy="68" r="4" />
+        <circle cx="76" cy="220" r="4" /><circle cx="148" cy="188" r="3.5" /><circle cx="202" cy="188" r="4" />
+        <circle cx="1266" cy="36" r="4" /><circle cx="1208" cy="70" r="3.5" /><circle cx="1166" cy="70" r="4" />
+        <circle cx="1264" cy="218" r="4" /><circle cx="1194" cy="186" r="3.5" /><circle cx="1140" cy="186" r="4" />
+      </g>
+
+      <g className="banner-ticket-energy" transform="translate(684 14)" filter="url(#bannerGlow)">
+        <path d="M10 8h56c6 0 10 4 10 10v9c-5 1-8 5-8 10s3 9 8 10v9c0 6-4 10-10 10H10C4 66 0 62 0 56v-9c5-1 8-5 8-10s-3-9-8-10v-9C0 12 4 8 10 8Z" fill="rgba(2,15,46,0.62)" stroke="rgba(125,211,252,0.76)" strokeWidth="2" />
+        <path d="M42 17 27 38h13l-6 19 18-25H39l3-15Z" fill="rgba(34,211,238,0.88)" stroke="rgba(255,255,255,0.56)" strokeWidth="1.2" strokeLinejoin="round" />
+        <path d="M18 22h9M18 52h9M57 22h9M57 52h9" stroke="rgba(20,184,166,0.78)" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="18" cy="37" r="2.4" fill="rgba(34,211,238,0.9)" />
+        <circle cx="58" cy="37" r="2.4" fill="rgba(248,113,113,0.88)" />
+      </g>
+    </svg>
   );
 }
 
-function HeaderRightLogo() {
+function CorporateBannerHeader({
+  title = "DMR Ticketing Dashboard",
+  subtitle = "Ticketing Performance Command Center",
+}: {
+  title?: string;
+  subtitle?: string;
+}) {
   return (
-    <div
-      className="header-logo-group header-logo-group--right"
-      aria-label="Saudi Energy logo"
-    >
-      <img
-        src="/assets/se.png"
-        alt="Saudi Energy"
-        className="header-logo-img se-logo se-logo--hero"
-      />
-    </div>
+    <header className="corporate-banner-header" aria-label="Page header">
+      <BannerDecorativeSvg />
+      <div className="banner-logo-glow banner-logo-glow--left" />
+      <div className="banner-logo-glow banner-logo-glow--right" />
+      <div className="banner-logo-card banner-logo-card--left" aria-label="Saudi Energy logo">
+        <img src="/assets/se-logo.png" alt="Saudi Energy" />
+      </div>
+      <div className="banner-title-lockup">
+        <h1>{title}</h1>
+        <p>{subtitle}</p>
+      </div>
+      <div className="banner-logo-card banner-logo-card--right" aria-label="NASCO logo">
+        <img src="/assets/nasco-logo.png" alt="NASCO" />
+      </div>
+    </header>
   );
 }
 function ReportFileIcon({ kind }: { kind: "xlsx" | "pdf" | "ppt" | "png" }) {
@@ -5150,7 +5235,8 @@ export default function Home() {
   const TABLE_PAGE_SIZE = 20;
   const [perfMonths, setPerfMonths] = useState<string[]>([]);
   const [perfRegions, setPerfRegions] = useState<string[]>([]);
-  const [dashboardTheme, setDashboardTheme] = useState<DashboardTheme>("dark");
+  const { theme: dashboardTheme, toggleTheme } = useTheme();
+  const isDark = dashboardTheme === "dark";
   const [isAuthenticated, setIsAuthenticated] = useState(getInitialLoginState);
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -5219,14 +5305,12 @@ export default function Home() {
       <button
         type="button"
         className="active"
-        onClick={() =>
-          setDashboardTheme((prev) => (prev === "dark" ? "light" : "dark"))
-        }
-        aria-pressed={dashboardTheme === "light"}
-        aria-label={`Switch to ${dashboardTheme === "dark" ? "light" : "dark"} theme`}
-        title={`Switch to ${dashboardTheme === "dark" ? "Light" : "Dark"} Theme`}
+        onClick={() => toggleTheme?.()}
+        aria-pressed={!isDark}
+        aria-label={`Switch to ${isDark ? "light" : "dark"} theme`}
+        title={`Switch to ${isDark ? "Light" : "Dark"} Theme`}
       >
-        {dashboardTheme === "dark" ? (
+        {isDark ? (
           <>
             <Moon size={18} strokeWidth={2.4} />
             <span>Dark Theme</span>
@@ -8453,6 +8537,9 @@ export default function Home() {
         className="dashboard-shell dashboard-login-shell"
         data-dashboard-theme={dashboardTheme}
       >
+        <section className="hero-panel hero-panel--corporate-banner hero-panel--login-banner">
+          <CorporateBannerHeader />
+        </section>
         <section
           className="dashboard-login-panel"
           style={{
@@ -8511,7 +8598,7 @@ export default function Home() {
               <button type="submit" className="primary-button">
                 Login
               </button>
-              {renderThemeToggle("theme-toggle--login")}
+              {renderThemeToggle("theme-toggle--action")}
             </div>
           </form>
         </section>
@@ -8524,63 +8611,41 @@ export default function Home() {
       data-dashboard-theme={dashboardTheme}
       data-active-tab={activeDashboardTab}
     >
-      <section
-        className="hero-panel"
-        style={{
-          backgroundImage: `${heroThemeOverlay}, url(${activeThemeImage})`,
-          backgroundSize: "100% auto",
-          backgroundPosition: "center top",
-          backgroundRepeat: "no-repeat",
-          paddingTop: "12px",
-        }}
-      >
-        <nav className="topbar no-print" style={{ marginBottom: "8px" }}>
-          <div className="topbar-brand-row">
-            <PartnerLogoStrip />
-            <div className="brand-title-center">
-              <span>DMR Ticketing Dashboard</span>
-            </div>
-            <HeaderRightLogo />
-          </div>
-          <div className="topbar-actions">
-            {renderThemeToggle("theme-toggle--topbar")}
-            {data && (
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={returnToWelcomeUploadScreen}
-                title="Return to the welcome upload screen"
-              >
-                <HomeIcon size={30} /> Home
-              </button>
-            )}
-            {data && (
-              <button
-                className="ghost-button"
-                onClick={() =>
-                  setOnlineSourceMode((prev) => (prev === "add" ? null : "add"))
-                }
-              >
-                <UploadCloud size={30} /> Add regions
-              </button>
-            )}
-            {data && (
-              <button
-                className="ghost-button"
-                onClick={() =>
-                  setOnlineSourceMode((prev) =>
-                    prev === "replace" ? null : "replace",
-                  )
-                }
-              >
-                <RefreshCw size={30} /> New workbook(s)
-              </button>
-            )}
-            {data && (
-              <button className="primary-button" onClick={() => window.print()}>
-                <Printer size={30} /> Dashboard PDF
-              </button>
-            )}
+      <section className="hero-panel hero-panel--corporate-banner">
+        <CorporateBannerHeader />
+
+        {data && (
+          <div className="dashboard-action-bar no-print" aria-label="Dashboard actions">
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={returnToWelcomeUploadScreen}
+              title="Return to the welcome upload screen"
+            >
+              <HomeIcon size={30} /> Home
+            </button>
+            <button
+              className="ghost-button"
+              onClick={() =>
+                setOnlineSourceMode((prev) => (prev === "add" ? null : "add"))
+              }
+            >
+              <UploadCloud size={30} /> Add regions
+            </button>
+            <button
+              className="ghost-button"
+              onClick={() =>
+                setOnlineSourceMode((prev) =>
+                  prev === "replace" ? null : "replace",
+                )
+              }
+            >
+              <RefreshCw size={30} /> New workbook(s)
+            </button>
+            <button className="primary-button" onClick={() => window.print()}>
+              <Printer size={30} /> Dashboard PDF
+            </button>
+            {renderThemeToggle("theme-toggle--action")}
             <button
               type="button"
               className="ghost-button"
@@ -8590,7 +8655,7 @@ export default function Home() {
               <LogOut size={30} /> Logout
             </button>
           </div>
-        </nav>
+        )}
         {data && (
           <div
             id="dashboard-section-nav"
@@ -9703,7 +9768,6 @@ export default function Home() {
                 <span className="section-kicker">
                   <UploadCloud size={14} /> Workbooks Upload
                 </span>
-                {renderThemeToggle("theme-toggle--upload")}
               </div>
               <h2>Load the tickets workbook(s)</h2>
               <p>
@@ -9732,6 +9796,7 @@ export default function Home() {
                     <RefreshCw size={20} /> Continue previous workbook
                   </button>
                 )}
+                {renderThemeToggle("theme-toggle--action theme-toggle--upload-action")}
                 <span>or drop the workbook here</span>
               </div>
               <div className="google-sheet-loader">
