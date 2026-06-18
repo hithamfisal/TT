@@ -9768,3 +9768,31 @@ body:has(.dashboard-shell[data-dashboard-theme="dark"]) {
     justify-content: space-between;
   }
 }
+
+.reports-download-link,
+.reports-download-location {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  color: #67e8f9;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.reports-download-link {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.dashboard-shell[data-dashboard-theme="light"] .reports-download-link,
+.dashboard-shell[data-dashboard-theme="light"] .reports-download-location {
+  color: #0e7490;
+}
+
+.reports-history-table th:nth-child(5),
+.reports-history-table td:nth-child(5) {
+  min-width: 210px;
+  max-width: 320px;
+}

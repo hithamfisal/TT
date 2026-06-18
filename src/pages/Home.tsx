@@ -145,6 +145,14 @@ type GeneratedReportItem = {
   generatedAt: string;
   format: ManagedReportFormat;
   records: number;
+  downloadUrl?: string;
+  downloadLocation?: string;
+};
+
+type ExportDownloadInfo = {
+  fileName: string;
+  downloadUrl?: string;
+  downloadLocation: string;
 };
 
 function getInitialLoginState() {
@@ -7514,7 +7522,7 @@ export default function Home() {
     const query = clean(reportSearch).toLowerCase();
     if (!query) return generatedReports;
     return generatedReports.filter((report) =>
-      [report.fileName, report.reportType, report.format, report.generatedAt]
+      [report.fileName, report.reportType, report.format, report.generatedAt, report.downloadLocation ?? ""]
         .join(" ")
         .toLowerCase()
         .includes(query),
@@ -7576,6 +7584,8 @@ export default function Home() {
           ? `${exportMonths.length} months`
           : "All";
 
+    let pendingDownloadInfo: ExportDownloadInfo | null = null;
+
     try {
       if (report.id === "tickets") {
         if (format === "xlsx") {
@@ -7605,40 +7615,44 @@ export default function Home() {
         }
       } else if (report.id === "kpiCards") {
         const previousTab = activeDashboardTab;
-        let exported = false;
+        let downloadInfo: ExportDownloadInfo | null = null;
         try {
           setActiveDashboardTab("kpis");
-          await waitForDashboardRender(5);
-          exported =
+          await waitForDashboardRender(8);
+          const kpiTarget = statsRef.current ?? document.querySelector<HTMLElement>("#section-kpis");
+          downloadInfo =
             format === "pdf"
-              ? await exportCardsCanvasPdf(statsRef.current, "KPI-Cards", ".stat-card")
-              : await exportCardsCanvasPng(statsRef.current, "KPI-Cards", ".stat-card");
+              ? await exportCardsCanvasPdf(kpiTarget, "KPI-Cards", ".stat-card")
+              : await exportCardsCanvasPng(kpiTarget, "KPI-Cards", ".stat-card");
         } finally {
           setActiveDashboardTab(previousTab === "reports" ? "reports" : previousTab);
         }
-        if (!exported) return;
+        if (!downloadInfo) return;
+        pendingDownloadInfo = downloadInfo;
       } else if (report.id === "performanceCards") {
         const previousTab = activeDashboardTab;
-        let exported = false;
+        let downloadInfo: ExportDownloadInfo | null = null;
         try {
           setActiveDashboardTab("performanceKpis");
-          await waitForDashboardRender(5);
-          exported =
+          await waitForDashboardRender(8);
+          const performanceTarget = performanceKpiCardsRef.current ?? document.querySelector<HTMLElement>("#section-performance-kpis");
+          downloadInfo =
             format === "pdf"
               ? await exportCardsCanvasPdf(
-                  performanceKpiCardsRef.current,
+                  performanceTarget,
                   "Performance-KPI-Gauge-Cards",
                   ".perf-gauge-card",
                 )
               : await exportCardsCanvasPng(
-                  performanceKpiCardsRef.current,
+                  performanceTarget,
                   "Performance-KPI-Gauge-Cards",
                   ".perf-gauge-card",
                 );
         } finally {
           setActiveDashboardTab(previousTab === "reports" ? "reports" : previousTab);
         }
-        if (!exported) return;
+        if (!downloadInfo) return;
+        pendingDownloadInfo = downloadInfo;
       } else if (report.id === "executive") {
         await exportDashboardSectionExcel("executive");
       } else {
@@ -7646,10 +7660,14 @@ export default function Home() {
       }
 
       addGeneratedReportHistory({
-        fileName: `${makeFileSafeName(report.title)}.${format}`,
+        fileName: pendingDownloadInfo?.fileName ?? `${makeFileSafeName(report.title)}.${format}`,
         reportType: report.title,
         format,
         records: report.records,
+        downloadUrl: pendingDownloadInfo?.downloadUrl,
+        downloadLocation:
+          pendingDownloadInfo?.downloadLocation ??
+          `Browser Downloads / ${makeFileSafeName(report.title)}.${format}`,
       });
     } catch (err) {
       if (import.meta.env.DEV) console.error(err);
@@ -8065,14 +8083,14 @@ export default function Home() {
       const exportBackground = isLight ? "#eef6ff" : "#07111f";
       const titleText = fileName.replace(/[-_]/g, " ");
 
-      const sourceWidth = Math.max(980, Math.ceil(element.getBoundingClientRect().width || element.scrollWidth || 980));
+      const sourceWidth = Math.max(1180, Math.ceil(element.getBoundingClientRect().width || element.scrollWidth || 1180));
       const exportShell = document.createElement("div");
       exportShell.className = "cards-export-stage";
       exportShell.style.position = "fixed";
       exportShell.style.left = "-100000px";
       exportShell.style.top = "0";
       exportShell.style.width = `${sourceWidth}px`;
-      exportShell.style.padding = "28px";
+      exportShell.style.padding = "30px";
       exportShell.style.background = exportBackground;
       exportShell.style.zIndex = "-1";
       exportShell.style.pointerEvents = "none";
@@ -8086,26 +8104,37 @@ export default function Home() {
       title.style.letterSpacing = "0.01em";
       exportShell.appendChild(title);
 
-      const cloned = element.cloneNode(true) as HTMLElement;
-      cloned.classList.remove("dashboard-section-tab-hidden", "dashboard-section-collapsed", "no-print");
-      cloned.style.display = "";
-      cloned.style.visibility = "visible";
-      cloned.style.opacity = "1";
-      cloned.style.transform = "none";
-      cloned.style.margin = "0";
-      cloned.style.width = "100%";
-      cloned.style.maxWidth = "none";
-      cloned.querySelectorAll<HTMLElement>(".no-print, .chart-export-png-button, .section-control-panel").forEach((node) => {
-        node.remove();
-      });
-      cloned.querySelectorAll<HTMLElement>("*").forEach((node) => {
-        node.classList.remove("dashboard-section-tab-hidden", "dashboard-section-collapsed", "no-print");
-        if (node.style.display === "none") node.style.display = "";
-        if (node.style.visibility === "hidden") node.style.visibility = "visible";
-        if (node.style.opacity === "0") node.style.opacity = "1";
+      const grid = document.createElement("div");
+      grid.className = `cards-export-grid ${cardSelector.includes("perf-gauge-card") ? "cards-export-grid--performance" : "cards-export-grid--kpi"}`;
+      grid.style.display = "grid";
+      grid.style.gridTemplateColumns = cardSelector.includes("perf-gauge-card")
+        ? "repeat(4, minmax(0, 1fr))"
+        : "repeat(5, minmax(0, 1fr))";
+      grid.style.gap = cardSelector.includes("perf-gauge-card") ? "16px" : "14px";
+      grid.style.alignItems = "stretch";
+      grid.style.width = "100%";
+
+      cards.forEach((card) => {
+        const clone = card.cloneNode(true) as HTMLElement;
+        clone.classList.remove("dashboard-section-tab-hidden", "dashboard-section-collapsed", "no-print");
+        clone.style.display = "";
+        clone.style.visibility = "visible";
+        clone.style.opacity = "1";
+        clone.style.transform = "none";
+        clone.style.margin = "0";
+        clone.style.width = "100%";
+        clone.style.maxWidth = "none";
+        clone.querySelectorAll<HTMLElement>(".no-print, .chart-export-png-button, .section-control-panel, button").forEach((node) => node.remove());
+        clone.querySelectorAll<HTMLElement>("*").forEach((node) => {
+          node.classList.remove("dashboard-section-tab-hidden", "dashboard-section-collapsed", "no-print");
+          if (node.style.display === "none") node.style.display = "";
+          if (node.style.visibility === "hidden") node.style.visibility = "visible";
+          if (node.style.opacity === "0") node.style.opacity = "1";
+        });
+        grid.appendChild(clone);
       });
 
-      exportShell.appendChild(cloned);
+      exportShell.appendChild(grid);
       document.body.appendChild(exportShell);
 
       try {
@@ -8136,33 +8165,49 @@ export default function Home() {
     }
   }
 
-  function downloadCanvasAsPng(canvas: HTMLCanvasElement, fileName: string) {
+  async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Could not create PNG blob."));
+      }, "image/png");
+    });
+  }
+
+  function downloadBlobWithHistoryUrl(blob: Blob, fileName: string): ExportDownloadInfo {
+    const safeName = makeFileSafeName(fileName);
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = canvas.toDataURL("image/png");
-    link.download = `${makeFileSafeName(fileName)}.png`;
+    link.href = url;
+    link.download = safeName;
     document.body.appendChild(link);
     link.click();
     link.remove();
+    return {
+      fileName: safeName,
+      downloadUrl: url,
+      downloadLocation: `Browser Downloads / ${safeName}`,
+    };
   }
 
   async function exportCardsCanvasPng(
     element: HTMLElement | null,
     fileName: string,
     cardSelector: string,
-  ) {
+  ): Promise<ExportDownloadInfo | null> {
     const canvas = await renderCardsCanvas(element, fileName, cardSelector);
-    if (!canvas) return false;
-    downloadCanvasAsPng(canvas, fileName);
-    return true;
+    if (!canvas) return null;
+    const blob = await canvasToBlob(canvas);
+    return downloadBlobWithHistoryUrl(blob, `${fileName}.png`);
   }
 
   async function exportCardsCanvasPdf(
     element: HTMLElement | null,
     fileName: string,
     cardSelector: string,
-  ) {
+  ): Promise<ExportDownloadInfo | null> {
     const canvas = await renderCardsCanvas(element, fileName, cardSelector);
-    if (!canvas) return false;
+    if (!canvas) return null;
     const imgData = canvas.toDataURL("image/png");
     const scale = Math.min(2, window.devicePixelRatio || 1.5);
     const pageWidth = Math.ceil(canvas.width / scale) + 40;
@@ -8173,8 +8218,8 @@ export default function Home() {
       format: [pageWidth, pageHeight],
     });
     doc.addImage(imgData, "PNG", 20, 20, pageWidth - 40, pageHeight - 40);
-    doc.save(`${makeFileSafeName(fileName)}.pdf`);
-    return true;
+    const blob = doc.output("blob");
+    return downloadBlobWithHistoryUrl(blob, `${fileName}.pdf`);
   }
 
   function hasDashboardSectionExcel(sectionId: DashboardSectionId) {
@@ -10386,13 +10431,14 @@ export default function Home() {
                           <th>Report Type</th>
                           <th>Generated Date</th>
                           <th>Records</th>
+                          <th>Download Location</th>
                           <th>Format</th>
                         </tr>
                       </thead>
                       <tbody>
                         {visibleGeneratedReports.length === 0 ? (
                           <tr>
-                            <td colSpan={5}>No reports generated in this session yet.</td>
+                            <td colSpan={6}>No reports generated in this session yet.</td>
                           </tr>
                         ) : (
                           visibleGeneratedReports.map((report) => (
@@ -10401,6 +10447,17 @@ export default function Home() {
                               <td>{report.reportType}</td>
                               <td>{report.generatedAt}</td>
                               <td>{report.records.toLocaleString()}</td>
+                              <td>
+                                {report.downloadUrl ? (
+                                  <a className="reports-download-link" href={report.downloadUrl} download={report.fileName}>
+                                    {report.downloadLocation ?? `Browser Downloads / ${report.fileName}`}
+                                  </a>
+                                ) : (
+                                  <span className="reports-download-location">
+                                    {report.downloadLocation ?? `Browser Downloads / ${report.fileName}`}
+                                  </span>
+                                )}
+                              </td>
                               <td>
                                 <span className={`reports-format-pill reports-format-pill--${report.format}`}>
                                   {report.format.toUpperCase()}
