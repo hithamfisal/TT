@@ -187,12 +187,6 @@
     estree-walker "2.0.2"
     magic-string "^0.30.8"
 
-"@builder.io/vite-plugin-jsx-loc@^0.1.1":
-  version "0.1.1"
-  resolved "https://registry.yarnpkg.com/@builder.io/vite-plugin-jsx-loc/-/vite-plugin-jsx-loc-0.1.1.tgz#f5bd812b6268704357fe5bf3893bcc07917d759d"
-  integrity sha512-iAHFkaLBDJBC+EkGO1hF7hnIW2+oKKYVOl8NFAQH//3xeNEzvGdS9tOALRPR+JjR/M5NLyj+FG0VV7WFb1aJmw==
-  dependencies:
-    "@builder.io/jsx-loc-internals" "0.0.1"
 
 "@chevrotain/types@~11.1.1":
   version "11.1.2"
@@ -5733,18 +5727,6 @@ vite-node@2.1.9:
     pathe "^1.1.2"
     vite "^5.0.0"
 
-vite-plugin-manus-runtime@^0.0.57:
-  version "0.0.57"
-  resolved "https://registry.yarnpkg.com/vite-plugin-manus-runtime/-/vite-plugin-manus-runtime-0.0.57.tgz#241a8911841f14ad34535e86afc9cc5aeee30552"
-  integrity sha512-AqJm43Mq/zA3nFdwRxAzsyXYy+YPPHa0oUPlWSge0f+zUBxKoDQj3kUB/61I1yEUD0ap7YSkRxmk09FCaSErtw==
-  dependencies:
-    "@medv/finder" "^4.0.2"
-    clsx "^2.1.1"
-    modern-screenshot "^4.6.6"
-    nanoid "^5.1.6"
-    react "^19.1.0"
-    react-dom "^19.1.0"
-    tailwind-merge "^3.3.1"
 
 vite@^5.0.0:
   version "5.4.21"

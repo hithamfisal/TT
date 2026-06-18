@@ -101,6 +101,11 @@ const SAVED_MANUAL_TICKETS_KEY = "followup-dashboard:manual-tickets:v1";
 const LOGIN_SESSION_KEY = "followup-dashboard:login-session:v1";
 const DASHBOARD_LOGIN_USERNAME = "admin";
 const DASHBOARD_LOGIN_PASSWORD = "DMR@2026";
+const ALLOWED_UPLOAD_EXTENSIONS = [".xlsx", ".xls", ".csv"] as const;
+const MAX_UPLOAD_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+const REQUIRED_UPLOAD_COLUMNS = ["TT", "Site ID", "Status", "Opening Month / Observation Date"] as const;
+const SAFE_UPLOAD_ERROR_MESSAGE =
+  "The uploaded file could not be processed. Please check the file format and required columns.";
 
 const GOOGLE_REGION_LINKS = [
   { key: "eoaNeoa", label: "EOA&NEOA" },
@@ -121,6 +126,19 @@ type MicrosoftGraphConfig = {
   clientId: string;
   tenantId: string;
   scopes: string;
+};
+
+
+type ManagedReportType = "tickets" | "performance" | "executive" | "quality";
+type ManagedReportFormat = "xlsx" | "pdf" | "ppt";
+
+type GeneratedReportItem = {
+  id: string;
+  fileName: string;
+  reportType: string;
+  generatedAt: string;
+  format: ManagedReportFormat;
+  records: number;
 };
 
 function getInitialLoginState() {
@@ -191,12 +209,14 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   LabelList,
   Legend,
   Line,
   LineChart,
   Pie,
   PieChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -2078,6 +2098,153 @@ const CHART_LEGEND_STYLE: CSSProperties = {
 };
 const BAR_RADIUS: [number, number, number, number] = [0, 8, 8, 0];
 const COLUMN_BAR_RADIUS: [number, number, number, number] = [6, 6, 0, 0];
+
+// ─── Pending Aging Waterfall helpers ────────────────────────────────────────
+
+type WaterfallEntry = {
+  name: string;
+  /** invisible base that floats the visible bar */
+  base: number;
+  /** visible segment height */
+  segment: number;
+  /** true colour of this segment */
+  color: string;
+  /** the running total AFTER this bar (used for connector lines) */
+  runningTotal: number;
+  /** display label */
+  ticketCount: number;
+  isTotal: boolean;
+};
+
+function buildWaterfallData(
+  buckets: { name: string; value: number }[],
+): WaterfallEntry[] {
+  const BUCKET_COLORS: Record<string, string> = {
+    "0\u201324h": "#38bdf8", // sky-blue
+    "1\u20133d": "#60a5fa", // blue
+    "3\u20137d": "#f59e0b", // amber
+    "7d+": "#ef4444",    // red
+  };
+
+  const total = buckets.reduce((s, b) => s + b.value, 0);
+  const entries: WaterfallEntry[] = [];
+
+  // First bar: full total (base=0, segment=total)
+  entries.push({
+    name: "Total",
+    base: 0,
+    segment: total,
+    color: "#22d3ee", // cyan accent
+    runningTotal: total,
+    ticketCount: total,
+    isTotal: true,
+  });
+
+  // Each bucket is a descending floating segment
+  let running = total;
+  for (const bucket of buckets) {
+    running -= bucket.value;
+    entries.push({
+      name: bucket.name,
+      base: running,
+      segment: bucket.value,
+      color: BUCKET_COLORS[bucket.name] ?? "#94a3b8",
+      runningTotal: running,
+      ticketCount: bucket.value,
+      isTotal: false,
+    });
+  }
+
+  return entries;
+}
+
+function PendingAgingWaterfall({
+  buckets,
+}: {
+  buckets: { name: string; value: number }[];
+}) {
+  const data = buildWaterfallData(buckets);
+  const maxY = data[0]?.segment ?? 0;
+
+  // Dashed connector lines between bars: drawn as ReferenceLine segments
+  // from the top of each bar to the base of the next.
+  const connectors = data.slice(0, -1).map((entry, i) => ({
+    x1Label: entry.name,
+    x2Label: data[i + 1].name,
+    y: entry.runningTotal,
+  }));
+
+  return (
+    <ResponsiveContainer width="100%" height={260}>
+      <ComposedChart
+        data={data}
+        margin={{ left: 4, right: 20, top: 28, bottom: 4 }}
+        barCategoryGap="25%"
+      >
+        <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
+        <XAxis
+          dataKey="name"
+          stroke={CHART_AXIS_STROKE}
+          tickLine={false}
+          axisLine={false}
+          tick={{ fontSize: 11, fill: CHART_AXIS_STROKE }}
+        />
+        <YAxis
+          stroke={CHART_AXIS_STROKE}
+          allowDecimals={false}
+          tickLine={false}
+          axisLine={false}
+          domain={[0, Math.ceil(maxY * 1.15) || 10]}
+          tick={{ fontSize: 11, fill: CHART_AXIS_STROKE }}
+        />
+        <Tooltip
+          contentStyle={CHART_TOOLTIP_STYLE}
+          formatter={(_value: unknown, _name: string, props: { payload?: WaterfallEntry }) => [
+            props.payload?.ticketCount ?? 0,
+            "Tickets",
+          ]}
+          labelFormatter={(label: string) => label}
+        />
+
+        {/* Invisible base bar to float the visible segment */}
+        <Bar dataKey="base" stackId="wf" fill="transparent" isAnimationActive={false} />
+
+        {/* Visible coloured segment */}
+        <Bar
+          dataKey="segment"
+          stackId="wf"
+          radius={[6, 6, 0, 0]}
+          isAnimationActive={true}
+          label={false}
+        >
+          {data.map((entry) => (
+            <Cell key={entry.name} fill={entry.color} />
+          ))}
+          <LabelList
+            dataKey="ticketCount"
+            position="top"
+            fill={CHART_LABEL_FILL}
+            fontSize={12}
+            fontWeight={700}
+          />
+        </Bar>
+
+        {/* Dashed connector lines between bars */}
+        {connectors.map((c) => (
+          <ReferenceLine
+            key={`conn-${c.x1Label}`}
+            y={c.y}
+            stroke="rgba(148,163,184,0.45)"
+            strokeDasharray="4 4"
+            strokeWidth={1.5}
+            ifOverflow="extendDomain"
+          />
+        ))}
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
+// ─── End Waterfall helpers ───────────────────────────────────────────────────
 
 const EMPTY_FILTERS: Filters = {
   search: "",
@@ -5235,6 +5402,12 @@ export default function Home() {
   const TABLE_PAGE_SIZE = 20;
   const [perfMonths, setPerfMonths] = useState<string[]>([]);
   const [perfRegions, setPerfRegions] = useState<string[]>([]);
+  const [managedReportType, setManagedReportType] =
+    useState<ManagedReportType>("tickets");
+  const [managedReportFormat, setManagedReportFormat] =
+    useState<ManagedReportFormat>("xlsx");
+  const [reportSearch, setReportSearch] = useState("");
+  const [generatedReports, setGeneratedReports] = useState<GeneratedReportItem[]>([]);
   const { theme: dashboardTheme, toggleTheme } = useTheme();
   const isDark = dashboardTheme === "dark";
   const [isAuthenticated, setIsAuthenticated] = useState(getInitialLoginState);
@@ -5416,10 +5589,55 @@ export default function Home() {
     getPerfColumnWidth,
   );
 
-  function normalizeSelectedFiles(files?: FileList | File[] | null): File[] {
-    return Array.from(files ?? []).filter((file) =>
-      /\.(xlsx|xls|xlsm)$/i.test(file.name),
+  function fileExtension(fileName: string): string {
+    const match = fileName.toLowerCase().match(/\.[^.]+$/);
+    return match?.[0] ?? "";
+  }
+
+  function validateSelectedFiles(files?: FileList | File[] | null): File[] {
+    const selectedFiles = Array.from(files ?? []);
+    if (!selectedFiles.length) return [];
+
+    const invalidFiles = selectedFiles.filter(
+      (file) => !ALLOWED_UPLOAD_EXTENSIONS.includes(fileExtension(file.name) as (typeof ALLOWED_UPLOAD_EXTENSIONS)[number]),
     );
+    if (invalidFiles.length) {
+      throw new Error("Invalid file type. Please upload .xlsx, .xls, or .csv only.");
+    }
+
+    const emptyFiles = selectedFiles.filter((file) => file.size <= 0);
+    if (emptyFiles.length) {
+      throw new Error("One or more selected files are empty. Please upload a valid workbook.");
+    }
+
+    const oversizedFiles = selectedFiles.filter(
+      (file) => file.size > MAX_UPLOAD_FILE_SIZE_BYTES,
+    );
+    if (oversizedFiles.length) {
+      throw new Error("One or more selected files are larger than 50 MB. Please reduce the file size and try again.");
+    }
+
+    return selectedFiles;
+  }
+
+  function safeDashboardError(error: unknown): string {
+    if (import.meta.env.DEV) {
+      console.error("Dashboard processing error:", error);
+    }
+    if (error instanceof Error) {
+      const message = error.message.trim();
+      if (
+        message.startsWith("Invalid file type") ||
+        message.includes("larger than 50 MB") ||
+        message.includes("empty") ||
+        message.includes("Missing required columns") ||
+        message.includes("Required workbook sheet") ||
+        message.includes("No ticket rows")
+      ) {
+        return message;
+      }
+    }
+    return SAFE_UPLOAD_ERROR_MESSAGE;
   }
 
   function parseWorkbookObject(
@@ -5430,7 +5648,7 @@ export default function Home() {
 
     if (!parsed.rows.length || !parsed.uniqueTickets.length) {
       throw new Error(
-        `No ticket rows with TT numbers were found in ${fileName}. Please use the Follow-Up workbook with the Tickets_Data or TT-History sheet.`,
+        `Required workbook sheet or columns are missing. Required columns: ${REQUIRED_UPLOAD_COLUMNS.join(", ")}.`,
       );
     }
 
@@ -5441,8 +5659,15 @@ export default function Home() {
     buffer: ArrayBuffer,
     fileName: string,
   ): Promise<DashboardData> {
-    const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
-    return parseWorkbookObject(workbook, fileName);
+    try {
+      const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
+      return parseWorkbookObject(workbook, fileName);
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error(`Workbook parse failed for ${fileName}:`, error);
+      }
+      throw new Error(SAFE_UPLOAD_ERROR_MESSAGE);
+    }
   }
 
   async function parseWorkbookFile(file: File): Promise<DashboardData> {
@@ -6121,7 +6346,7 @@ export default function Home() {
   }
 
   async function handleFile(files?: FileList | File[] | null) {
-    const selectedFiles = normalizeSelectedFiles(files);
+    const selectedFiles = validateSelectedFiles(files);
     if (!selectedFiles.length) return;
 
     setError("");
@@ -6142,11 +6367,7 @@ export default function Home() {
       setOnlineSourceMode(null);
       if (inputRef.current) inputRef.current.value = "";
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to read the selected workbook files.",
-      );
+      setError(safeDashboardError(err));
     }
   }
 
@@ -6208,7 +6429,7 @@ export default function Home() {
   }
 
   async function handleAddRegion(files?: FileList | File[] | null) {
-    const selectedFiles = normalizeSelectedFiles(files);
+    const selectedFiles = validateSelectedFiles(files);
     if (!selectedFiles.length) return;
 
     setError("");
@@ -6228,11 +6449,7 @@ export default function Home() {
       setOnlineSourceMode(null);
       if (addRegionRef.current) addRegionRef.current.value = "";
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to read the additional workbook files.",
-      );
+      setError(safeDashboardError(err));
     }
   }
 
@@ -7150,6 +7367,153 @@ export default function Home() {
     };
   }, [allDataRows, perfMonths, perfRegions, perfRows]);
 
+  const managedReportDefinitions = useMemo(
+    () => [
+      {
+        id: "tickets" as ManagedReportType,
+        title: "Tickets Monthly Report",
+        description: "Filtered ticket register, status, severity, RCA and monthly follow-up export.",
+        formats: ["xlsx", "pdf", "ppt"] as ManagedReportFormat[],
+        records: monthlyExportTickets.length,
+      },
+      {
+        id: "performance" as ManagedReportType,
+        title: "Performance KPI Report",
+        description: "Site availability, downtime, reliability and monthly performance export.",
+        formats: ["xlsx", "pdf", "ppt"] as ManagedReportFormat[],
+        records: performanceExportMetrics.reportRows,
+      },
+      {
+        id: "executive" as ManagedReportType,
+        title: "Executive Insights Workbook",
+        description: "Network health score, insight cards and high-risk site ranking.",
+        formats: ["xlsx"] as ManagedReportFormat[],
+        records: executiveInsights.highRiskSites.length + executiveInsights.cards.length,
+      },
+      {
+        id: "quality" as ManagedReportType,
+        title: "RCA / SLA Deep-Dive Workbook",
+        description: "Preventability, RCA families, pending aging and repeated offender sites.",
+        formats: ["xlsx"] as ManagedReportFormat[],
+        records:
+          deepDiveAnalytics.repeatedOffenderSites.length +
+          deepDiveAnalytics.rcaFamilyDeepDive.length,
+      },
+    ],
+    [
+      deepDiveAnalytics.rcaFamilyDeepDive.length,
+      deepDiveAnalytics.repeatedOffenderSites.length,
+      executiveInsights.cards.length,
+      executiveInsights.highRiskSites.length,
+      monthlyExportTickets.length,
+      performanceExportMetrics.reportRows,
+    ],
+  );
+
+  const selectedManagedReport =
+    managedReportDefinitions.find((report) => report.id === managedReportType) ??
+    managedReportDefinitions[0];
+
+  const managedReportFormatOptions = selectedManagedReport.formats;
+
+  useEffect(() => {
+    if (!managedReportFormatOptions.includes(managedReportFormat)) {
+      setManagedReportFormat(managedReportFormatOptions[0] ?? "xlsx");
+    }
+  }, [managedReportFormat, managedReportFormatOptions]);
+
+  const visibleGeneratedReports = useMemo(() => {
+    const query = clean(reportSearch).toLowerCase();
+    if (!query) return generatedReports;
+    return generatedReports.filter((report) =>
+      [report.fileName, report.reportType, report.format, report.generatedAt]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [generatedReports, reportSearch]);
+
+  function addGeneratedReportHistory(item: Omit<GeneratedReportItem, "id" | "generatedAt">) {
+    const generatedAt = new Date().toLocaleString("en", {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    setGeneratedReports((prev) => [
+      {
+        ...item,
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        generatedAt,
+      },
+      ...prev,
+    ].slice(0, 12));
+  }
+
+  async function handleGenerateManagedReport() {
+    const report = selectedManagedReport;
+    const format = report.formats.includes(managedReportFormat)
+      ? managedReportFormat
+      : report.formats[0];
+    const monthLabel =
+      exportMonths.length === 1
+        ? (filterOptions.exportMonthLabels?.[exportMonths[0]] ?? exportMonths[0])
+        : exportMonths.length > 1
+          ? `${exportMonths.length} months`
+          : "All";
+    const perfMonthLabel =
+      perfMonths.length === 1
+        ? (filterOptions.exportMonthLabels?.[perfMonths[0]] ?? perfMonths[0])
+        : perfMonths.length > 1
+          ? `${perfMonths.length} months`
+          : "All";
+
+    try {
+      if (report.id === "tickets") {
+        if (format === "xlsx") {
+          const groupsToExport = monthlyExcelExportGroups.length
+            ? monthlyExcelExportGroups
+            : [{ tickets: monthlyExportTickets }];
+          for (const group of groupsToExport) {
+            await exportTicketTemplate(group.tickets, exportMonths[0] ?? "all");
+          }
+        } else if (format === "pdf") {
+          exportPdf(monthlyExportTickets, exportMonths[0] ?? "all");
+        } else {
+          exportTicketsPpt(
+            monthlyExportTickets,
+            monthLabel,
+            executiveInsights,
+            deepDiveAnalytics,
+          );
+        }
+      } else if (report.id === "performance") {
+        if (format === "xlsx") {
+          await exportPerfTemplate(perfRows, perfMonths[0] ?? "all", perfRegions);
+        } else if (format === "pdf") {
+          exportPerfPdf(perfRows, perfMonths[0] ?? "all");
+        } else {
+          exportPerfPpt(perfRows, perfMonthLabel, executiveInsights);
+        }
+      } else if (report.id === "executive") {
+        await exportDashboardSectionExcel("executive");
+      } else {
+        await exportDashboardSectionExcel("deepDive");
+      }
+
+      addGeneratedReportHistory({
+        fileName: `${report.title.replace(/\s+/g, "_")}_${format.toUpperCase()}`,
+        reportType: report.title,
+        format,
+        records: report.records,
+      });
+    } catch (err) {
+      if (import.meta.env.DEV) console.error(err);
+      setError("The report could not be generated. Please check the selected filters and try again.");
+    }
+  }
+
   const activeDashboardSection =
     DASHBOARD_SECTIONS.find((section) => section.id === activeDashboardTab) ??
     DASHBOARD_SECTIONS[0];
@@ -7247,6 +7611,46 @@ export default function Home() {
       Boolean(localStorage.getItem(SAVED_DASHBOARD_KEY)),
     );
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function clearSavedDashboardData() {
+    try {
+      window.localStorage.removeItem(SAVED_DASHBOARD_KEY);
+      window.localStorage.removeItem(SAVED_MANUAL_TICKETS_KEY);
+      window.sessionStorage.removeItem("followup-dashboard:last-upload-error");
+
+      const dashboardIndexedDB = indexedDB as IDBFactory & {
+        databases?: () => Promise<Array<{ name?: string }>>;
+      };
+      if ("indexedDB" in window && typeof dashboardIndexedDB.databases === "function") {
+        const databases = await dashboardIndexedDB.databases();
+        await Promise.all(
+          databases
+            .map((database) => database.name)
+            .filter(
+              (name): name is string =>
+                Boolean(name) && /followup|dashboard|ticket|workbook|risk/i.test(name),
+            )
+            .map(
+              (name) =>
+                new Promise<void>((resolve) => {
+                  const request = dashboardIndexedDB.deleteDatabase(name);
+                  request.onsuccess = () => resolve();
+                  request.onerror = () => resolve();
+                  request.onblocked = () => resolve();
+                }),
+            ),
+        );
+      }
+
+      setSavedSnapshotAvailable(false);
+      window.alert("Saved dashboard data cleared successfully.");
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error("Failed to clear saved dashboard data:", error);
+      }
+      window.alert("Saved dashboard data could not be cleared. Please try again.");
+    }
   }
 
   function scrollToDashboardTop() {
@@ -8642,6 +9046,14 @@ export default function Home() {
             >
               <RefreshCw size={30} /> New workbook(s)
             </button>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={clearSavedDashboardData}
+              title="Clear saved workbook/session data stored by this dashboard"
+            >
+              <ShieldAlert size={30} /> Clear Saved Data
+            </button>
             <button className="primary-button" onClick={() => window.print()}>
               <Printer size={30} /> Dashboard PDF
             </button>
@@ -9368,365 +9780,245 @@ export default function Home() {
               )}
             </section>
 
-            <div
+            <section
               id="section-reports"
-              className="hero-export-row no-print export-row-dual dashboard-section-content-block"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
-                gap: "18px",
-                justifyContent: "center",
-                width: "100%",
-                marginBottom: "-12px", // Pulls up the next sibling element (KPIs)
-                marginTop: "0px",
-              }}
+              className="reports-management-center dashboard-section-content-block no-print"
             >
-              {/* ===== CARD 1: Monthly Tickets Table ===== */}
-              <aside
-                className="hero-export-card hero-export-card--5col report-export-card report-export-card--tickets"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  width: "100%",
-                }}
-              >
-                <div
-                  className="hero-export-copy"
-                  style={{
-                    marginBottom: "2px",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    textAlign: "center",
-                    width: "100%",
-                  }}
-                >
-                  <span>Monthly Tickets Export</span>
-
-                  <strong>
-                    Total Tickets -{" "}
-                    {exportMonths.length === 0
-                      ? "All Months"
-                      : exportMonths.length === 1
-                        ? (filterOptions.exportMonthLabels?.[exportMonths[0]] ??
-                          exportMonths[0])
-                        : `${exportMonths.length} months`}
-                  </strong>
+              <div className="reports-management-header">
+                <div>
+                  <h2>Report Management Center</h2>
+                  <p>
+                    Generate filtered ticket and performance reports, track export actions,
+                    and keep management outputs in one place.
+                  </p>
                 </div>
-
-                {/* Report card chips paused until final layout decision.
-<div className="report-export-metrics">
-  <span><b>{monthlyExportTickets.length}</b>Total TT</span>
-  <span><b>{ticketExportMetrics.closedOrResolved}</b>Resolved</span>
-  <span><b>{ticketExportMetrics.pendingCount}</b>Pending</span>
-  <span><b>{ticketExportMetrics.criticalCount}</b>Critical</span>
-</div>
-*/}
-
-                <div className="report-export-filters">
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <MultiSelectFilter
-                      label="Report Month"
-                      value={exportMonths}
-                      options={filterOptions.exportMonth}
-                      optionLabels={filterOptions.exportMonthLabels}
-                      onChange={setExportMonths}
-                      showAllOption
-                    />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <MultiSelectFilter
-                      label="Region"
-                      value={exportRegions}
-                      options={filterOptions.region}
-                      onChange={setExportRegions}
-                      showAllOption
-                    />
-                  </div>
+                <div className="reports-search-box">
+                  <Search size={18} />
+                  <input
+                    type="search"
+                    value={reportSearch}
+                    onChange={(event) => setReportSearch(event.target.value)}
+                    placeholder="Search reports"
+                  />
                 </div>
+              </div>
 
-                {/* Swapped marginTop auto to 4px to force-close the layout gap */}
-                <div
-                  className="hero-export-actions report-export-actions"
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    width: "100%",
-                  }}
-                >
+              <div className="reports-management-grid">
+                <aside className="reports-generator-panel">
                   <button
-                    className="ghost-button"
-                    onClick={async () => {
-                      const groupsToExport = monthlyExcelExportGroups.length
-                        ? monthlyExcelExportGroups
-                        : [{ tickets: monthlyExportTickets }];
-                      for (const group of groupsToExport) {
-                        await exportTicketTemplate(
-                          group.tickets,
-                          exportMonths[0] ?? "all",
-                        );
-                      }
-                    }}
+                    type="button"
+                    className="reports-generate-hero"
+                    onClick={handleGenerateManagedReport}
                   >
-                    <ReportFileIcon kind="xlsx" /> Excel
+                    <span className="reports-generate-icon">
+                      <ReportFileIcon kind={managedReportFormat === "pdf" ? "pdf" : managedReportFormat === "ppt" ? "ppt" : "xlsx"} />
+                    </span>
+                    <span>
+                      <strong>Generate New Report</strong>
+                      <small>{selectedManagedReport.title}</small>
+                    </span>
                   </button>
-                  <button
-                    className="ghost-button"
-                    onClick={() =>
-                      exportPdf(monthlyExportTickets, exportMonths[0] ?? "all")
-                    }
-                  >
-                    <ReportFileIcon kind="pdf" /> PDF
-                  </button>
-                  {/* ====== ADD YOUR NEW PPT BUTTON HERE ====== */}
-                  <button
-                    className="ghost-button"
-                    onClick={() => {
-                      const currentMonthLabel =
-                        exportMonths.length === 1
-                          ? (filterOptions.exportMonthLabels?.[
-                              exportMonths[0]
-                            ] ?? exportMonths[0])
-                          : "All";
-                      exportTicketsPpt(
-                        monthlyExportTickets,
-                        currentMonthLabel,
-                        executiveInsights,
-                        deepDiveAnalytics,
-                      );
-                    }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                  >
-                    {" "}
-                    <ReportFileIcon kind="ppt" /> PPT{" "}
-                  </button>
-                </div>
-              </aside>
-              {/* ===== CARD 2: Monthly Performance Table ===== */}
-              <aside
-                className="hero-export-card hero-export-card--5col report-export-card report-export-card--performance"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  width: "100%",
-                }}
-              >
-                <div
-                  className="hero-export-copy"
-                  style={{
-                    marginBottom: "2px",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    textAlign: "center",
-                    width: "100%",
-                  }}
-                >
-                  <span>Monthly Performance</span>
-                  <strong>
-                    Sites Performance -{" "}
-                    {perfMonths.length === 0
-                      ? "All Months"
-                      : perfMonths.length === 1
-                        ? (filterOptions.exportMonthLabels?.[perfMonths[0]] ??
-                          perfMonths[0])
-                        : `${perfMonths.length} months`}
-                  </strong>
-                </div>
 
-                {/* Report card chips paused until final layout decision.
-    <div className="report-export-metrics">
-      <span><b>{performanceExportMetrics.totalSites}</b>Total RF Sites</span>
-      <span><b>{performanceExportMetrics.affectedSites}</b>Affected</span>
-      <span><b>{performanceExportMetrics.nonAffectedSites}</b>Non-Affected</span>
-      <span><b>{performanceExportMetrics.reportRows}</b>Report Rows</span>
-    </div>
-    */}
+                  <div className="reports-form-card">
+                    <h3>Report Generation Form</h3>
+                    <label className="reports-field">
+                      <span>Select Report Type</span>
+                      <select
+                        value={managedReportType}
+                        onChange={(event) =>
+                          setManagedReportType(event.target.value as ManagedReportType)
+                        }
+                      >
+                        {managedReportDefinitions.map((report) => (
+                          <option key={report.id} value={report.id}>
+                            {report.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-                <div className="report-export-filters">
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <MultiSelectFilter
-                      label="Report Month"
-                      value={perfMonths}
-                      options={filterOptions.exportMonth}
-                      optionLabels={filterOptions.exportMonthLabels}
-                      onChange={setPerfMonths}
-                      showAllOption
-                    />
+                    <label className="reports-field">
+                      <span>Filtered Records</span>
+                      <input readOnly value={`${selectedManagedReport.records.toLocaleString()} records`} />
+                    </label>
+
+                    <label className="reports-field">
+                      <span>Output Format</span>
+                      <select
+                        value={managedReportFormat}
+                        onChange={(event) =>
+                          setManagedReportFormat(event.target.value as ManagedReportFormat)
+                        }
+                      >
+                        {managedReportFormatOptions.map((format) => (
+                          <option key={format} value={format}>
+                            {format.toUpperCase()}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="reports-selected-note">
+                      <span>Report Scope</span>
+                      <p>{selectedManagedReport.description}</p>
+                    </div>
                   </div>
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <MultiSelectFilter
-                      label="Region"
-                      value={perfRegions}
-                      options={filterOptions.region}
-                      onChange={setPerfRegions}
-                      showAllOption
-                    />
+                  <div className="reports-filter-card">
+                    <h3>Report Filters</h3>
+                    {(managedReportType === "tickets" || managedReportType === "executive" || managedReportType === "quality") && (
+                      <div className="reports-filter-stack">
+                        <MultiSelectFilter
+                          label="Ticket Month"
+                          value={exportMonths}
+                          options={filterOptions.exportMonth}
+                          optionLabels={filterOptions.exportMonthLabels}
+                          onChange={setExportMonths}
+                          showAllOption
+                        />
+                        <MultiSelectFilter
+                          label="Ticket Region"
+                          value={exportRegions}
+                          options={filterOptions.region}
+                          onChange={setExportRegions}
+                          showAllOption
+                        />
+                      </div>
+                    )}
+                    {managedReportType === "performance" && (
+                      <div className="reports-filter-stack">
+                        <MultiSelectFilter
+                          label="Performance Month"
+                          value={perfMonths}
+                          options={filterOptions.exportMonth}
+                          optionLabels={filterOptions.exportMonthLabels}
+                          onChange={setPerfMonths}
+                          showAllOption
+                        />
+                        <MultiSelectFilter
+                          label="Performance Region"
+                          value={perfRegions}
+                          options={filterOptions.region}
+                          onChange={setPerfRegions}
+                          showAllOption
+                        />
+                      </div>
+                    )}
                   </div>
-                </div>
+                </aside>
 
-                <div
-                  className="hero-export-actions report-export-actions"
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    width: "100%",
-                  }}
-                >
-                  <button
-                    className="ghost-button"
-                    onClick={() =>
-                      exportPerfTemplate(
-                        perfRows,
-                        perfMonths[0] ?? "all",
-                        perfRegions,
-                      )
-                    }
-                  >
-                    <ReportFileIcon kind="xlsx" /> Excel
-                  </button>
-                  <button
-                    className="ghost-button"
-                    onClick={() =>
-                      exportPerfPdf(perfRows, perfMonths[0] ?? "all")
-                    }
-                  >
-                    <ReportFileIcon kind="pdf" /> PDF
-                  </button>
-                  <button
-                    className="ghost-button"
-                    onClick={() => {
-                      const lbl =
-                        perfMonths.length === 1
-                          ? (filterOptions.exportMonthLabels?.[perfMonths[0]] ??
-                            perfMonths[0])
-                          : perfMonths.length > 1
-                            ? `${perfMonths.length} months`
-                            : "All";
-                      exportPerfPpt(perfRows, lbl, executiveInsights);
-                    }}
-                  >
-                    <ReportFileIcon kind="ppt" /> PPT
-                  </button>
-                </div>
-              </aside>
-              {/* ===== CARD 3: Executive Insights Workbook ===== */}
-              <aside
-                className="hero-export-card hero-export-card--5col report-export-card report-export-card--executive"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  width: "100%",
-                }}
-              >
-                <div
-                  className="hero-export-copy"
-                  style={{
-                    marginBottom: "2px",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    textAlign: "center",
-                    width: "100%",
-                  }}
-                >
-                  <span>Executive Insights</span>
-                  <strong>Network Health & Risk Summary</strong>
-                </div>
-                <div className="report-export-metrics report-export-metrics--compact">
-                  <span>
-                    <b>{executiveInsights.healthScore.score}</b>Health Score
-                  </span>
-                  <span>
-                    <b>{executiveInsights.highRiskSites.length}</b>High Risk
-                    Sites
-                  </span>
-                </div>
-                <div
-                  className="hero-export-actions report-export-actions"
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    width: "100%",
-                  }}
-                >
-                  <button
-                    className="ghost-button"
-                    onClick={() => exportDashboardSectionExcel("executive")}
-                    disabled={
-                      !executiveInsights.cards.length &&
-                      !executiveInsights.highRiskSites.length
-                    }
-                    title="Export executive stat cards and high-risk sites to Excel"
-                  >
-                    <ReportFileIcon kind="xlsx" /> Excel
-                  </button>
-                </div>
-              </aside>
-              {/* ===== CARD 4: Operational Quality Workbook ===== */}
-              <aside
-                className="hero-export-card hero-export-card--5col report-export-card report-export-card--deep-dive"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  width: "100%",
-                }}
-              >
-                <div
-                  className="hero-export-copy"
-                  style={{
-                    marginBottom: "2px",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    textAlign: "center",
-                    width: "100%",
-                  }}
-                >
-                  <span>Operational Quality</span>
-                  <strong>Follow-Up Priorities & Chart Data</strong>
-                </div>
-                <div className="report-export-metrics report-export-metrics--compact">
-                  <span>
-                    <b>{deepDiveAnalytics.repeatedOffenderSites.length}</b>
-                    Repeated Sites
-                  </span>
-                  <span>
-                    <b>{deepDiveAnalytics.rcaFamilyDeepDive.length}</b>RCA
-                    Families
-                  </span>
-                </div>
-                <div
-                  className="hero-export-actions report-export-actions"
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    width: "100%",
-                  }}
-                >
-                  <button
-                    className="ghost-button"
-                    onClick={() => exportDashboardSectionExcel("deepDive")}
-                    disabled={
-                      !deepDiveAnalytics.repeatedOffenderSites.length &&
-                      !deepDiveAnalytics.rcaFamilyDeepDive.length
-                    }
-                    title="Export operational quality KPI, chart data, repeated sites, and actions to Excel"
-                  >
-                    <ReportFileIcon kind="xlsx" /> Excel
-                  </button>
-                </div>
-              </aside>{" "}
-            </div>
+                <section className="reports-history-panel">
+                  <div className="reports-history-title-row">
+                    <h3>Generated Reports History</h3>
+                    <span>{visibleGeneratedReports.length.toLocaleString()} recent</span>
+                  </div>
+
+                  <div className="reports-quick-actions">
+                    <button
+                      type="button"
+                      className="reports-action-card"
+                      onClick={() => {
+                        setManagedReportType("tickets");
+                        setManagedReportFormat("xlsx");
+                      }}
+                    >
+                      <ReportFileIcon kind="xlsx" />
+                      <span>
+                        <strong>Tickets XLSX</strong>
+                        <small>{monthlyExportTickets.length.toLocaleString()} filtered tickets</small>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="reports-action-card"
+                      onClick={() => {
+                        setManagedReportType("tickets");
+                        setManagedReportFormat("ppt");
+                      }}
+                    >
+                      <ReportFileIcon kind="ppt" />
+                      <span>
+                        <strong>Tickets PPT</strong>
+                        <small>Executive ticket briefing</small>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="reports-action-card"
+                      onClick={() => {
+                        setManagedReportType("performance");
+                        setManagedReportFormat("xlsx");
+                      }}
+                    >
+                      <ReportFileIcon kind="xlsx" />
+                      <span>
+                        <strong>Performance XLSX</strong>
+                        <small>{performanceExportMetrics.reportRows.toLocaleString()} site rows</small>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="reports-action-card"
+                      onClick={() => {
+                        setManagedReportType("executive");
+                        setManagedReportFormat("xlsx");
+                      }}
+                    >
+                      <ReportFileIcon kind="xlsx" />
+                      <span>
+                        <strong>Executive Workbook</strong>
+                        <small>Health score and high-risk sites</small>
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="reports-summary-strip">
+                    <span><b>{monthlyExportTickets.length.toLocaleString()}</b>Tickets</span>
+                    <span><b>{ticketExportMetrics.pendingCount.toLocaleString()}</b>Pending</span>
+                    <span><b>{ticketExportMetrics.criticalCount.toLocaleString()}</b>Critical</span>
+                    <span><b>{performanceExportMetrics.totalSites.toLocaleString()}</b>RF Sites</span>
+                    <span><b>{performanceExportMetrics.affectedSites.toLocaleString()}</b>Affected</span>
+                    <span><b>{executiveInsights.healthScore.score}</b>Health</span>
+                  </div>
+
+                  <div className="reports-history-table-wrap">
+                    <table className="reports-history-table">
+                      <thead>
+                        <tr>
+                          <th>File Name</th>
+                          <th>Report Type</th>
+                          <th>Generated Date</th>
+                          <th>Records</th>
+                          <th>Format</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleGeneratedReports.length === 0 ? (
+                          <tr>
+                            <td colSpan={5}>No reports generated in this session yet.</td>
+                          </tr>
+                        ) : (
+                          visibleGeneratedReports.map((report) => (
+                            <tr key={report.id}>
+                              <td>{report.fileName}</td>
+                              <td>{report.reportType}</td>
+                              <td>{report.generatedAt}</td>
+                              <td>{report.records.toLocaleString()}</td>
+                              <td>
+                                <span className={`reports-format-pill reports-format-pill--${report.format}`}>
+                                  {report.format.toUpperCase()}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              </div>
+            </section>
+
           </>
         )}
       </section>
@@ -9735,7 +10027,7 @@ export default function Home() {
         ref={inputRef}
         className="sr-only"
         type="file"
-        accept=".xlsx,.xls,.xlsm"
+        accept=".xlsx,.xls,.csv"
         multiple
         onChange={(event) => handleFile(event.target.files)}
       />
@@ -9743,7 +10035,7 @@ export default function Home() {
         ref={addRegionRef}
         className="sr-only"
         type="file"
-        accept=".xlsx,.xls,.xlsm"
+        accept=".xlsx,.xls,.csv"
         multiple
         onChange={(event) => handleAddRegion(event.target.files)}
       />
@@ -9796,9 +10088,21 @@ export default function Home() {
                     <RefreshCw size={20} /> Continue previous workbook
                   </button>
                 )}
+                {savedSnapshotAvailable && (
+                  <button
+                    type="button"
+                    className="ghost-button large"
+                    onClick={clearSavedDashboardData}
+                  >
+                    <ShieldAlert size={20} /> Clear Saved Dashboard Data
+                  </button>
+                )}
                 {renderThemeToggle("theme-toggle--action theme-toggle--upload-action")}
                 <span>or drop the workbook here</span>
               </div>
+              <p className="upload-privacy-note">
+                Uploaded files are processed in your browser. No files are sent to a server by this dashboard.
+              </p>
               <div className="google-sheet-loader">
                 <label>Online sheet region links</label>
                 <div className="google-region-grid">
@@ -10206,44 +10510,44 @@ export default function Home() {
                 <article className="deep-dive-panel">
                   <div className="deep-dive-panel-heading">
                     <strong>Pending Aging Buckets</strong>
+                    <small style={{ color: "#8ea4c2", fontSize: 10, marginLeft: 8 }}>
+                      Total → breakdown by age
+                    </small>
                   </div>
-                  <ResponsiveContainer width="100%" height={230}>
-                    <BarChart
-                      data={deepDiveAnalytics.slaSummary.pendingAgingBuckets}
-                      margin={{ left: 4, right: 20, top: 14, bottom: 4 }}
-                    >
-                      <CartesianGrid
-                        stroke={CHART_GRID_STROKE}
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="name"
-                        stroke={CHART_AXIS_STROKE}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis
-                        stroke={CHART_AXIS_STROKE}
-                        allowDecimals={false}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                      <Bar
-                        dataKey="value"
-                        name="Tickets"
-                        radius={COLUMN_BAR_RADIUS}
-                        fill="#f59e0b"
-                      >
-                        <LabelList
-                          dataKey="value"
-                          position="top"
-                          fill={CHART_LABEL_FILL}
-                          fontSize={11}
-                        />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <PendingAgingWaterfall
+                    buckets={deepDiveAnalytics.slaSummary.pendingAgingBuckets}
+                  />
+                  {/* Colour legend */}
+                  <div style={{
+                    display: "flex",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    marginTop: 6,
+                    paddingLeft: 4,
+                    fontSize: 10,
+                    color: "#8ea4c2",
+                  }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 2, background: "#22d3ee", display: "inline-block" }} />
+                      Total Pending
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 2, background: "#38bdf8", display: "inline-block" }} />
+                      0–24h
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 2, background: "#60a5fa", display: "inline-block" }} />
+                      1–3d
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 2, background: "#f59e0b", display: "inline-block" }} />
+                      3–7d
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 2, background: "#ef4444", display: "inline-block" }} />
+                      7d+ (Escalation)
+                    </span>
+                  </div>
                 </article>
 
                 <article className="deep-dive-panel deep-dive-panel--wide">
