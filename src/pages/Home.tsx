@@ -7614,43 +7614,11 @@ export default function Home() {
           exportPerfPpt(perfRows, perfMonthLabel, executiveInsights);
         }
       } else if (report.id === "kpiCards") {
-        const previousTab = activeDashboardTab;
-        let downloadInfo: ExportDownloadInfo | null = null;
-        try {
-          setActiveDashboardTab("kpis");
-          await waitForDashboardRender(8);
-          const kpiTarget = statsRef.current ?? document.querySelector<HTMLElement>("#section-kpis");
-          downloadInfo =
-            format === "pdf"
-              ? await exportCardsCanvasPdf(kpiTarget, "KPI-Cards", ".stat-card")
-              : await exportCardsCanvasPng(kpiTarget, "KPI-Cards", ".stat-card");
-        } finally {
-          setActiveDashboardTab(previousTab === "reports" ? "reports" : previousTab);
-        }
+        const downloadInfo = await exportKpiCardsReport(format);
         if (!downloadInfo) return;
         pendingDownloadInfo = downloadInfo;
       } else if (report.id === "performanceCards") {
-        const previousTab = activeDashboardTab;
-        let downloadInfo: ExportDownloadInfo | null = null;
-        try {
-          setActiveDashboardTab("performanceKpis");
-          await waitForDashboardRender(8);
-          const performanceTarget = performanceKpiCardsRef.current ?? document.querySelector<HTMLElement>("#section-performance-kpis");
-          downloadInfo =
-            format === "pdf"
-              ? await exportCardsCanvasPdf(
-                  performanceTarget,
-                  "Performance-KPI-Gauge-Cards",
-                  ".perf-gauge-card",
-                )
-              : await exportCardsCanvasPng(
-                  performanceTarget,
-                  "Performance-KPI-Gauge-Cards",
-                  ".perf-gauge-card",
-                );
-        } finally {
-          setActiveDashboardTab(previousTab === "reports" ? "reports" : previousTab);
-        }
+        const downloadInfo = await exportPerformanceCardsReport(format);
         if (!downloadInfo) return;
         pendingDownloadInfo = downloadInfo;
       } else if (report.id === "executive") {
@@ -7660,14 +7628,14 @@ export default function Home() {
       }
 
       addGeneratedReportHistory({
-        fileName: pendingDownloadInfo?.fileName ?? `${makeFileSafeName(report.title)}.${format}`,
+        fileName: pendingDownloadInfo?.fileName ?? makeDownloadFileName(`${report.title}.${format}`),
         reportType: report.title,
         format,
         records: report.records,
         downloadUrl: pendingDownloadInfo?.downloadUrl,
         downloadLocation:
           pendingDownloadInfo?.downloadLocation ??
-          `Browser Downloads / ${makeFileSafeName(report.title)}.${format}`,
+          `Browser Downloads / ${makeDownloadFileName(`${report.title}.${format}`)}`,
       });
     } catch (err) {
       if (import.meta.env.DEV) console.error(err);
@@ -7690,6 +7658,14 @@ export default function Home() {
         .replace(/[^a-z0-9]+/gi, "_")
         .replace(/^_+|_+$/g, "") || "dashboard_export"
     );
+  }
+
+  function makeDownloadFileName(value: string) {
+    const cleaned = clean(value) || "dashboard_export";
+    const extensionMatch = cleaned.match(/\.(png|pdf|xlsx|xls|csv|pptx)$/i);
+    const extension = extensionMatch ? extensionMatch[0].toLowerCase() : "";
+    const base = extension ? cleaned.slice(0, -extension.length) : cleaned;
+    return `${makeFileSafeName(base)}${extension}`;
   }
 
   function serializeDashboardData(snapshot: DashboardData) {
@@ -8063,94 +8039,105 @@ export default function Home() {
       return null;
     }
 
-    await waitForDashboardRender();
-    const restoreVisibility = forceVisibleForExport(element);
-
     try {
-      await waitForDashboardRender(2);
-      const cards = Array.from(element.querySelectorAll<HTMLElement>(cardSelector)).filter(
-        (card) => card.getBoundingClientRect().width > 0 && card.getBoundingClientRect().height > 0,
-      );
-
-      if (!cards.length) {
-        setError("No cards were found to export. Please open the related tab and try again.");
-        return null;
-      }
+      await waitForDashboardRender(3);
 
       const { default: html2canvas } = await import("html2canvas");
       const shell = document.querySelector<HTMLElement>(".dashboard-shell");
       const isLight = shell?.getAttribute("data-dashboard-theme") === "light";
       const exportBackground = isLight ? "#eef6ff" : "#07111f";
-      const titleText = fileName.replace(/[-_]/g, " ");
+      const shellWidth = shell?.getBoundingClientRect().width ?? window.innerWidth;
+      const sourceWidth = Math.max(
+        1180,
+        Math.ceil(element.scrollWidth || element.getBoundingClientRect().width || shellWidth || 1180),
+      );
 
-      const sourceWidth = Math.max(1180, Math.ceil(element.getBoundingClientRect().width || element.scrollWidth || 1180));
       const exportShell = document.createElement("div");
-      exportShell.className = "cards-export-stage";
+      exportShell.className = "cards-export-stage cards-export-stage--dom";
+      exportShell.setAttribute("data-export-name", fileName);
       exportShell.style.position = "fixed";
       exportShell.style.left = "-100000px";
       exportShell.style.top = "0";
       exportShell.style.width = `${sourceWidth}px`;
-      exportShell.style.padding = "30px";
+      exportShell.style.padding = "0";
+      exportShell.style.margin = "0";
       exportShell.style.background = exportBackground;
       exportShell.style.zIndex = "-1";
       exportShell.style.pointerEvents = "none";
+      exportShell.style.overflow = "visible";
 
-      const title = document.createElement("div");
-      title.className = "cards-export-title";
-      title.textContent = titleText;
-      title.style.color = isLight ? "#0f2740" : "#f8fafc";
-      title.style.font = "900 24px Arial, sans-serif";
-      title.style.margin = "0 0 18px";
-      title.style.letterSpacing = "0.01em";
-      exportShell.appendChild(title);
+      const clone = element.cloneNode(true) as HTMLElement;
+      clone.id = `${element.id || makeFileSafeName(fileName)}-export-clone`;
+      clone.classList.remove(
+        "dashboard-section-tab-hidden",
+        "dashboard-section-collapsed",
+        "is-collapsed",
+        "collapsed",
+        "no-print",
+      );
+      clone.style.display = "";
+      clone.style.visibility = "visible";
+      clone.style.opacity = "1";
+      clone.style.transform = "none";
+      clone.style.position = "relative";
+      clone.style.left = "auto";
+      clone.style.top = "auto";
+      clone.style.width = "100%";
+      clone.style.maxWidth = "none";
+      clone.style.margin = "0";
 
-      const grid = document.createElement("div");
-      grid.className = `cards-export-grid ${cardSelector.includes("perf-gauge-card") ? "cards-export-grid--performance" : "cards-export-grid--kpi"}`;
-      grid.style.display = "grid";
-      grid.style.gridTemplateColumns = cardSelector.includes("perf-gauge-card")
-        ? "repeat(4, minmax(0, 1fr))"
-        : "repeat(5, minmax(0, 1fr))";
-      grid.style.gap = cardSelector.includes("perf-gauge-card") ? "16px" : "14px";
-      grid.style.alignItems = "stretch";
-      grid.style.width = "100%";
+      clone
+        .querySelectorAll<HTMLElement>(
+          ".section-control-panel, .chart-export-png-button, .png-export-button, button",
+        )
+        .forEach((node) => node.remove());
 
-      cards.forEach((card) => {
-        const clone = card.cloneNode(true) as HTMLElement;
-        clone.classList.remove("dashboard-section-tab-hidden", "dashboard-section-collapsed", "no-print");
-        clone.style.display = "";
-        clone.style.visibility = "visible";
-        clone.style.opacity = "1";
-        clone.style.transform = "none";
-        clone.style.margin = "0";
-        clone.style.width = "100%";
-        clone.style.maxWidth = "none";
-        clone.querySelectorAll<HTMLElement>(".no-print, .chart-export-png-button, .section-control-panel, button").forEach((node) => node.remove());
-        clone.querySelectorAll<HTMLElement>("*").forEach((node) => {
-          node.classList.remove("dashboard-section-tab-hidden", "dashboard-section-collapsed", "no-print");
-          if (node.style.display === "none") node.style.display = "";
-          if (node.style.visibility === "hidden") node.style.visibility = "visible";
-          if (node.style.opacity === "0") node.style.opacity = "1";
-        });
-        grid.appendChild(clone);
+      clone.querySelectorAll<HTMLElement>("*").forEach((node) => {
+        node.classList.remove(
+          "dashboard-section-tab-hidden",
+          "dashboard-section-collapsed",
+          "is-collapsed",
+          "collapsed",
+          "no-print",
+        );
+        if (node.style.display === "none") node.style.display = "";
+        if (node.style.visibility === "hidden") node.style.visibility = "visible";
+        if (node.style.opacity === "0") node.style.opacity = "1";
       });
 
-      exportShell.appendChild(grid);
+      exportShell.appendChild(clone);
       document.body.appendChild(exportShell);
 
       try {
-        await waitForDashboardRender(3);
+        await waitForDashboardRender(5);
+        const exportedCards = clone.querySelectorAll(cardSelector);
+        if (!exportedCards.length) {
+          setError("No cards were found to export. Please check the selected report and try again.");
+          return null;
+        }
+
         const canvas = await html2canvas(exportShell, {
           backgroundColor: exportBackground,
           scale: Math.min(2, window.devicePixelRatio || 1.5),
           useCORS: true,
           logging: false,
-          windowWidth: Math.max(document.documentElement.scrollWidth, exportShell.scrollWidth + 80),
-          windowHeight: Math.max(document.documentElement.scrollHeight, exportShell.scrollHeight + 80),
+          width: Math.ceil(exportShell.scrollWidth || sourceWidth),
+          height: Math.ceil(exportShell.scrollHeight || clone.scrollHeight || 800),
+          windowWidth: Math.max(
+            document.documentElement.scrollWidth,
+            exportShell.scrollWidth + 40,
+            sourceWidth + 40,
+          ),
+          windowHeight: Math.max(
+            document.documentElement.scrollHeight,
+            exportShell.scrollHeight + 40,
+            clone.scrollHeight + 40,
+          ),
           ignoreElements: (node) =>
             node instanceof HTMLElement &&
             (node.classList.contains("section-control-panel") ||
               node.classList.contains("chart-export-png-button") ||
-              node.classList.contains("no-print")),
+              node.classList.contains("png-export-button")),
         });
         return canvas;
       } finally {
@@ -8160,8 +8147,6 @@ export default function Home() {
       if (import.meta.env.DEV) console.error("Card export failed:", err);
       setError("Card export failed. Please try again after the dashboard finishes rendering.");
       return null;
-    } finally {
-      restoreVisibility();
     }
   }
 
@@ -8175,7 +8160,7 @@ export default function Home() {
   }
 
   function downloadBlobWithHistoryUrl(blob: Blob, fileName: string): ExportDownloadInfo {
-    const safeName = makeFileSafeName(fileName);
+    const safeName = makeDownloadFileName(fileName);
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -8188,6 +8173,316 @@ export default function Home() {
       downloadUrl: url,
       downloadLocation: `Browser Downloads / ${safeName}`,
     };
+  }
+
+
+  type ManualCardExportItem = {
+    label: string;
+    value: string;
+    note?: string;
+    color: string;
+    progress?: number;
+    status?: string;
+    caption?: string;
+    helper?: string;
+  };
+
+  function getThemeExportColors() {
+    const shell = document.querySelector<HTMLElement>(".dashboard-shell");
+    const isLight = shell?.getAttribute("data-dashboard-theme") === "light";
+    return {
+      isLight,
+      bg: isLight ? "#eef6ff" : "#07111f",
+      panel: isLight ? "#ffffff" : "#0f1b2f",
+      panel2: isLight ? "#f7fbff" : "#111d33",
+      text: isLight ? "#0f2740" : "#f8fafc",
+      muted: isLight ? "#4b6480" : "#9fb4ca",
+      border: isLight ? "rgba(14,116,144,0.22)" : "rgba(125,211,252,0.18)",
+      title: isLight ? "#0f2740" : "#e0f7ff",
+    };
+  }
+
+  function drawWrappedCanvasText(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    x: number,
+    y: number,
+    maxWidth: number,
+    lineHeight: number,
+    maxLines = 2,
+  ) {
+    const words = clean(text).split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let current = "";
+    words.forEach((word) => {
+      const next = current ? `${current} ${word}` : word;
+      if (ctx.measureText(next).width <= maxWidth || !current) current = next;
+      else {
+        lines.push(current);
+        current = word;
+      }
+    });
+    if (current) lines.push(current);
+    lines.slice(0, maxLines).forEach((line, index) => {
+      const finalLine = index === maxLines - 1 && lines.length > maxLines ? `${line}…` : line;
+      ctx.fillText(finalLine, x, y + index * lineHeight);
+    });
+  }
+
+  function createExportCanvas(width: number, height: number) {
+    const scale = Math.max(2, Math.min(3, window.devicePixelRatio || 2));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(width * scale);
+    canvas.height = Math.ceil(height * scale);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Could not create canvas context.");
+    ctx.scale(scale, scale);
+    return { canvas, ctx };
+  }
+
+  function drawCardBackground(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    color: string,
+    theme: ReturnType<typeof getThemeExportColors>,
+  ) {
+    const grad = ctx.createLinearGradient(x, y, x, y + h);
+    grad.addColorStop(0, theme.isLight ? "#ffffff" : "#15243d");
+    grad.addColorStop(1, theme.isLight ? "#f4f9ff" : "#0c1729");
+    drawRoundedRect(ctx, x, y, w, h, 22);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.46;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  function buildKpiExportCardItems(): ManualCardExportItem[] {
+    return [
+      { label: "Total TT's", value: analytics.totalUnique.toLocaleString(), color: "#fff200" },
+      { label: "Closed TT's", value: closed.toLocaleString(), color: "#34d399" },
+      { label: "Pending TT's", value: pending.toLocaleString(), color: "#f59e0b" },
+      { label: "Resolved TT's", value: resolved.toLocaleString(), color: "#60a5fa" },
+      { label: "Critical TT's", value: critical.toLocaleString(), color: "#ef4444" },
+      { label: "Major TT's", value: major.toLocaleString(), color: "#f59e0b" },
+      { label: "Minor TT's", value: minor.toLocaleString(), color: "#22d3ee" },
+      { label: "Region Sites", value: analytics.regionSiteTotal.toLocaleString(), color: "#60a5fa" },
+      { label: "Regions", value: analytics.region.length.toLocaleString(), color: "#60a5fa" },
+      { label: "Non-Service Impact", value: nonServiceImpact.toLocaleString(), color: "#94a3b8" },
+      { label: "Service Impact", value: serviceImpact.toLocaleString(), color: "#ef4444" },
+      {
+        label: "Top RCA / TT's",
+        value: analytics.topRcaByCount.name || "N/A",
+        note: analytics.topRcaByCount.value ? `${analytics.topRcaByCount.value.toLocaleString()} Tickets` : "",
+        color: "#22d3ee",
+      },
+      {
+        label: "Top RCA / Downtime",
+        value: analytics.topRcaByDowntime.name || "N/A",
+        note: formatHours(analytics.topRcaByDowntime.value),
+        color: "#f59e0b",
+      },
+      {
+        label: "Highest MTTR RCA",
+        value: analytics.highestMttrRca.name || "N/A",
+        note: formatHours(analytics.highestMttrRca.value),
+        color: "#ef4444",
+      },
+      { label: "Repeated RCA/Sites", value: analytics.repeatedRcaSites.toLocaleString(), color: "#a78bfa" },
+      { label: "RCA not Provided %", value: analytics.rcaNotProvidedCount.toLocaleString(), color: "#ff0000" },
+    ];
+  }
+
+  function drawKpiCardsCanvas(): HTMLCanvasElement {
+    const theme = getThemeExportColors();
+    const cards = buildKpiExportCardItems();
+    const columns = 4;
+    const gap = 24;
+    const margin = 44;
+    const titleH = 70;
+    const cardW = 300;
+    const cardH = 150;
+    const rows = Math.ceil(cards.length / columns);
+    const width = margin * 2 + columns * cardW + (columns - 1) * gap;
+    const height = margin * 2 + titleH + rows * cardH + (rows - 1) * gap;
+    const { canvas, ctx } = createExportCanvas(width, height);
+
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = theme.title;
+    ctx.font = "900 30px Arial, sans-serif";
+    ctx.fillText("KPI Cards Export", margin, margin + 8);
+    ctx.fillStyle = theme.muted;
+    ctx.font = "700 14px Arial, sans-serif";
+    ctx.fillText("Follow-Up Sheets / DMR Ticketing Dashboard", margin, margin + 36);
+
+    cards.forEach((card, index) => {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      const x = margin + col * (cardW + gap);
+      const y = margin + titleH + row * (cardH + gap);
+      drawCardBackground(ctx, x, y, cardW, cardH, card.color, theme);
+
+      ctx.fillStyle = card.color;
+      ctx.beginPath();
+      ctx.arc(x + 38, y + 42, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = theme.isLight ? "#ffffff" : "#07111f";
+      ctx.font = "900 16px Arial, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(clean(card.label).charAt(0).toUpperCase(), x + 38, y + 48);
+      ctx.textAlign = "left";
+
+      ctx.fillStyle = theme.muted;
+      ctx.font = "900 13px Arial, sans-serif";
+      drawWrappedCanvasText(ctx, card.label.toUpperCase(), x + 66, y + 34, cardW - 86, 15, 2);
+      ctx.fillStyle = card.color;
+      ctx.font = "900 26px Arial, sans-serif";
+      drawWrappedCanvasText(ctx, card.value, x + 24, y + 88, cardW - 48, 28, 2);
+      if (card.note) {
+        ctx.fillStyle = theme.muted;
+        ctx.font = "700 13px Arial, sans-serif";
+        drawWrappedCanvasText(ctx, card.note, x + 24, y + 130, cardW - 48, 15, 1);
+      }
+    });
+    return canvas;
+  }
+
+  function drawSemiGauge(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    radius: number,
+    progress: number,
+    color: string,
+    theme: ReturnType<typeof getThemeExportColors>,
+  ) {
+    ctx.lineCap = "round";
+    ctx.lineWidth = 12;
+    ctx.strokeStyle = theme.isLight ? "rgba(148,163,184,0.22)" : "rgba(148,163,184,0.18)";
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, Math.PI, 0, false);
+    ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, Math.PI, Math.PI + Math.PI * clampGaugePercent(progress) / 100, false);
+    ctx.stroke();
+    ctx.lineCap = "butt";
+  }
+
+  function drawPerformanceCardsCanvas(): HTMLCanvasElement {
+    const theme = getThemeExportColors();
+    const kpi = computePerfKPIs(performanceKpiRows);
+    const cards = buildPerformanceGaugeCards(kpi, performanceKpiRows).map((card) => ({
+      label: card.label,
+      value: card.value,
+      note: card.helper,
+      color: card.color,
+      progress: card.progress,
+      status: statusLabel(card.status),
+      caption: card.caption,
+      helper: card.helper,
+    }));
+    const columns = 4;
+    const gap = 24;
+    const margin = 44;
+    const titleH = 70;
+    const cardW = 320;
+    const cardH = 230;
+    const rows = Math.ceil(cards.length / columns);
+    const width = margin * 2 + columns * cardW + (columns - 1) * gap;
+    const height = margin * 2 + titleH + rows * cardH + (rows - 1) * gap;
+    const { canvas, ctx } = createExportCanvas(width, height);
+
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = theme.title;
+    ctx.font = "900 30px Arial, sans-serif";
+    ctx.fillText("Performance KPI Cards Export", margin, margin + 8);
+    ctx.fillStyle = theme.muted;
+    ctx.font = "700 14px Arial, sans-serif";
+    ctx.fillText("Availability, reliability, downtime and affected-site KPI gauges", margin, margin + 36);
+
+    cards.forEach((card, index) => {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      const x = margin + col * (cardW + gap);
+      const y = margin + titleH + row * (cardH + gap);
+      drawCardBackground(ctx, x, y, cardW, cardH, card.color, theme);
+
+      ctx.fillStyle = theme.text;
+      ctx.font = "900 13px Arial, sans-serif";
+      drawWrappedCanvasText(ctx, card.label.toUpperCase(), x + 22, y + 28, cardW - 132, 15, 2);
+      ctx.fillStyle = card.color;
+      ctx.font = "900 11px Arial, sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(card.status ?? "", x + cardW - 22, y + 30);
+      ctx.textAlign = "left";
+
+      drawSemiGauge(ctx, x + cardW / 2, y + 126, 82, card.progress ?? 0, card.color, theme);
+      ctx.fillStyle = card.color;
+      ctx.beginPath();
+      ctx.arc(x + cardW / 2, y + 126, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = theme.isLight ? "#ffffff" : "#07111f";
+      ctx.font = "900 16px Arial, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(clean(card.label).charAt(0).toUpperCase(), x + cardW / 2, y + 132);
+
+      ctx.fillStyle = card.color;
+      ctx.font = "900 22px Arial, sans-serif";
+      drawWrappedCanvasText(ctx, card.value, x + 26, y + 164, cardW - 52, 24, 2);
+      ctx.fillStyle = theme.muted;
+      ctx.font = "700 12px Arial, sans-serif";
+      drawWrappedCanvasText(ctx, card.caption ?? "", x + 26, y + 198, cardW - 52, 14, 2);
+      ctx.textAlign = "left";
+    });
+    return canvas;
+  }
+
+  async function exportManualCanvasPng(canvas: HTMLCanvasElement, fileName: string) {
+    const blob = await canvasToBlob(canvas);
+    return downloadBlobWithHistoryUrl(blob, `${fileName}.png`);
+  }
+
+  async function exportManualCanvasPdf(canvas: HTMLCanvasElement, fileName: string) {
+    const imgData = canvas.toDataURL("image/png");
+    const scale = Math.max(2, Math.min(3, window.devicePixelRatio || 2));
+    const pageWidth = Math.ceil(canvas.width / scale) + 40;
+    const pageHeight = Math.ceil(canvas.height / scale) + 40;
+    const doc = new jsPDF({
+      orientation: pageWidth >= pageHeight ? "landscape" : "portrait",
+      unit: "px",
+      format: [pageWidth, pageHeight],
+    });
+    doc.addImage(imgData, "PNG", 20, 20, pageWidth - 40, pageHeight - 40);
+    const blob = doc.output("blob");
+    return downloadBlobWithHistoryUrl(blob, `${fileName}.pdf`);
+  }
+
+  async function exportKpiCardsReport(format: ManagedReportFormat): Promise<ExportDownloadInfo | null> {
+    if (format !== "png" && format !== "pdf") return null;
+    return format === "pdf"
+      ? exportCardsCanvasPdf(statsRef.current, "KPI-Cards", ".stat-card")
+      : exportCardsCanvasPng(statsRef.current, "KPI-Cards", ".stat-card");
+  }
+
+  async function exportPerformanceCardsReport(format: ManagedReportFormat): Promise<ExportDownloadInfo | null> {
+    if (format !== "png" && format !== "pdf") return null;
+    if (!performanceKpiRows.length) {
+      setError("Performance KPI cards are not available for the current filters.");
+      return null;
+    }
+    return format === "pdf"
+      ? exportCardsCanvasPdf(performanceKpiCardsRef.current, "Performance-KPI-Gauge-Cards", ".perf-gauge-card")
+      : exportCardsCanvasPng(performanceKpiCardsRef.current, "Performance-KPI-Gauge-Cards", ".perf-gauge-card");
   }
 
   async function exportCardsCanvasPng(
@@ -10448,15 +10743,9 @@ export default function Home() {
                               <td>{report.generatedAt}</td>
                               <td>{report.records.toLocaleString()}</td>
                               <td>
-                                {report.downloadUrl ? (
-                                  <a className="reports-download-link" href={report.downloadUrl} download={report.fileName}>
-                                    {report.downloadLocation ?? `Browser Downloads / ${report.fileName}`}
-                                  </a>
-                                ) : (
-                                  <span className="reports-download-location">
-                                    {report.downloadLocation ?? `Browser Downloads / ${report.fileName}`}
-                                  </span>
-                                )}
+                                <span className="reports-download-location">
+                                  {report.downloadLocation ?? `Browser Downloads / ${report.fileName}`}
+                                </span>
                               </td>
                               <td>
                                 <span className={`reports-format-pill reports-format-pill--${report.format}`}>
