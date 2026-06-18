@@ -8303,12 +8303,12 @@ export default function Home() {
   function drawKpiCardsCanvas(): HTMLCanvasElement {
     const theme = getThemeExportColors();
     const cards = buildKpiExportCardItems();
-    const columns = 4;
-    const gap = 24;
-    const margin = 44;
-    const titleH = 70;
-    const cardW = 300;
-    const cardH = 150;
+    const columns = 8;
+    const gap = 16;
+    const margin = 18;
+    const titleH = 52;
+    const cardW = 232;
+    const cardH = 220;
     const rows = Math.ceil(cards.length / columns);
     const width = margin * 2 + columns * cardW + (columns - 1) * gap;
     const height = margin * 2 + titleH + rows * cardH + (rows - 1) * gap;
@@ -8331,26 +8331,30 @@ export default function Home() {
       drawCardBackground(ctx, x, y, cardW, cardH, card.color, theme);
 
       ctx.fillStyle = card.color;
+      ctx.fillStyle = card.color;
       ctx.beginPath();
-      ctx.arc(x + 38, y + 42, 18, 0, Math.PI * 2);
+      ctx.arc(x + cardW / 2, y + 56, 22, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = theme.isLight ? "#ffffff" : "#07111f";
-      ctx.font = "900 16px Arial, sans-serif";
+      ctx.font = "900 17px Arial, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(clean(card.label).charAt(0).toUpperCase(), x + 38, y + 48);
-      ctx.textAlign = "left";
+      ctx.fillText(clean(card.label).charAt(0).toUpperCase(), x + cardW / 2, y + 62);
 
       ctx.fillStyle = theme.muted;
-      ctx.font = "900 13px Arial, sans-serif";
-      drawWrappedCanvasText(ctx, card.label.toUpperCase(), x + 66, y + 34, cardW - 86, 15, 2);
-      ctx.fillStyle = card.color;
-      ctx.font = "900 26px Arial, sans-serif";
-      drawWrappedCanvasText(ctx, card.value, x + 24, y + 88, cardW - 48, 28, 2);
+      ctx.font = "900 14px Arial, sans-serif";
+      drawWrappedCanvasText(ctx, card.label.toUpperCase(), x + 18, y + 100, cardW - 36, 17, 2);
+      ctx.fillStyle = theme.text;
+      ctx.font = "900 28px Arial, sans-serif";
+      drawWrappedCanvasText(ctx, card.value, x + 18, y + 150, cardW - 36, 30, 2);
       if (card.note) {
         ctx.fillStyle = theme.muted;
-        ctx.font = "700 13px Arial, sans-serif";
-        drawWrappedCanvasText(ctx, card.note, x + 24, y + 130, cardW - 48, 15, 1);
+        ctx.font = "800 12px Arial, sans-serif";
+        drawWrappedCanvasText(ctx, card.note, x + 18, y + 196, cardW - 36, 14, 1);
       }
+      ctx.textAlign = "left";
+      ctx.fillStyle = card.color;
+      drawRoundedRect(ctx, x + 18, y + cardH - 22, cardW - 36, 5, 999);
+      ctx.fill();
     });
     return canvas;
   }
@@ -8390,12 +8394,12 @@ export default function Home() {
       caption: card.caption,
       helper: card.helper,
     }));
-    const columns = 4;
-    const gap = 24;
-    const margin = 44;
-    const titleH = 70;
-    const cardW = 320;
-    const cardH = 230;
+    const columns = 7;
+    const gap = 14;
+    const margin = 18;
+    const titleH = 48;
+    const cardW = 258;
+    const cardH = 250;
     const rows = Math.ceil(cards.length / columns);
     const width = margin * 2 + columns * cardW + (columns - 1) * gap;
     const height = margin * 2 + titleH + rows * cardH + (rows - 1) * gap;
@@ -8469,9 +8473,10 @@ export default function Home() {
 
   async function exportKpiCardsReport(format: ManagedReportFormat): Promise<ExportDownloadInfo | null> {
     if (format !== "png" && format !== "pdf") return null;
+    const canvas = drawKpiCardsCanvas();
     return format === "pdf"
-      ? exportCardsCanvasPdf(statsRef.current, "KPI-Cards", ".stat-card")
-      : exportCardsCanvasPng(statsRef.current, "KPI-Cards", ".stat-card");
+      ? exportManualCanvasPdf(canvas, "KPI-Cards")
+      : exportManualCanvasPng(canvas, "KPI-Cards");
   }
 
   async function exportPerformanceCardsReport(format: ManagedReportFormat): Promise<ExportDownloadInfo | null> {
@@ -8480,9 +8485,10 @@ export default function Home() {
       setError("Performance KPI cards are not available for the current filters.");
       return null;
     }
+    const canvas = drawPerformanceCardsCanvas();
     return format === "pdf"
-      ? exportCardsCanvasPdf(performanceKpiCardsRef.current, "Performance-KPI-Gauge-Cards", ".perf-gauge-card")
-      : exportCardsCanvasPng(performanceKpiCardsRef.current, "Performance-KPI-Gauge-Cards", ".perf-gauge-card");
+      ? exportManualCanvasPdf(canvas, "Performance-KPI-Gauge-Cards")
+      : exportManualCanvasPng(canvas, "Performance-KPI-Gauge-Cards");
   }
 
   async function exportCardsCanvasPng(
