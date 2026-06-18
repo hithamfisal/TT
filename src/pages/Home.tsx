@@ -129,8 +129,14 @@ type MicrosoftGraphConfig = {
 };
 
 
-type ManagedReportType = "tickets" | "performance" | "executive" | "quality";
-type ManagedReportFormat = "xlsx" | "pdf" | "ppt";
+type ManagedReportType =
+  | "tickets"
+  | "performance"
+  | "executive"
+  | "quality"
+  | "kpiCards"
+  | "performanceCards";
+type ManagedReportFormat = "xlsx" | "pdf" | "ppt" | "png";
 
 type GeneratedReportItem = {
   id: string;
@@ -7465,6 +7471,20 @@ export default function Home() {
           deepDiveAnalytics.repeatedOffenderSites.length +
           deepDiveAnalytics.rcaFamilyDeepDive.length,
       },
+      {
+        id: "kpiCards" as ManagedReportType,
+        title: "KPI Cards Export",
+        description: "Export the full KPI card grid as a clean management PNG or PDF.",
+        formats: ["png", "pdf"] as ManagedReportFormat[],
+        records: analytics.totalUnique,
+      },
+      {
+        id: "performanceCards" as ManagedReportType,
+        title: "Performance KPI Cards Export",
+        description: "Export the full Performance KPI gauge card grid as a clean management PNG or PDF.",
+        formats: ["png", "pdf"] as ManagedReportFormat[],
+        records: performanceKpiRows.length,
+      },
     ],
     [
       deepDiveAnalytics.rcaFamilyDeepDive.length,
@@ -7473,6 +7493,8 @@ export default function Home() {
       executiveInsights.highRiskSites.length,
       monthlyExportTickets.length,
       reportPerformanceExportMetrics.reportRows,
+      analytics.totalUnique,
+      performanceKpiRows.length,
     ],
   );
 
@@ -7515,6 +7537,10 @@ export default function Home() {
       },
       ...prev,
     ].slice(0, 12));
+  }
+
+  function clearGeneratedReportsHistory() {
+    setGeneratedReports([]);
   }
 
   async function handleGenerateManagedReport() {
@@ -7562,6 +7588,36 @@ export default function Home() {
         } else {
           exportPerfPpt(perfRows, perfMonthLabel, executiveInsights);
         }
+      } else if (report.id === "kpiCards") {
+        setActiveDashboardTab("kpis");
+        await new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        );
+        if (format === "pdf") {
+          await exportCardsCanvasPdf(statsRef.current, "KPI-Cards", ".stat-card");
+        } else {
+          await exportCardsCanvasPng(statsRef.current, "KPI-Cards", ".stat-card");
+        }
+        setActiveDashboardTab("reports");
+      } else if (report.id === "performanceCards") {
+        setActiveDashboardTab("performanceKpis");
+        await new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        );
+        if (format === "pdf") {
+          await exportCardsCanvasPdf(
+            performanceKpiCardsRef.current,
+            "Performance-KPI-Gauge-Cards",
+            ".perf-gauge-card",
+          );
+        } else {
+          await exportCardsCanvasPng(
+            performanceKpiCardsRef.current,
+            "Performance-KPI-Gauge-Cards",
+            ".perf-gauge-card",
+          );
+        }
+        setActiveDashboardTab("reports");
       } else if (report.id === "executive") {
         await exportDashboardSectionExcel("executive");
       } else {
@@ -7742,8 +7798,13 @@ export default function Home() {
     element: HTMLElement,
     fileName: string,
   ) {
-    const svg = element.querySelector<SVGSVGElement>("svg");
-    if (!svg) return false;
+    const svg =
+      element instanceof SVGSVGElement
+        ? element
+        : element.querySelector<SVGSVGElement>(
+            "svg.recharts-surface, .recharts-wrapper svg",
+          );
+    if (!svg || svg.classList.contains("file-export-svg")) return false;
 
     const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
     const sourceBox = svg.getBoundingClientRect();
@@ -7849,6 +7910,227 @@ export default function Home() {
     } finally {
       element.classList.remove("png-export-active");
     }
+  }
+
+
+  function drawRoundedRect(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+  ) {
+    const r = Math.min(radius, width / 2, height / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function wrapCanvasText(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    x: number,
+    y: number,
+    maxWidth: number,
+    lineHeight: number,
+    maxLines = 2,
+  ) {
+    const words = text.split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let current = "";
+    words.forEach((word) => {
+      const next = current ? `${current} ${word}` : word;
+      if (ctx.measureText(next).width <= maxWidth || !current) {
+        current = next;
+      } else {
+        lines.push(current);
+        current = word;
+      }
+    });
+    if (current) lines.push(current);
+    lines.slice(0, maxLines).forEach((line, index) => {
+      const finalLine =
+        index === maxLines - 1 && lines.length > maxLines ? `${line}…` : line;
+      ctx.fillText(finalLine, x, y + index * lineHeight);
+    });
+    return Math.min(lines.length, maxLines) * lineHeight;
+  }
+
+  function getCardText(card: Element, selector: string, fallback = "") {
+    return clean(card.querySelector(selector)?.textContent ?? fallback);
+  }
+
+  async function renderCardsCanvas(
+    element: HTMLElement | null,
+    fileName: string,
+    cardSelector: string,
+  ): Promise<HTMLCanvasElement | null> {
+    if (!element) {
+      setError("PNG/PDF export target was not found. Please open the tab and try again.");
+      return null;
+    }
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    const cards = Array.from(element.querySelectorAll<HTMLElement>(cardSelector)).filter(
+      (card) => card.offsetWidth > 0 && card.offsetHeight > 0,
+    );
+
+    if (!cards.length) {
+      setError("No cards were found to export. Please open the tab and try again.");
+      return null;
+    }
+
+    const cardBoxes = cards.map((card) => card.getBoundingClientRect());
+    const minX = Math.min(...cardBoxes.map((box) => box.left));
+    const minY = Math.min(...cardBoxes.map((box) => box.top));
+    const maxX = Math.max(...cardBoxes.map((box) => box.right));
+    const maxY = Math.max(...cardBoxes.map((box) => box.bottom));
+    const padding = 34;
+    const titleHeight = 54;
+    const width = Math.max(900, Math.ceil(maxX - minX + padding * 2));
+    const height = Math.max(360, Math.ceil(maxY - minY + padding * 2 + titleHeight));
+    const scale = Math.min(2, window.devicePixelRatio || 1.5);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.scale(scale, scale);
+
+    const isLight = document
+      .querySelector(".dashboard-shell")
+      ?.getAttribute("data-dashboard-theme") === "light";
+    const background = isLight ? "#eef6ff" : "#07111f";
+    const panel = isLight ? "#ffffff" : "#101a2b";
+    const border = isLight ? "#c6d9ea" : "#24445f";
+    const primaryText = isLight ? "#0f2740" : "#f8fafc";
+    const mutedText = isLight ? "#55708a" : "#9fb4ca";
+
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.fillStyle = primaryText;
+    ctx.font = "800 24px Arial, sans-serif";
+    ctx.fillText(fileName.replace(/[-_]/g, " "), padding, 34);
+
+    cards.forEach((card, index) => {
+      const box = cardBoxes[index];
+      const x = Math.round(box.left - minX + padding);
+      const y = Math.round(box.top - minY + padding + titleHeight);
+      const w = Math.max(170, Math.round(box.width));
+      const h = Math.max(110, Math.round(box.height));
+      const color =
+        card.style.getPropertyValue("--tone") ||
+        card.style.getPropertyValue("--gauge-color") ||
+        getComputedStyle(card).getPropertyValue("--tone") ||
+        getComputedStyle(card).getPropertyValue("--gauge-color") ||
+        "#22d3ee";
+
+      ctx.save();
+      drawRoundedRect(ctx, x, y, w, h, 22);
+      ctx.fillStyle = panel;
+      ctx.fill();
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.strokeStyle = color.trim() || "#22d3ee";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(x + 20, y + 10);
+      ctx.lineTo(x + w - 20, y + 10);
+      ctx.stroke();
+
+      const isGauge = card.classList.contains("perf-gauge-card");
+      if (isGauge) {
+        ctx.strokeStyle = color.trim() || "#22d3ee";
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.arc(x + w / 2, y + 132, Math.min(w * 0.42, 104), Math.PI, 0);
+        ctx.stroke();
+        ctx.fillStyle = `${color.trim() || "#22d3ee"}22`;
+        ctx.beginPath();
+        ctx.arc(x + w / 2, y + 92, 22, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = `${color.trim() || "#22d3ee"}22`;
+        ctx.beginPath();
+        ctx.arc(x + 42, y + 44, 24, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const label = isGauge
+        ? getCardText(card, ".perf-gauge-card__label")
+        : getCardText(card, "span");
+      const value = isGauge
+        ? getCardText(card, ".perf-gauge-card__value")
+        : getCardText(card, "strong");
+      const caption = isGauge
+        ? getCardText(card, ".perf-gauge-card__caption")
+        : getCardText(card, "small");
+      const helper = isGauge ? getCardText(card, ".perf-gauge-card__helper") : "";
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = mutedText;
+      ctx.font = "800 12px Arial, sans-serif";
+      wrapCanvasText(ctx, label.toUpperCase(), x + w / 2, y + 34, w - 26, 15, 2);
+
+      ctx.fillStyle = color.trim() || "#22d3ee";
+      ctx.font = "900 24px Arial, sans-serif";
+      wrapCanvasText(ctx, value || "--", x + w / 2, y + (isGauge ? 126 : 78), w - 24, 26, 2);
+
+      ctx.fillStyle = primaryText;
+      ctx.font = "700 12px Arial, sans-serif";
+      wrapCanvasText(ctx, caption || helper, x + w / 2, y + h - 38, w - 26, 15, 2);
+      ctx.restore();
+    });
+
+    return canvas;
+  }
+
+  async function exportCardsCanvasPng(
+    element: HTMLElement | null,
+    fileName: string,
+    cardSelector: string,
+  ) {
+    const canvas = await renderCardsCanvas(element, fileName, cardSelector);
+    if (!canvas) return;
+    const link = document.createElement("a");
+    link.href = canvas.toDataURL("image/png");
+    link.download = `${makeFileSafeName(fileName)}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  async function exportCardsCanvasPdf(
+    element: HTMLElement | null,
+    fileName: string,
+    cardSelector: string,
+  ) {
+    const canvas = await renderCardsCanvas(element, fileName, cardSelector);
+    if (!canvas) return;
+    const imgData = canvas.toDataURL("image/png");
+    const pageWidth = Math.ceil(canvas.width / Math.min(2, window.devicePixelRatio || 1.5)) + 40;
+    const pageHeight = Math.ceil(canvas.height / Math.min(2, window.devicePixelRatio || 1.5)) + 40;
+    const doc = new jsPDF({
+      orientation: pageWidth >= pageHeight ? "landscape" : "portrait",
+      unit: "px",
+      format: [pageWidth, pageHeight],
+    });
+    doc.addImage(imgData, "PNG", 20, 20, pageWidth - 40, pageHeight - 40);
+    doc.save(`${makeFileSafeName(fileName)}.pdf`);
   }
 
   function hasDashboardSectionExcel(sectionId: DashboardSectionId) {
@@ -9839,7 +10121,7 @@ export default function Home() {
                     onClick={handleGenerateManagedReport}
                   >
                     <span className="reports-generate-icon">
-                      <ReportFileIcon kind={managedReportFormat === "pdf" ? "pdf" : managedReportFormat === "ppt" ? "ppt" : "xlsx"} />
+                      <ReportFileIcon kind={managedReportFormat} />
                     </span>
                     <span>
                       <strong>Generate New Report</strong>
@@ -9921,8 +10203,24 @@ export default function Home() {
 
                 <section className="reports-history-panel">
                   <div className="reports-history-title-row">
-                    <h3>Generated Reports History</h3>
-                    <span>{visibleGeneratedReports.length.toLocaleString()} recent</span>
+                    <div>
+                      <h3>Generated Reports History</h3>
+                      <p className="reports-download-note">
+                        Generated files are saved by your browser to the Downloads folder.
+                      </p>
+                    </div>
+
+                    <div className="reports-history-actions">
+                      <span>{visibleGeneratedReports.length.toLocaleString()} recent</span>
+                      <button
+                        type="button"
+                        className="reports-clear-history-button"
+                        onClick={clearGeneratedReportsHistory}
+                        disabled={generatedReports.length === 0}
+                      >
+                        Clear History
+                      </button>
+                    </div>
                   </div>
 
                   <div className="reports-quick-actions">
@@ -9994,6 +10292,62 @@ export default function Home() {
                       <span>
                         <strong>RCA / SLA Workbook</strong>
                         <small>Preventability and repeated offenders</small>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="reports-action-card"
+                      onClick={() => {
+                        setManagedReportType("kpiCards");
+                        setManagedReportFormat("png");
+                      }}
+                    >
+                      <ReportFileIcon kind="png" />
+                      <span>
+                        <strong>KPI Cards PNG</strong>
+                        <small>Full KPI card grid image</small>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="reports-action-card"
+                      onClick={() => {
+                        setManagedReportType("kpiCards");
+                        setManagedReportFormat("pdf");
+                      }}
+                    >
+                      <ReportFileIcon kind="pdf" />
+                      <span>
+                        <strong>KPI Cards PDF</strong>
+                        <small>Full KPI card grid PDF</small>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="reports-action-card"
+                      onClick={() => {
+                        setManagedReportType("performanceCards");
+                        setManagedReportFormat("png");
+                      }}
+                    >
+                      <ReportFileIcon kind="png" />
+                      <span>
+                        <strong>Performance Cards PNG</strong>
+                        <small>Full gauge card grid image</small>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="reports-action-card"
+                      onClick={() => {
+                        setManagedReportType("performanceCards");
+                        setManagedReportFormat("pdf");
+                      }}
+                    >
+                      <ReportFileIcon kind="pdf" />
+                      <span>
+                        <strong>Performance Cards PDF</strong>
+                        <small>Full gauge card grid PDF</small>
                       </span>
                     </button>
                   </div>
@@ -10186,17 +10540,6 @@ export default function Home() {
             id="section-kpis"
             className="stats-grid workbook-cards dashboard-section-content-block"
           >
-            <div className="cards-export-toolbar no-print">
-              <button
-                type="button"
-                className="cards-export-button"
-                onClick={() => exportElementToPng(statsRef.current, "KPI-Cards")}
-                title="Export the full KPI card set as PNG"
-              >
-                <ImageDown size={16} />
-                <span>Export KPI Cards PNG</span>
-              </button>
-            </div>
             {/* Standard StatCards */}
             <StatCard
               label="Total TT's"
@@ -10397,22 +10740,6 @@ export default function Home() {
                     marginTop: "4px",
                   }}
                 >
-                  <div className="cards-export-toolbar cards-export-toolbar--performance no-print">
-                    <button
-                      type="button"
-                      className="cards-export-button"
-                      onClick={() =>
-                        exportElementToPng(
-                          performanceKpiCardsRef.current,
-                          "Performance-KPI-Gauge-Cards",
-                        )
-                      }
-                      title="Export the full Performance KPI card set as PNG"
-                    >
-                      <ImageDown size={16} />
-                      <span>Export Performance Cards PNG</span>
-                    </button>
-                  </div>
                   <div className="perf-kpi-row perf-kpi-row--gauges">
                     {(() => {
                       const gaugeCards = buildPerformanceGaugeCards(

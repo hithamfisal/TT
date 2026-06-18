@@ -1,8 +1,7 @@
-dist/
 node_modules/
-local-excel-backup/
+dist/
 .vite/
 .env
 .env.local
 .DS_Store
-
+local-excel-backup/
