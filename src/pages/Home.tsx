@@ -7543,10 +7543,25 @@ export default function Home() {
     setGeneratedReports([]);
   }
 
-  async function handleGenerateManagedReport() {
-    const report = selectedManagedReport;
-    const format = report.formats.includes(managedReportFormat)
-      ? managedReportFormat
+  function handleQuickReportGenerate(
+    reportType: ManagedReportType,
+    format: ManagedReportFormat,
+  ) {
+    setManagedReportType(reportType);
+    setManagedReportFormat(format);
+    void handleGenerateManagedReport(reportType, format);
+  }
+
+  async function handleGenerateManagedReport(
+    reportTypeOverride?: ManagedReportType,
+    formatOverride?: ManagedReportFormat,
+  ) {
+    const report =
+      managedReportDefinitions.find((definition) => definition.id === reportTypeOverride) ??
+      selectedManagedReport;
+    const requestedFormat = formatOverride ?? managedReportFormat;
+    const format = report.formats.includes(requestedFormat)
+      ? requestedFormat
       : report.formats[0];
     const monthLabel =
       exportMonths.length === 1
@@ -7589,35 +7604,41 @@ export default function Home() {
           exportPerfPpt(perfRows, perfMonthLabel, executiveInsights);
         }
       } else if (report.id === "kpiCards") {
-        setActiveDashboardTab("kpis");
-        await new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve)),
-        );
-        if (format === "pdf") {
-          await exportCardsCanvasPdf(statsRef.current, "KPI-Cards", ".stat-card");
-        } else {
-          await exportCardsCanvasPng(statsRef.current, "KPI-Cards", ".stat-card");
+        const previousTab = activeDashboardTab;
+        let exported = false;
+        try {
+          setActiveDashboardTab("kpis");
+          await waitForDashboardRender(5);
+          exported =
+            format === "pdf"
+              ? await exportCardsCanvasPdf(statsRef.current, "KPI-Cards", ".stat-card")
+              : await exportCardsCanvasPng(statsRef.current, "KPI-Cards", ".stat-card");
+        } finally {
+          setActiveDashboardTab(previousTab === "reports" ? "reports" : previousTab);
         }
-        setActiveDashboardTab("reports");
+        if (!exported) return;
       } else if (report.id === "performanceCards") {
-        setActiveDashboardTab("performanceKpis");
-        await new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve)),
-        );
-        if (format === "pdf") {
-          await exportCardsCanvasPdf(
-            performanceKpiCardsRef.current,
-            "Performance-KPI-Gauge-Cards",
-            ".perf-gauge-card",
-          );
-        } else {
-          await exportCardsCanvasPng(
-            performanceKpiCardsRef.current,
-            "Performance-KPI-Gauge-Cards",
-            ".perf-gauge-card",
-          );
+        const previousTab = activeDashboardTab;
+        let exported = false;
+        try {
+          setActiveDashboardTab("performanceKpis");
+          await waitForDashboardRender(5);
+          exported =
+            format === "pdf"
+              ? await exportCardsCanvasPdf(
+                  performanceKpiCardsRef.current,
+                  "Performance-KPI-Gauge-Cards",
+                  ".perf-gauge-card",
+                )
+              : await exportCardsCanvasPng(
+                  performanceKpiCardsRef.current,
+                  "Performance-KPI-Gauge-Cards",
+                  ".perf-gauge-card",
+                );
+        } finally {
+          setActiveDashboardTab(previousTab === "reports" ? "reports" : previousTab);
         }
-        setActiveDashboardTab("reports");
+        if (!exported) return;
       } else if (report.id === "executive") {
         await exportDashboardSectionExcel("executive");
       } else {
@@ -7625,7 +7646,7 @@ export default function Home() {
       }
 
       addGeneratedReportHistory({
-        fileName: `${report.title.replace(/\s+/g, "_")}_${format.toUpperCase()}`,
+        fileName: `${makeFileSafeName(report.title)}.${format}`,
         reportType: report.title,
         format,
         records: report.records,
@@ -7969,143 +7990,153 @@ export default function Home() {
     return clean(card.querySelector(selector)?.textContent ?? fallback);
   }
 
+  async function waitForDashboardRender(frames = 4) {
+    for (let index = 0; index < frames; index += 1) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+  }
+
+  function forceVisibleForExport(element: HTMLElement) {
+    const changed: Array<{ node: HTMLElement; className: string; style: string | null }> = [];
+    let current: HTMLElement | null = element;
+
+    while (current) {
+      const className = current.className;
+      const style = current.getAttribute("style");
+      const computed = getComputedStyle(current);
+      const shouldPatch =
+        current.classList.contains("dashboard-section-tab-hidden") ||
+        current.classList.contains("dashboard-section-collapsed") ||
+        computed.display === "none" ||
+        computed.visibility === "hidden";
+
+      if (shouldPatch) {
+        changed.push({ node: current, className: String(className), style });
+        current.classList.remove(
+          "dashboard-section-tab-hidden",
+          "dashboard-section-collapsed",
+          "is-collapsed",
+          "collapsed",
+        );
+        if (current.style.display === "none") current.style.display = "block";
+        current.style.visibility = "visible";
+        if (current.style.opacity === "0") current.style.opacity = "1";
+      }
+
+      current = current.parentElement;
+    }
+
+    return () => {
+      changed.reverse().forEach(({ node, className, style }) => {
+        node.className = className;
+        if (style === null) node.removeAttribute("style");
+        else node.setAttribute("style", style);
+      });
+    };
+  }
+
   async function renderCardsCanvas(
     element: HTMLElement | null,
     fileName: string,
     cardSelector: string,
   ): Promise<HTMLCanvasElement | null> {
     if (!element) {
-      setError("PNG/PDF export target was not found. Please open the tab and try again.");
+      setError("Card export target was not found. Please open the related tab and try again.");
       return null;
     }
 
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await waitForDashboardRender();
+    const restoreVisibility = forceVisibleForExport(element);
 
-    const cards = Array.from(element.querySelectorAll<HTMLElement>(cardSelector)).filter(
-      (card) => card.offsetWidth > 0 && card.offsetHeight > 0,
-    );
+    try {
+      await waitForDashboardRender(2);
+      const cards = Array.from(element.querySelectorAll<HTMLElement>(cardSelector)).filter(
+        (card) => card.getBoundingClientRect().width > 0 && card.getBoundingClientRect().height > 0,
+      );
 
-    if (!cards.length) {
-      setError("No cards were found to export. Please open the tab and try again.");
-      return null;
-    }
-
-    const cardBoxes = cards.map((card) => card.getBoundingClientRect());
-    const minX = Math.min(...cardBoxes.map((box) => box.left));
-    const minY = Math.min(...cardBoxes.map((box) => box.top));
-    const maxX = Math.max(...cardBoxes.map((box) => box.right));
-    const maxY = Math.max(...cardBoxes.map((box) => box.bottom));
-    const padding = 34;
-    const titleHeight = 54;
-    const width = Math.max(900, Math.ceil(maxX - minX + padding * 2));
-    const height = Math.max(360, Math.ceil(maxY - minY + padding * 2 + titleHeight));
-    const scale = Math.min(2, window.devicePixelRatio || 1.5);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = width * scale;
-    canvas.height = height * scale;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.scale(scale, scale);
-
-    const isLight = document
-      .querySelector(".dashboard-shell")
-      ?.getAttribute("data-dashboard-theme") === "light";
-    const background = isLight ? "#eef6ff" : "#07111f";
-    const panel = isLight ? "#ffffff" : "#101a2b";
-    const border = isLight ? "#c6d9ea" : "#24445f";
-    const primaryText = isLight ? "#0f2740" : "#f8fafc";
-    const mutedText = isLight ? "#55708a" : "#9fb4ca";
-
-    ctx.fillStyle = background;
-    ctx.fillRect(0, 0, width, height);
-
-    ctx.fillStyle = primaryText;
-    ctx.font = "800 24px Arial, sans-serif";
-    ctx.fillText(fileName.replace(/[-_]/g, " "), padding, 34);
-
-    cards.forEach((card, index) => {
-      const box = cardBoxes[index];
-      const x = Math.round(box.left - minX + padding);
-      const y = Math.round(box.top - minY + padding + titleHeight);
-      const w = Math.max(170, Math.round(box.width));
-      const h = Math.max(110, Math.round(box.height));
-      const color =
-        card.style.getPropertyValue("--tone") ||
-        card.style.getPropertyValue("--gauge-color") ||
-        getComputedStyle(card).getPropertyValue("--tone") ||
-        getComputedStyle(card).getPropertyValue("--gauge-color") ||
-        "#22d3ee";
-
-      ctx.save();
-      drawRoundedRect(ctx, x, y, w, h, 22);
-      ctx.fillStyle = panel;
-      ctx.fill();
-      ctx.strokeStyle = border;
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      ctx.strokeStyle = color.trim() || "#22d3ee";
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(x + 20, y + 10);
-      ctx.lineTo(x + w - 20, y + 10);
-      ctx.stroke();
-
-      const isGauge = card.classList.contains("perf-gauge-card");
-      if (isGauge) {
-        ctx.strokeStyle = color.trim() || "#22d3ee";
-        ctx.lineWidth = 10;
-        ctx.beginPath();
-        ctx.arc(x + w / 2, y + 132, Math.min(w * 0.42, 104), Math.PI, 0);
-        ctx.stroke();
-        ctx.fillStyle = `${color.trim() || "#22d3ee"}22`;
-        ctx.beginPath();
-        ctx.arc(x + w / 2, y + 92, 22, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.fillStyle = `${color.trim() || "#22d3ee"}22`;
-        ctx.beginPath();
-        ctx.arc(x + 42, y + 44, 24, 0, Math.PI * 2);
-        ctx.fill();
+      if (!cards.length) {
+        setError("No cards were found to export. Please open the related tab and try again.");
+        return null;
       }
 
-      const label = isGauge
-        ? getCardText(card, ".perf-gauge-card__label")
-        : getCardText(card, "span");
-      const value = isGauge
-        ? getCardText(card, ".perf-gauge-card__value")
-        : getCardText(card, "strong");
-      const caption = isGauge
-        ? getCardText(card, ".perf-gauge-card__caption")
-        : getCardText(card, "small");
-      const helper = isGauge ? getCardText(card, ".perf-gauge-card__helper") : "";
+      const { default: html2canvas } = await import("html2canvas");
+      const shell = document.querySelector<HTMLElement>(".dashboard-shell");
+      const isLight = shell?.getAttribute("data-dashboard-theme") === "light";
+      const exportBackground = isLight ? "#eef6ff" : "#07111f";
+      const titleText = fileName.replace(/[-_]/g, " ");
 
-      ctx.textAlign = "center";
-      ctx.fillStyle = mutedText;
-      ctx.font = "800 12px Arial, sans-serif";
-      wrapCanvasText(ctx, label.toUpperCase(), x + w / 2, y + 34, w - 26, 15, 2);
+      const sourceWidth = Math.max(980, Math.ceil(element.getBoundingClientRect().width || element.scrollWidth || 980));
+      const exportShell = document.createElement("div");
+      exportShell.className = "cards-export-stage";
+      exportShell.style.position = "fixed";
+      exportShell.style.left = "-100000px";
+      exportShell.style.top = "0";
+      exportShell.style.width = `${sourceWidth}px`;
+      exportShell.style.padding = "28px";
+      exportShell.style.background = exportBackground;
+      exportShell.style.zIndex = "-1";
+      exportShell.style.pointerEvents = "none";
 
-      ctx.fillStyle = color.trim() || "#22d3ee";
-      ctx.font = "900 24px Arial, sans-serif";
-      wrapCanvasText(ctx, value || "--", x + w / 2, y + (isGauge ? 126 : 78), w - 24, 26, 2);
+      const title = document.createElement("div");
+      title.className = "cards-export-title";
+      title.textContent = titleText;
+      title.style.color = isLight ? "#0f2740" : "#f8fafc";
+      title.style.font = "900 24px Arial, sans-serif";
+      title.style.margin = "0 0 18px";
+      title.style.letterSpacing = "0.01em";
+      exportShell.appendChild(title);
 
-      ctx.fillStyle = primaryText;
-      ctx.font = "700 12px Arial, sans-serif";
-      wrapCanvasText(ctx, caption || helper, x + w / 2, y + h - 38, w - 26, 15, 2);
-      ctx.restore();
-    });
+      const cloned = element.cloneNode(true) as HTMLElement;
+      cloned.classList.remove("dashboard-section-tab-hidden", "dashboard-section-collapsed", "no-print");
+      cloned.style.display = "";
+      cloned.style.visibility = "visible";
+      cloned.style.opacity = "1";
+      cloned.style.transform = "none";
+      cloned.style.margin = "0";
+      cloned.style.width = "100%";
+      cloned.style.maxWidth = "none";
+      cloned.querySelectorAll<HTMLElement>(".no-print, .chart-export-png-button, .section-control-panel").forEach((node) => {
+        node.remove();
+      });
+      cloned.querySelectorAll<HTMLElement>("*").forEach((node) => {
+        node.classList.remove("dashboard-section-tab-hidden", "dashboard-section-collapsed", "no-print");
+        if (node.style.display === "none") node.style.display = "";
+        if (node.style.visibility === "hidden") node.style.visibility = "visible";
+        if (node.style.opacity === "0") node.style.opacity = "1";
+      });
 
-    return canvas;
+      exportShell.appendChild(cloned);
+      document.body.appendChild(exportShell);
+
+      try {
+        await waitForDashboardRender(3);
+        const canvas = await html2canvas(exportShell, {
+          backgroundColor: exportBackground,
+          scale: Math.min(2, window.devicePixelRatio || 1.5),
+          useCORS: true,
+          logging: false,
+          windowWidth: Math.max(document.documentElement.scrollWidth, exportShell.scrollWidth + 80),
+          windowHeight: Math.max(document.documentElement.scrollHeight, exportShell.scrollHeight + 80),
+          ignoreElements: (node) =>
+            node instanceof HTMLElement &&
+            (node.classList.contains("section-control-panel") ||
+              node.classList.contains("chart-export-png-button") ||
+              node.classList.contains("no-print")),
+        });
+        return canvas;
+      } finally {
+        exportShell.remove();
+      }
+    } catch (err) {
+      if (import.meta.env.DEV) console.error("Card export failed:", err);
+      setError("Card export failed. Please try again after the dashboard finishes rendering.");
+      return null;
+    } finally {
+      restoreVisibility();
+    }
   }
 
-  async function exportCardsCanvasPng(
-    element: HTMLElement | null,
-    fileName: string,
-    cardSelector: string,
-  ) {
-    const canvas = await renderCardsCanvas(element, fileName, cardSelector);
-    if (!canvas) return;
+  function downloadCanvasAsPng(canvas: HTMLCanvasElement, fileName: string) {
     const link = document.createElement("a");
     link.href = canvas.toDataURL("image/png");
     link.download = `${makeFileSafeName(fileName)}.png`;
@@ -8114,16 +8145,28 @@ export default function Home() {
     link.remove();
   }
 
+  async function exportCardsCanvasPng(
+    element: HTMLElement | null,
+    fileName: string,
+    cardSelector: string,
+  ) {
+    const canvas = await renderCardsCanvas(element, fileName, cardSelector);
+    if (!canvas) return false;
+    downloadCanvasAsPng(canvas, fileName);
+    return true;
+  }
+
   async function exportCardsCanvasPdf(
     element: HTMLElement | null,
     fileName: string,
     cardSelector: string,
   ) {
     const canvas = await renderCardsCanvas(element, fileName, cardSelector);
-    if (!canvas) return;
+    if (!canvas) return false;
     const imgData = canvas.toDataURL("image/png");
-    const pageWidth = Math.ceil(canvas.width / Math.min(2, window.devicePixelRatio || 1.5)) + 40;
-    const pageHeight = Math.ceil(canvas.height / Math.min(2, window.devicePixelRatio || 1.5)) + 40;
+    const scale = Math.min(2, window.devicePixelRatio || 1.5);
+    const pageWidth = Math.ceil(canvas.width / scale) + 40;
+    const pageHeight = Math.ceil(canvas.height / scale) + 40;
     const doc = new jsPDF({
       orientation: pageWidth >= pageHeight ? "landscape" : "portrait",
       unit: "px",
@@ -8131,6 +8174,7 @@ export default function Home() {
     });
     doc.addImage(imgData, "PNG", 20, 20, pageWidth - 40, pageHeight - 40);
     doc.save(`${makeFileSafeName(fileName)}.pdf`);
+    return true;
   }
 
   function hasDashboardSectionExcel(sectionId: DashboardSectionId) {
@@ -10118,7 +10162,7 @@ export default function Home() {
                   <button
                     type="button"
                     className="reports-generate-hero"
-                    onClick={handleGenerateManagedReport}
+                    onClick={() => void handleGenerateManagedReport()}
                   >
                     <span className="reports-generate-icon">
                       <ReportFileIcon kind={managedReportFormat} />
@@ -10227,10 +10271,7 @@ export default function Home() {
                     <button
                       type="button"
                       className="reports-action-card"
-                      onClick={() => {
-                        setManagedReportType("tickets");
-                        setManagedReportFormat("xlsx");
-                      }}
+                      onClick={() => handleQuickReportGenerate("tickets", "xlsx")}
                     >
                       <ReportFileIcon kind="xlsx" />
                       <span>
@@ -10241,10 +10282,7 @@ export default function Home() {
                     <button
                       type="button"
                       className="reports-action-card"
-                      onClick={() => {
-                        setManagedReportType("tickets");
-                        setManagedReportFormat("ppt");
-                      }}
+                      onClick={() => handleQuickReportGenerate("tickets", "ppt")}
                     >
                       <ReportFileIcon kind="ppt" />
                       <span>
@@ -10255,10 +10293,7 @@ export default function Home() {
                     <button
                       type="button"
                       className="reports-action-card"
-                      onClick={() => {
-                        setManagedReportType("performance");
-                        setManagedReportFormat("xlsx");
-                      }}
+                      onClick={() => handleQuickReportGenerate("performance", "xlsx")}
                     >
                       <ReportFileIcon kind="xlsx" />
                       <span>
@@ -10269,10 +10304,7 @@ export default function Home() {
                     <button
                       type="button"
                       className="reports-action-card"
-                      onClick={() => {
-                        setManagedReportType("executive");
-                        setManagedReportFormat("xlsx");
-                      }}
+                      onClick={() => handleQuickReportGenerate("executive", "xlsx")}
                     >
                       <ReportFileIcon kind="xlsx" />
                       <span>
@@ -10283,10 +10315,7 @@ export default function Home() {
                     <button
                       type="button"
                       className="reports-action-card"
-                      onClick={() => {
-                        setManagedReportType("quality");
-                        setManagedReportFormat("xlsx");
-                      }}
+                      onClick={() => handleQuickReportGenerate("quality", "xlsx")}
                     >
                       <ReportFileIcon kind="xlsx" />
                       <span>
@@ -10297,10 +10326,7 @@ export default function Home() {
                     <button
                       type="button"
                       className="reports-action-card"
-                      onClick={() => {
-                        setManagedReportType("kpiCards");
-                        setManagedReportFormat("png");
-                      }}
+                      onClick={() => handleQuickReportGenerate("kpiCards", "png")}
                     >
                       <ReportFileIcon kind="png" />
                       <span>
@@ -10311,10 +10337,7 @@ export default function Home() {
                     <button
                       type="button"
                       className="reports-action-card"
-                      onClick={() => {
-                        setManagedReportType("kpiCards");
-                        setManagedReportFormat("pdf");
-                      }}
+                      onClick={() => handleQuickReportGenerate("kpiCards", "pdf")}
                     >
                       <ReportFileIcon kind="pdf" />
                       <span>
@@ -10325,10 +10348,7 @@ export default function Home() {
                     <button
                       type="button"
                       className="reports-action-card"
-                      onClick={() => {
-                        setManagedReportType("performanceCards");
-                        setManagedReportFormat("png");
-                      }}
+                      onClick={() => handleQuickReportGenerate("performanceCards", "png")}
                     >
                       <ReportFileIcon kind="png" />
                       <span>
@@ -10339,10 +10359,7 @@ export default function Home() {
                     <button
                       type="button"
                       className="reports-action-card"
-                      onClick={() => {
-                        setManagedReportType("performanceCards");
-                        setManagedReportFormat("pdf");
-                      }}
+                      onClick={() => handleQuickReportGenerate("performanceCards", "pdf")}
                     >
                       <ReportFileIcon kind="pdf" />
                       <span>
