@@ -1,4 +1,4 @@
-﻿import PptxGenJS from "pptxgenjs";
+import PptxGenJS from "pptxgenjs";
 import {
   type CSSProperties,
   type ReactNode,
@@ -79,7 +79,7 @@ const DASHBOARD_SECTIONS: DashboardSectionDefinition[] = [
   {
     id: "reports",
     label: "Reports",
-    title: "Report Export Center",
+    title: "Report Management Center",
     selector: "#section-reports",
   },
 ];
@@ -353,6 +353,38 @@ const GOOGLE_TT_HISTORY_HEADERS = [
   "RCA",
 ];
 
+const MANUAL_TICKET_EXPORT_HEADERS = [
+  "SN.",
+  "TT's",
+  "Site ID",
+  "Site Name",
+  "Managed Resource ",
+  "Issues",
+  "Severity",
+  "Region",
+  "Observation Date",
+  "Observation Time",
+  "Recovery Date",
+  "Recovery Time",
+  "Escalated for L3 Support Date",
+  "Escalated for L3 Support Time",
+  "Total Duration/Days/Hours",
+  "Duration (hrs)",
+  "NE Detail/Impacted Object",
+  "Service Impaction Status",
+  "No. of correlated Alarms",
+  "Escalated to ",
+  "Escalation Level",
+  "Status",
+  "Comments Date",
+  "Comments-Feedback",
+  "Maintenance person/Team",
+  "Maintenance Contact Details",
+  "Action Taken/RCA",
+  "Action",
+  "RCA",
+];
+
 function createManualTicketDraft(): ManualTicketDraft {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -425,7 +457,7 @@ function manualDurationHours(draft: ManualTicketDraft): number | null {
   const observedAt = combineDateTime(observationDate, draft.observationTime);
   const recoveredAt = combineDateTime(recoveryDate, draft.recoveryTime);
   const hours = hoursBetween(observedAt, recoveredAt);
-  return Number.isFinite(hours) && hours >= 0 ? hours : null;
+  return hours !== null && Number.isFinite(hours) && hours >= 0 ? hours : null;
 }
 
 function formatManualDurationHours(draft: ManualTicketDraft): string {
@@ -5392,6 +5424,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const statsRef = useRef<HTMLDivElement | null>(null);
+  const performanceKpiCardsRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLDivElement | null>(null);
   const filtersRef = useRef<HTMLElement | null>(null);
   const [exportMonths, setExportMonths] = useState<string[]>([]);
@@ -6052,13 +6085,13 @@ export default function Home() {
       );
       dataRows = values.slice(headerRowIndex + 1);
     }
-    if (!headers.some((header) => clean(header))) {
+    if (!headers.some((header: unknown) => clean(header))) {
       headers = GOOGLE_TT_HISTORY_HEADERS.slice(0, cols.length);
     }
     return [
       headers,
       ...dataRows.map((row: unknown[]) =>
-        headers.map((_header, index) => row[index] ?? ""),
+        headers.map((_header: unknown, index: number) => row[index] ?? ""),
       ),
     ];
   }
@@ -6096,14 +6129,14 @@ export default function Home() {
       );
       dataRows = values.slice(headerRowIndex + 1);
       firstDataSheetRow = headerRowIndex + 2;
-    } else if (!headers.some((header) => clean(header))) {
+    } else if (!headers.some((header: unknown) => clean(header))) {
       headers = GOOGLE_TT_HISTORY_HEADERS.slice(0, cols.length);
       firstDataSheetRow = 2;
     }
     return dataRows.map((row: unknown[], index: number) => ({
       rowNumber: firstDataSheetRow + index,
       headers,
-      values: headers.map((_header, cellIndex) => row[cellIndex] ?? ""),
+      values: headers.map((_header: unknown, cellIndex: number) => row[cellIndex] ?? ""),
     }));
   }
 
@@ -7367,6 +7400,39 @@ export default function Home() {
     };
   }, [allDataRows, perfMonths, perfRegions, perfRows]);
 
+
+  const reportPerformanceExportMetrics = useMemo(() => {
+    const scopedSourceRows = allDataRows.filter((row) => {
+      const regionMatch =
+        exportRegions.length === 0 || exportRegions.includes(row.region);
+      const monthMatch =
+        exportMonths.length === 0 ||
+        coveredMonthKeys(row).some((monthKey) => exportMonths.includes(monthKey));
+      return regionMatch && monthMatch;
+    });
+    const scopedSiteIds = new Set(
+      scopedSourceRows.map((row) => clean(row.siteId)).filter(isRfSiteId),
+    );
+    const rfPerfRows = scopedSiteIds.size
+      ? perfRows.filter((row) => scopedSiteIds.has(clean(row.siteId)))
+      : perfRows.filter((row) => isRfSiteId(row.siteId));
+    const rfSiteIds = new Set(
+      rfPerfRows.map((row) => clean(row.siteId)).filter(isRfSiteId),
+    );
+    const affectedIds = new Set(
+      rfPerfRows
+        .filter((row) => row.sitesDownHours > 0)
+        .map((row) => clean(row.siteId))
+        .filter(isRfSiteId),
+    );
+    return {
+      totalSites: rfSiteIds.size,
+      affectedSites: affectedIds.size,
+      nonAffectedSites: Math.max(0, rfSiteIds.size - affectedIds.size),
+      reportRows: rfPerfRows.length,
+    };
+  }, [allDataRows, exportMonths, exportRegions, perfRows]);
+
   const managedReportDefinitions = useMemo(
     () => [
       {
@@ -7381,7 +7447,7 @@ export default function Home() {
         title: "Performance KPI Report",
         description: "Site availability, downtime, reliability and monthly performance export.",
         formats: ["xlsx", "pdf", "ppt"] as ManagedReportFormat[],
-        records: performanceExportMetrics.reportRows,
+        records: reportPerformanceExportMetrics.reportRows,
       },
       {
         id: "executive" as ManagedReportType,
@@ -7406,7 +7472,7 @@ export default function Home() {
       executiveInsights.cards.length,
       executiveInsights.highRiskSites.length,
       monthlyExportTickets.length,
-      performanceExportMetrics.reportRows,
+      reportPerformanceExportMetrics.reportRows,
     ],
   );
 
@@ -7463,10 +7529,10 @@ export default function Home() {
           ? `${exportMonths.length} months`
           : "All";
     const perfMonthLabel =
-      perfMonths.length === 1
-        ? (filterOptions.exportMonthLabels?.[perfMonths[0]] ?? perfMonths[0])
-        : perfMonths.length > 1
-          ? `${perfMonths.length} months`
+      exportMonths.length === 1
+        ? (filterOptions.exportMonthLabels?.[exportMonths[0]] ?? exportMonths[0])
+        : exportMonths.length > 1
+          ? `${exportMonths.length} months`
           : "All";
 
     try {
@@ -7490,9 +7556,9 @@ export default function Home() {
         }
       } else if (report.id === "performance") {
         if (format === "xlsx") {
-          await exportPerfTemplate(perfRows, perfMonths[0] ?? "all", perfRegions);
+          await exportPerfTemplate(perfRows, exportMonths[0] ?? "all", exportRegions);
         } else if (format === "pdf") {
-          exportPerfPdf(perfRows, perfMonths[0] ?? "all");
+          exportPerfPdf(perfRows, exportMonths[0] ?? "all");
         } else {
           exportPerfPpt(perfRows, perfMonthLabel, executiveInsights);
         }
@@ -7629,7 +7695,7 @@ export default function Home() {
             .map((database) => database.name)
             .filter(
               (name): name is string =>
-                Boolean(name) && /followup|dashboard|ticket|workbook|risk/i.test(name),
+                typeof name === "string" && /followup|dashboard|ticket|workbook|risk/i.test(name),
             )
             .map(
               (name) =>
@@ -8107,70 +8173,49 @@ export default function Home() {
 
       if (!isActive) return;
 
-      const showExcel = hasDashboardSectionExcel(section.id);
       const panel = document.createElement("div");
       panel.id = `section-control-${section.id}`;
       panel.className =
         "section-control-panel section-control-panel-tab-active no-print";
       const iconSvg = {
-        png: '<svg class="file-export-svg file-export-svg-png" viewBox="0 0 64 64" aria-hidden="true"><path class="file-page" d="M14 5h25l11 11v43H14Z"/><path class="file-fold" d="M39 5v12h11"/><circle class="file-mark" cx="25" cy="24" r="5"/><path class="file-mark" d="m18 49 11-13 7 8 5-6 8 11Z"/></svg>',
-        excel:
-          '<svg class="file-export-svg file-export-svg-xlsx" viewBox="0 0 64 64" aria-hidden="true" style="--file-color:#21a366"><path class="file-page" d="M14 5h25l11 11v43H14Z"/><path class="file-fold" d="M39 5v12h11"/><path class="file-grid" d="M22 24h20M22 32h20M22 40h20M28 20v26M36 20v26"/><rect class="file-ribbon" x="6" y="34" width="52" height="20" rx="3"/><text class="file-label" x="32" y="49" text-anchor="middle">XLS</text></svg>',
         top: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>',
       };
       panel.innerHTML = `
-        <div class="section-control-title section-control-title-static">
+        <div class="section-control-title section-control-title-static${section.id === "reports" ? " section-control-title--with-subtitle" : ""}">
           <span class="section-control-tab-dot" aria-hidden="true"></span>
-          <span class="section-control-title-text">${section.title}</span>
+          <span class="section-control-title-copy">
+            <span class="section-control-title-text">${section.title}</span>
+            ${section.id === "reports" ? '<span class="section-control-subtitle">Generate filtered ticket and performance reports, track export actions, and keep management outputs in one place.</span>' : ""}
+          </span>
         </div>
         <div class="section-control-actions">
-          <button type="button" class="section-tool-button" data-action="png">${iconSvg.png}<span>PNG</span></button>
-          ${
-            showExcel
-              ? `<button type="button" class="section-tool-button" data-action="excel">${iconSvg.excel}<span>Excel</span></button>`
-              : ""
-          }
+          ${section.id === "reports" ? `
+            <label class="section-header-search reports-search-box" data-role="section-report-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+              <input type="search" data-action="report-search" value="${reportSearch.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}" placeholder="Search reports" />
+            </label>
+          ` : ""}
           <button type="button" class="section-tool-button" data-action="top">${iconSvg.top}<span>Top Nav</span></button>
         </div>
       `;
 
-      const pngButton = panel.querySelector<HTMLButtonElement>(
-        '[data-action="png"]',
-      );
-      const excelButton = panel.querySelector<HTMLButtonElement>(
-        '[data-action="excel"]',
-      );
       const topButton = panel.querySelector<HTMLButtonElement>(
         '[data-action="top"]',
       );
-      const pngHandler = async () => {
-        const latestTarget = document.querySelector<HTMLElement>(
-          section.selector,
-        );
-        if (pngButton) {
-          pngButton.disabled = true;
-          pngButton.textContent = "Exporting...";
-        }
-        try {
-          await exportElementToPng(latestTarget, section.title);
-        } finally {
-          if (pngButton) {
-            pngButton.disabled = false;
-            pngButton.innerHTML = `${iconSvg.png}<span>PNG</span>`;
-          }
-        }
-      };
-      const excelHandler = () => exportDashboardSectionExcel(section.id);
+      const reportSearchInput = panel.querySelector<HTMLInputElement>(
+        '[data-action="report-search"]',
+      );
       const topHandler = () => scrollToDashboardTop();
-      pngButton?.addEventListener("click", pngHandler);
-      excelButton?.addEventListener("click", excelHandler);
+      const reportSearchHandler = (event: Event) => {
+        setReportSearch((event.currentTarget as HTMLInputElement).value);
+      };
       topButton?.addEventListener("click", topHandler);
+      reportSearchInput?.addEventListener("input", reportSearchHandler);
       target.parentElement?.insertBefore(panel, target);
 
       cleanup.push(() => {
-        pngButton?.removeEventListener("click", pngHandler);
-        excelButton?.removeEventListener("click", excelHandler);
         topButton?.removeEventListener("click", topHandler);
+        reportSearchInput?.removeEventListener("input", reportSearchHandler);
         panel.remove();
       });
     });
@@ -8188,7 +8233,7 @@ export default function Home() {
     }
 
     return () => cleanup.forEach((remove) => remove());
-  }, [data, activeDashboardTab]);
+  }, [data, activeDashboardTab, reportSearch]);
 
   useEffect(() => {
     if (!data) return;
@@ -8392,8 +8437,6 @@ export default function Home() {
         {
           ...source,
           id: createManualTicketDraft().id,
-          sourceRowNumber: undefined,
-          sourceRegionKey: undefined,
           tt: "",
         },
       ];
@@ -8489,12 +8532,12 @@ export default function Home() {
     const actionMatch = findActionLookup(action);
     return {
       id: `${Date.now()}-${row.rowNumber}-${Math.random().toString(36).slice(2)}`,
-      sourceRowNumber: row.rowNumber,
       tt: sheetRowValue(row, ["TT", "TT's", "TT Number", "Ticket Number"]),
       siteId,
       siteName: siteName || site?.siteName || "",
-      customSite:
+      customSite: Boolean(
         !site || (siteName && clean(site.siteName) !== clean(siteName)),
+      ),
       managedResource: sheetRowValue(row, [
         "Managed Resource",
         "Managed Resource ",
@@ -8550,7 +8593,9 @@ export default function Home() {
       maintenanceContact: sheetRowValue(row, ["Maintenance Contact Details"]),
       actionTaken: sheetRowValue(row, ["Action Taken/RCA", "Action Taken"]),
       action,
-      customRca: !actionMatch || (rca && clean(actionMatch.rca) !== clean(rca)),
+      customRca: Boolean(
+        !actionMatch || (rca && clean(actionMatch.rca) !== clean(rca)),
+      ),
       rca: rca || actionMatch?.rca || "",
     };
   }
@@ -8666,7 +8711,7 @@ export default function Home() {
     const sheetName = workbookTicketSheetName(workbook);
     let sheet = workbook.Sheets[sheetName];
     if (!sheet) {
-      sheet = XLSX.utils.aoa_to_sheet([MANUAL_TICKET_EXPORT_HEADERS]);
+      sheet = XLSX.utils.aoa_to_sheet([[...MANUAL_TICKET_EXPORT_HEADERS]]);
       XLSX.utils.book_append_sheet(workbook, sheet, sheetName || "TT-History");
     }
     let nextSerial = nextManualWorkbookSerial(sheet);
@@ -8677,7 +8722,9 @@ export default function Home() {
       >;
       row["SN."] = nextSerial;
       nextSerial += 1;
-      return MANUAL_TICKET_EXPORT_HEADERS.map((header) => row[header] ?? "");
+      return MANUAL_TICKET_EXPORT_HEADERS.map(
+        (header: string) => (row as Record<string, unknown>)[header] ?? "",
+      );
     });
     XLSX.utils.sheet_add_aoa(sheet, rows, { origin: -1 });
     sheet["!cols"] =
@@ -9784,25 +9831,6 @@ export default function Home() {
               id="section-reports"
               className="reports-management-center dashboard-section-content-block no-print"
             >
-              <div className="reports-management-header">
-                <div>
-                  <h2>Report Management Center</h2>
-                  <p>
-                    Generate filtered ticket and performance reports, track export actions,
-                    and keep management outputs in one place.
-                  </p>
-                </div>
-                <div className="reports-search-box">
-                  <Search size={18} />
-                  <input
-                    type="search"
-                    value={reportSearch}
-                    onChange={(event) => setReportSearch(event.target.value)}
-                    placeholder="Search reports"
-                  />
-                </div>
-              </div>
-
               <div className="reports-management-grid">
                 <aside className="reports-generator-panel">
                   <button
@@ -9837,26 +9865,28 @@ export default function Home() {
                       </select>
                     </label>
 
-                    <label className="reports-field">
-                      <span>Filtered Records</span>
-                      <input readOnly value={`${selectedManagedReport.records.toLocaleString()} records`} />
-                    </label>
+                    <div className="reports-form-row reports-form-row--two">
+                      <label className="reports-field">
+                        <span>Filtered Records</span>
+                        <input readOnly value={`${selectedManagedReport.records.toLocaleString()} records`} />
+                      </label>
 
-                    <label className="reports-field">
-                      <span>Output Format</span>
-                      <select
-                        value={managedReportFormat}
-                        onChange={(event) =>
-                          setManagedReportFormat(event.target.value as ManagedReportFormat)
-                        }
-                      >
-                        {managedReportFormatOptions.map((format) => (
-                          <option key={format} value={format}>
-                            {format.toUpperCase()}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                      <label className="reports-field">
+                        <span>Output Format</span>
+                        <select
+                          value={managedReportFormat}
+                          onChange={(event) =>
+                            setManagedReportFormat(event.target.value as ManagedReportFormat)
+                          }
+                        >
+                          {managedReportFormatOptions.map((format) => (
+                            <option key={format} value={format}>
+                              {format.toUpperCase()}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
 
                     <div className="reports-selected-note">
                       <span>Report Scope</span>
@@ -9864,46 +9894,28 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <div className="reports-filter-card">
-                    <h3>Report Filters</h3>
-                    {(managedReportType === "tickets" || managedReportType === "executive" || managedReportType === "quality") && (
-                      <div className="reports-filter-stack">
-                        <MultiSelectFilter
-                          label="Ticket Month"
-                          value={exportMonths}
-                          options={filterOptions.exportMonth}
-                          optionLabels={filterOptions.exportMonthLabels}
-                          onChange={setExportMonths}
-                          showAllOption
-                        />
-                        <MultiSelectFilter
-                          label="Ticket Region"
-                          value={exportRegions}
-                          options={filterOptions.region}
-                          onChange={setExportRegions}
-                          showAllOption
-                        />
-                      </div>
-                    )}
-                    {managedReportType === "performance" && (
-                      <div className="reports-filter-stack">
-                        <MultiSelectFilter
-                          label="Performance Month"
-                          value={perfMonths}
-                          options={filterOptions.exportMonth}
-                          optionLabels={filterOptions.exportMonthLabels}
-                          onChange={setPerfMonths}
-                          showAllOption
-                        />
-                        <MultiSelectFilter
-                          label="Performance Region"
-                          value={perfRegions}
-                          options={filterOptions.region}
-                          onChange={setPerfRegions}
-                          showAllOption
-                        />
-                      </div>
-                    )}
+                  <div className="reports-filter-card reports-filter-card--shared">
+                    <h3>Shared Report Filters</h3>
+                    <div className="reports-filter-row reports-filter-row--two">
+                      <MultiSelectFilter
+                        label="Performance Month"
+                        value={exportMonths}
+                        options={filterOptions.exportMonth}
+                        optionLabels={filterOptions.exportMonthLabels}
+                        onChange={setExportMonths}
+                        showAllOption
+                      />
+                      <MultiSelectFilter
+                        label="Performance Region"
+                        value={exportRegions}
+                        options={filterOptions.region}
+                        onChange={setExportRegions}
+                        showAllOption
+                      />
+                    </div>
+                    <p className="reports-filter-hint">
+                      These filters are shared by all report types and stay unchanged when switching reports.
+                    </p>
                   </div>
                 </aside>
 
@@ -9953,7 +9965,7 @@ export default function Home() {
                       <ReportFileIcon kind="xlsx" />
                       <span>
                         <strong>Performance XLSX</strong>
-                        <small>{performanceExportMetrics.reportRows.toLocaleString()} site rows</small>
+                        <small>{reportPerformanceExportMetrics.reportRows.toLocaleString()} site rows</small>
                       </span>
                     </button>
                     <button
@@ -9970,14 +9982,28 @@ export default function Home() {
                         <small>Health score and high-risk sites</small>
                       </span>
                     </button>
+                    <button
+                      type="button"
+                      className="reports-action-card"
+                      onClick={() => {
+                        setManagedReportType("quality");
+                        setManagedReportFormat("xlsx");
+                      }}
+                    >
+                      <ReportFileIcon kind="xlsx" />
+                      <span>
+                        <strong>RCA / SLA Workbook</strong>
+                        <small>Preventability and repeated offenders</small>
+                      </span>
+                    </button>
                   </div>
 
                   <div className="reports-summary-strip">
                     <span><b>{monthlyExportTickets.length.toLocaleString()}</b>Tickets</span>
                     <span><b>{ticketExportMetrics.pendingCount.toLocaleString()}</b>Pending</span>
                     <span><b>{ticketExportMetrics.criticalCount.toLocaleString()}</b>Critical</span>
-                    <span><b>{performanceExportMetrics.totalSites.toLocaleString()}</b>RF Sites</span>
-                    <span><b>{performanceExportMetrics.affectedSites.toLocaleString()}</b>Affected</span>
+                    <span><b>{reportPerformanceExportMetrics.totalSites.toLocaleString()}</b>RF Sites</span>
+                    <span><b>{reportPerformanceExportMetrics.affectedSites.toLocaleString()}</b>Affected</span>
                     <span><b>{executiveInsights.healthScore.score}</b>Health</span>
                   </div>
 
@@ -10133,7 +10159,7 @@ export default function Home() {
                 <button
                   type="button"
                   className="ghost-button large google-load-selected"
-                  onClick={handleGoogleSheetLoad}
+                  onClick={() => void handleGoogleSheetLoad("replace")}
                   disabled={
                     googleSheetLoading ||
                     !GOOGLE_REGION_LINKS.some(
@@ -10160,6 +10186,17 @@ export default function Home() {
             id="section-kpis"
             className="stats-grid workbook-cards dashboard-section-content-block"
           >
+            <div className="cards-export-toolbar no-print">
+              <button
+                type="button"
+                className="cards-export-button"
+                onClick={() => exportElementToPng(statsRef.current, "KPI-Cards")}
+                title="Export the full KPI card set as PNG"
+              >
+                <ImageDown size={16} />
+                <span>Export KPI Cards PNG</span>
+              </button>
+            </div>
             {/* Standard StatCards */}
             <StatCard
               label="Total TT's"
@@ -10351,6 +10388,7 @@ export default function Home() {
               const kpi = computePerfKPIs(performanceKpiRows);
               return (
                 <div
+                  ref={performanceKpiCardsRef}
                   id="section-performance-kpis"
                   className="hero-export-row no-print dashboard-section-content-block"
                   style={{
@@ -10359,6 +10397,22 @@ export default function Home() {
                     marginTop: "4px",
                   }}
                 >
+                  <div className="cards-export-toolbar cards-export-toolbar--performance no-print">
+                    <button
+                      type="button"
+                      className="cards-export-button"
+                      onClick={() =>
+                        exportElementToPng(
+                          performanceKpiCardsRef.current,
+                          "Performance-KPI-Gauge-Cards",
+                        )
+                      }
+                      title="Export the full Performance KPI card set as PNG"
+                    >
+                      <ImageDown size={16} />
+                      <span>Export Performance Cards PNG</span>
+                    </button>
+                  </div>
                   <div className="perf-kpi-row perf-kpi-row--gauges">
                     {(() => {
                       const gaugeCards = buildPerformanceGaugeCards(
@@ -10626,47 +10680,6 @@ export default function Home() {
                     style={{ display: "flex", alignItems: "center", gap: 10 }}
                   >
                     <span>Top {executiveRcaSlaRows.length}</span>
-                    <button
-                      className="ghost-button"
-                      onClick={() =>
-                        exportAnalyticsTableExcel(
-                          [
-                            "Rank",
-                            "Region",
-                            "Site ID",
-                            "Site Name",
-                            "TT's",
-                            "Availability",
-                            "Downtime",
-                            "Reliability",
-                            "Top RCA",
-                          ],
-                          executiveRcaSlaRows.map((site, index) => [
-                            index + 1,
-                            site.region,
-                            site.siteId,
-                            site.siteName || "-",
-                            site.tickets,
-                            site.performanceAvailabilityHours === null
-                              ? "-"
-                              : `${site.performanceAvailabilityHours} hrs`,
-                            site.performanceDowntimeHours === null
-                              ? "-"
-                              : `${site.performanceDowntimeHours} hrs`,
-                            site.reliability === null
-                              ? "-"
-                              : `${site.reliability}%`,
-                            site.topRca,
-                          ]),
-                          "Repeated Offenders",
-                          "Repeated-Offender-Sites.xlsx",
-                        )
-                      }
-                      disabled={!executiveRcaSlaRows.length}
-                      title="Export repeated offender sites to Excel"
-                    >
-                      <ReportFileIcon kind="xlsx" /> Excel
-                    </button>
                   </div>
                 </div>
 
@@ -12133,14 +12146,6 @@ export default function Home() {
                   )}{" "}
                   &mdash; {filteredTickets.length.toLocaleString()} total
                 </span>
-                <button
-                  className="ghost-button"
-                  onClick={() => exportExcel(filteredTickets)}
-                  disabled={!filteredTickets.length}
-                  title="Download filtered tickets table to Excel"
-                >
-                  <ReportFileIcon kind="xlsx" /> Excel
-                </button>
               </div>
             </div>
             <div className="table-scroll" id="ticket-table-wrapper">

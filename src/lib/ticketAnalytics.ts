@@ -8,6 +8,7 @@ import type {
   RcaDeepDiveRow,
   SlaBucket,
   TicketAggregate,
+  TicketRecord,
 } from "../types/dashboard";
 
 import {
